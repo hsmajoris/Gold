@@ -95,10 +95,12 @@ def trim_to_backtest_window(df: pd.DataFrame, as_of: date | None = None) -> pd.D
     return trimmed
 
 
-def _buy_reason(gc: int, r: float, buy_ratio: float, include_new_high: bool = False) -> str:
+def _buy_reason(
+    gc: int, r: float, buy_ratio: float, buy_green_count: int, include_new_high: bool = False
+) -> str:
     reasons = []
-    if gc >= BUY_GREEN_COUNT:
-        reasons.append(f"green_count≥{BUY_GREEN_COUNT}")
+    if gc >= buy_green_count:
+        reasons.append(f"green_count≥{buy_green_count}")
     if r >= buy_ratio:
         reasons.append(f"금/은비율≥{buy_ratio:g}")
     if include_new_high:
@@ -106,10 +108,10 @@ def _buy_reason(gc: int, r: float, buy_ratio: float, include_new_high: bool = Fa
     return ", ".join(reasons)
 
 
-def _sell_reason(gc: int, r: float, sell_ratio: float) -> str:
+def _sell_reason(gc: int, r: float, sell_ratio: float, sell_green_count: int) -> str:
     reasons = []
-    if gc == SELL_GREEN_COUNT:
-        reasons.append(f"green_count={SELL_GREEN_COUNT}")
+    if gc <= sell_green_count:
+        reasons.append(f"green_count≤{sell_green_count}")
     if r <= sell_ratio:
         reasons.append(f"금/은비율≤{sell_ratio:g}")
     return ", ".join(reasons)
@@ -122,12 +124,14 @@ def run_backtest(
     use_new_high_buy: bool = False,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
+    buy_green_count: int = BUY_GREEN_COUNT,
+    sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
 ) -> tuple[list[dict], pd.Series, pd.Series]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
     Two kinds of triggers, with different timing:
-    - **green_count** (buy: `>= BUY_GREEN_COUNT`, sell: `== SELL_GREEN_COUNT`) is
+    - **green_count** (buy: `>= buy_green_count`, sell: `<= sell_green_count`) is
       *delayed*: `entry_delay_days`/`exit_delay_days` let it be simulated with a
       lag instead of an immediate fill, e.g. "buy 1 month after 5 signals fire"
       (entry_delay_days=30). Once the condition is met, the order is scheduled
@@ -188,15 +192,19 @@ def run_backtest(
                 # Ratio/new-high buys are immediate: no delay, and this
                 # preempts any still-pending green_count order.
                 entry_reason_today = _buy_reason(
-                    gc, r, buy_ratio, include_new_high=(use_new_high_buy and is_new_high)
+                    gc,
+                    r,
+                    buy_ratio,
+                    buy_green_count,
+                    include_new_high=(use_new_high_buy and is_new_high),
                 )
                 pending_buy_date = None
                 pending_buy_reason = None
             else:
                 if pending_buy_date is None:
-                    if gc >= BUY_GREEN_COUNT:
+                    if gc >= buy_green_count:
                         pending_buy_date = dt + timedelta(days=entry_delay_days)
-                        pending_buy_reason = _buy_reason(gc, r, buy_ratio)
+                        pending_buy_reason = _buy_reason(gc, r, buy_ratio, buy_green_count)
                 if pending_buy_date is not None and dt >= pending_buy_date:
                     entry_reason_today = pending_buy_reason
                     pending_buy_date = None
@@ -216,14 +224,14 @@ def run_backtest(
                 if r <= sell_ratio:
                     # Ratio sells are immediate: no delay, and this preempts any
                     # still-pending green_count order.
-                    exit_reason_today = _sell_reason(gc, r, sell_ratio)
+                    exit_reason_today = _sell_reason(gc, r, sell_ratio, sell_green_count)
                     pending_sell_date = None
                     pending_sell_reason = None
                 else:
                     if pending_sell_date is None:
-                        if gc == SELL_GREEN_COUNT:
+                        if gc <= sell_green_count:
                             pending_sell_date = dt + timedelta(days=exit_delay_days)
-                            pending_sell_reason = _sell_reason(gc, r, sell_ratio)
+                            pending_sell_reason = _sell_reason(gc, r, sell_ratio, sell_green_count)
                     if pending_sell_date is not None and dt >= pending_sell_date:
                         exit_reason_today = pending_sell_reason
                         pending_sell_date = None
@@ -371,6 +379,8 @@ def simulate(
     use_new_high_buy: bool = False,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
+    buy_green_count: int = BUY_GREEN_COUNT,
+    sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
@@ -382,6 +392,8 @@ def simulate(
         use_new_high_buy=use_new_high_buy,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
+        buy_green_count=buy_green_count,
+        sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
@@ -402,6 +414,8 @@ def run(
     use_new_high_buy: bool = False,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
+    buy_green_count: int = BUY_GREEN_COUNT,
+    sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
 ) -> dict:
     signals = prepare_signals(as_of)
@@ -412,6 +426,8 @@ def run(
         use_new_high_buy=use_new_high_buy,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
+        buy_green_count=buy_green_count,
+        sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
     )
     result["signals"] = signals
