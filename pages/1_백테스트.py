@@ -31,41 +31,65 @@ with st.expander("전략 규칙 보기"):
     st.markdown(
         f"""
 - **매수** (미보유 상태일 때만): `green_count ≥ {backtest.BUY_GREEN_COUNT}`
-  (실질금리·달러인덱스 × 5/30/60일 이평선, 총 6개 셀 중 금값에 우호적인 셀 수) **또는**
-  금/은비율 ≥ {backtest.BUY_RATIO} — 이 두 조건은 아래 매수 지연일수만큼 기다린 뒤 체결됩니다.
-  (아래에서 켠 경우) **금 신고가 갱신**은 별도 조건으로, 지연 없이 **당일 즉시 매수** 체결됩니다
-- **매도** (보유 상태일 때만): `green_count = {backtest.SELL_GREEN_COUNT}` **또는**
-  금/은비율 ≤ {backtest.SELL_RATIO}
-- green_count/금은비율 신호가 발생하면 매수·매도 지연일수만큼 기다린 뒤, 그 시점 이후 첫
-  거래일 **종가**로 체결됩니다(지연 기간 중 조건 재확인 없이 그대로 체결 — 지연일수 0이면
-  신호 당일 종가에 즉시 체결). 신고가 갱신 매수는 이 지연 설정과 무관하게 항상 당일 체결됩니다
+  (실질금리·달러인덱스 × 5/30/60일 이평선, 총 6개 셀 중 금값에 우호적인 셀 수) — 아래 매수
+  지연일수만큼 기다린 뒤 체결. **또는** 금/은비율 ≥ (아래에서 설정한 값) — 지연 없이 **당일
+  즉시 매수**. **또는** (아래 체크박스를 켠 경우) **금 신고가 갱신** — 이것도 지연 없이 당일
+  즉시 매수. 셋 중 아무 조건이나 먼저 만족하면 매수합니다
+- **매도** (보유 상태일 때만): `green_count = {backtest.SELL_GREEN_COUNT}` — 아래 매도
+  지연일수만큼 기다린 뒤 체결. **또는** 금/은비율 ≤ (아래에서 설정한 값) — 지연 없이 **당일
+  즉시 매도**
+- 지연이 설정된 green_count 신호는 그 시점 이후 첫 거래일 **종가**로 체결됩니다(지연 기간 중
+  조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
+  신고가 갱신 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
+  green_count 지연 주문이 있어도 먼저 체결됩니다
 - 분석 기간: 오늘 기준 최근 **{backtest.BACKTEST_YEARS}년** (이동평균 계산용으로 그 이전
   {backtest.BUFFER_DAYS}캘린더일치 데이터를 추가로 사용)
         """
     )
 
-st.subheader("매수 조건 · 신호 지연 설정")
-use_new_high_buy = st.checkbox(
-    "신고가 갱신 시 매수 조건 추가 (지연 없이 즉시 매수)",
-    value=False,
-    help="켜면 금(GC=F) 종가가 분석 기간 내 최고가를 새로 경신하는 날 매수 신호가 발생합니다 "
-    "(green_count/금은비율 조건과는 OR로 결합 — 셋 중 하나만 만족해도 매수). 아래 매수 지연일수는 "
-    "green_count/금은비율 신호에만 적용되며, 신고가 갱신 매수는 항상 그날 종가에 즉시 체결됩니다.",
+st.subheader("매수·매도 조건 설정")
+st.caption(
+    "금/은비율 임계값과 신고가 갱신 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다. "
+    "지연일수는 green_count 신호에만 적용됩니다."
 )
+ratio_col1, ratio_col2, ratio_col3 = st.columns(3)
+with ratio_col1:
+    buy_ratio = st.number_input(
+        "매수 금/은비율 임계값 (이상, 즉시 매수)",
+        min_value=1.0, max_value=200.0, value=float(backtest.BUY_RATIO), step=1.0,
+        help="금/은비율이 이 값 이상이면 그날 즉시 매수합니다 (지연 미적용).",
+    )
+with ratio_col2:
+    sell_ratio = st.number_input(
+        "매도 금/은비율 임계값 (이하, 즉시 매도)",
+        min_value=1.0, max_value=200.0, value=float(backtest.SELL_RATIO), step=1.0,
+        help="금/은비율이 이 값 이하이면 그날 즉시 매도합니다 (지연 미적용).",
+    )
+with ratio_col3:
+    use_new_high_buy = st.checkbox(
+        "신고가 갱신 시 매수 조건 추가",
+        value=False,
+        help="켜면 금(GC=F) 종가가 분석 기간 내 최고가를 새로 경신하는 날 그 즉시 매수합니다 "
+        "(지연 미적용, green_count/금은비율 조건과는 OR로 결합).",
+    )
+if sell_ratio >= buy_ratio:
+    st.warning("매도 임계값이 매수 임계값보다 크거나 같습니다. 매수 즉시 매도 조건도 함께 만족해 거의 바로 청산될 수 있습니다.")
+
 delay_col1, delay_col2 = st.columns(2)
 with delay_col1:
     entry_delay_days = st.number_input(
-        "매수 지연일수 (일, green_count/금은비율 신호에만 적용)", min_value=0, max_value=180, value=0, step=1,
-        help="예: 30을 입력하면 'green_count/금은비율 신호 발생 1개월 후 매수'를 시뮬레이션합니다. "
-        "신고가 갱신 매수(위 체크박스)에는 적용되지 않습니다.",
+        "매수 지연일수 (일, green_count 신호에만 적용)", min_value=0, max_value=180, value=0, step=1,
+        help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매수'를 시뮬레이션합니다. "
+        "금/은비율·신고가 갱신 매수에는 적용되지 않습니다.",
     )
-    st.caption(f"≈ {entry_delay_days / 30:.1f}개월 후 매수 (신고가 갱신 매수는 항상 즉시 체결)")
+    st.caption(f"≈ {entry_delay_days / 30:.1f}개월 후 매수 (금/은비율·신고가 갱신 매수는 항상 즉시 체결)")
 with delay_col2:
     exit_delay_days = st.number_input(
-        "매도 지연일수 (일)", min_value=0, max_value=180, value=0, step=1,
-        help="예: 30을 입력하면 '신호 발생 1개월 후 매도'를 시뮬레이션합니다.",
+        "매도 지연일수 (일, green_count 신호에만 적용)", min_value=0, max_value=180, value=0, step=1,
+        help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매도'를 시뮬레이션합니다. "
+        "금/은비율 매도에는 적용되지 않습니다.",
     )
-    st.caption(f"≈ {exit_delay_days / 30:.1f}개월 후 매도")
+    st.caption(f"≈ {exit_delay_days / 30:.1f}개월 후 매도 (금/은비율 매도는 항상 즉시 체결)")
 
 refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
 
@@ -85,6 +109,8 @@ try:
         entry_delay_days=int(entry_delay_days),
         exit_delay_days=int(exit_delay_days),
         use_new_high_buy=use_new_high_buy,
+        buy_ratio=float(buy_ratio),
+        sell_ratio=float(sell_ratio),
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
