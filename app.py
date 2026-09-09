@@ -73,7 +73,10 @@ else:
         "(주말·휴장일이면 직전 거래일 종가가 표시됩니다)"
     )
     st.caption("ℹ️ 과거 기준일은 매일 자동 갱신되는 캐시가 아니라 그때그때 실시간으로 계산됩니다.")
-st.caption("🟢 옅은 녹색 배경 = 해당 이동평균선을 상향 돌파한 후 유지 중인 셀")
+st.caption(
+    "🟢 옅은 녹색 배경 = 종가가 해당 이동평균선 위에 있는 셀(상향 돌파 후 유지 중). "
+    "각 셀 하단의 작은 글씨는 돌파가 며칠째 지속 중인지를 나타내는 보조 정보입니다."
+)
 
 indicator_order = data["indicator_order"]
 indicators = data["indicators"]
@@ -92,6 +95,18 @@ def data_cell(text: str, highlight: bool = False) -> str:
     return f'<td style="padding:8px 12px;border:1px solid #ddd;{bg}">{text}</td>'
 
 
+def ma_cell(sma: dict) -> str:
+    """MA row cell: the MA value vs. close (primary) with the breakout-streak
+    day count shown only as a small supplementary badge, not the headline."""
+    bg = "background-color: rgba(76,175,80,0.28);" if sma["breakout"] else ""
+    badge = (
+        f'<div style="font-size:11px;color:#5a5a5a;margin-top:2px">{sma["streak_display"]}</div>'
+        if sma["streak_display"]
+        else ""
+    )
+    return f'<td style="padding:8px 12px;border:1px solid #ddd;{bg}">{sma["display"]}{badge}</td>'
+
+
 rows_html = []
 
 header_row = header_cell("구성") + "".join(
@@ -104,14 +119,8 @@ for row_name in data["row_order"]:
     rows_html.append(f"<tr>{header_cell(row_name)}{cells}</tr>")
 
 for window in data["ma_windows"]:
-    cells = "".join(
-        data_cell(
-            indicators[k]["sma"][str(window)]["display"],
-            highlight=indicators[k]["sma"][str(window)]["breakout"],
-        )
-        for k in indicator_order
-    )
-    rows_html.append(f"<tr>{header_cell(f'{window}일선 돌파지속')}{cells}</tr>")
+    cells = "".join(ma_cell(indicators[k]["sma"][str(window)]) for k in indicator_order)
+    rows_html.append(f"<tr>{header_cell(f'{window}일선')}{cells}</tr>")
 
 close_cells = "".join(data_cell(indicators[k]["prev_close"]["display"]) for k in indicator_order)
 rows_html.append(f"<tr>{header_cell(close_row_label)}{close_cells}</tr>")
