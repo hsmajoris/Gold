@@ -87,8 +87,21 @@ def trim_to_backtest_window(df: pd.DataFrame, as_of: date | None = None) -> pd.D
     return trimmed
 
 
-def run_backtest(signals: pd.DataFrame) -> tuple[list[dict], pd.Series, pd.Series]:
+def run_backtest(
+    signals: pd.DataFrame,
+    entry_delay_days: int = 0,
+    exit_delay_days: int = 0,
+) -> tuple[list[dict], pd.Series, pd.Series]:
     """Walks the signal frame day by day applying the buy/sell rules.
+
+    `entry_delay_days`/`exit_delay_days` let a signal be simulated with a lag
+    instead of an immediate fill, e.g. "buy 1 month after 5 signals fire"
+    (entry_delay_days=30): once the condition is met, the order is scheduled
+    for (signal_date + delay) and fills at the close of the first trading day
+    on or after that date — with no reconfirmation of the condition in
+    between (a plain timer, matching the literal "N days after the signal").
+    While an order is pending, new signals on the same side are ignored (only
+    one pending order per side at a time).
 
     Returns (trades, equity_curve, bh_equity_curve). Both equity curves start
     at 1.0 on the first date. The strategy curve is flat (1.0x, i.e. 0% return)
@@ -105,6 +118,8 @@ def run_backtest(signals: pd.DataFrame) -> tuple[list[dict], pd.Series, pd.Serie
     entry_price = None
     equity_at_entry = None  # strategy equity value at the moment this position was opened
     running_equity = 1.0
+    pending_buy_date = None
+    pending_sell_date = None
     trades: list[dict] = []
     equity_values = []
 
@@ -114,13 +129,20 @@ def run_backtest(signals: pd.DataFrame) -> tuple[list[dict], pd.Series, pd.Serie
         price = float(gold.loc[dt])
 
         if not holding:
-            if gc >= BUY_GREEN_COUNT or r >= BUY_RATIO:
+            if pending_buy_date is None:
+                if gc >= BUY_GREEN_COUNT or r >= BUY_RATIO:
+                    pending_buy_date = dt + timedelta(days=entry_delay_days)
+            if pending_buy_date is not None and dt >= pending_buy_date:
                 holding = True
                 entry_date = dt
                 entry_price = price
                 equity_at_entry = running_equity
+                pending_buy_date = None
         else:
-            if gc == SELL_GREEN_COUNT or r <= SELL_RATIO:
+            if pending_sell_date is None:
+                if gc == SELL_GREEN_COUNT or r <= SELL_RATIO:
+                    pending_sell_date = dt + timedelta(days=exit_delay_days)
+            if pending_sell_date is not None and dt >= pending_sell_date:
                 exit_price = price
                 running_equity = equity_at_entry * (exit_price / entry_price)
                 trades.append(
@@ -138,6 +160,7 @@ def run_backtest(signals: pd.DataFrame) -> tuple[list[dict], pd.Series, pd.Serie
                 entry_date = None
                 entry_price = None
                 equity_at_entry = None
+                pending_sell_date = None
 
         equity_values.append(equity_at_entry * (price / entry_price) if holding else running_equity)
 
@@ -202,7 +225,9 @@ def compute_metrics(trades: list[dict], equity_curve: pd.Series, bh_equity_curve
 
 
 def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.DataFrame:
-    """Calendar-year realized returns for both curves (first/last years are partial).
+    """Calendar-year returns for both curves, both raw (realized over whatever
+    span of that year falls inside the backtest window) and annualized to that
+    same span so partial first/last years are comparable to full years.
 
     A year the strategy spent entirely in cash naturally comes out to 0%, since
     the equity curve doesn't move during cash periods — no special-casing needed.
@@ -211,35 +236,70 @@ def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.Da
     rows = []
     prev_strategy = 1.0
     prev_bh = 1.0
+    prev_date = equity_curve.index[0]
     for year in years:
         year_dates = equity_curve.index[equity_curve.index.year == year]
         last_date = year_dates[-1]
+        days_span = max((last_date - prev_date).days, 1)
         year_end_strategy = float(equity_curve.loc[last_date])
         year_end_bh = float(bh_equity_curve.loc[last_date])
+
+        strategy_return = year_end_strategy / prev_strategy - 1.0
+        bh_return = year_end_bh / prev_bh - 1.0
         rows.append(
             {
                 "year": year,
-                "strategy_return": year_end_strategy / prev_strategy - 1.0,
-                "bh_return": year_end_bh / prev_bh - 1.0,
+                "days_span": days_span,
+                "strategy_return": strategy_return,
+                "bh_return": bh_return,
+                "strategy_return_annualized": (1.0 + strategy_return) ** (365.25 / days_span)
+                - 1.0,
+                "bh_return_annualized": (1.0 + bh_return) ** (365.25 / days_span) - 1.0,
             }
         )
         prev_strategy = year_end_strategy
         prev_bh = year_end_bh
+        prev_date = last_date
     return pd.DataFrame(rows)
 
 
-def run(as_of: date | None = None) -> dict:
+def prepare_signals(as_of: date | None = None) -> pd.DataFrame:
+    """The network-bound half of the pipeline: fetch + compute signals + trim
+    to the backtest window. Independent of the buy/sell delay settings, so
+    callers can cache this and re-run `simulate()` cheaply when only the
+    delay changes."""
     raw = fetch_raw_data(as_of)
     signals = compute_signals(raw)
-    signals = trim_to_backtest_window(signals, as_of)
-    trades, equity_curve, bh_equity_curve = run_backtest(signals)
+    return trim_to_backtest_window(signals, as_of)
+
+
+def simulate(
+    signals: pd.DataFrame,
+    entry_delay_days: int = 0,
+    exit_delay_days: int = 0,
+) -> dict:
+    """The pure-computation half: run the trade state machine over already-
+    prepared signals and derive trades/equity curves/metrics/yearly returns."""
+    trades, equity_curve, bh_equity_curve = run_backtest(
+        signals, entry_delay_days=entry_delay_days, exit_delay_days=exit_delay_days
+    )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
     yearly = yearly_returns(equity_curve, bh_equity_curve)
     return {
-        "signals": signals,
         "trades": trades,
         "equity_curve": equity_curve,
         "bh_equity_curve": bh_equity_curve,
         "metrics": metrics_out,
         "yearly_returns": yearly,
     }
+
+
+def run(
+    as_of: date | None = None,
+    entry_delay_days: int = 0,
+    exit_delay_days: int = 0,
+) -> dict:
+    signals = prepare_signals(as_of)
+    result = simulate(signals, entry_delay_days=entry_delay_days, exit_delay_days=exit_delay_days)
+    result["signals"] = signals
+    return result
