@@ -1,48 +1,78 @@
 """Streamlit dashboard: gold price correlation table.
 
-Reads the pre-computed data/latest.json (refreshed daily at 07:00 KST by the
-GitHub Actions workflow in .github/workflows/update_dashboard_data.yml) so the
-page loads instantly. Falls back to a live fetch if that file is missing, and
-offers a manual "실시간 재계산" button for local testing.
+For today's date, reads the pre-computed data/latest.json (refreshed daily at
+07:00 KST by the GitHub Actions workflow in
+.github/workflows/update_dashboard_data.yml) so the page loads instantly.
+For any other selected date, computes the table live as of that date
+(requires network access and FRED_API_KEY).
 """
 
 import json
+from datetime import date
 from pathlib import Path
 
 import streamlit as st
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
+EARLIEST_DATE = date(1990, 1, 1)
 
 st.set_page_config(page_title="금(Gold) 상관관계 대시보드", layout="wide")
 
 
-@st.cache_data(ttl=3600)
-def load_data(force_live: bool):
-    if not force_live and DATA_PATH.exists():
+@st.cache_data(ttl=3600, show_spinner="데이터를 불러오는 중입니다...")
+def load_data(selected_date_iso: str, is_today: bool):
+    if is_today and DATA_PATH.exists():
         return json.loads(DATA_PATH.read_text(encoding="utf-8"))
+
     from gold_dashboard.build_table import build
 
-    return build()
+    as_of = None if is_today else date.fromisoformat(selected_date_iso)
+    return build(as_of=as_of)
 
 
 st.title("금(Gold) 상관관계 대시보드")
 
-_, refresh_col = st.columns([4, 1])
+today = date.today()
+date_col, refresh_col = st.columns([4, 1])
+with date_col:
+    selected_date = st.date_input(
+        "기준일 선택",
+        value=today,
+        min_value=EARLIEST_DATE,
+        max_value=today,
+        help="이 날짜(또는 그 이전 최근 거래일)의 종가를 기준으로 표를 계산합니다.",
+    )
 with refresh_col:
-    force_live = st.button("실시간 재계산", use_container_width=True)
+    st.write("")  # vertical alignment spacer next to the date input
+    st.write("")
+    force_live = st.button("새로고침", use_container_width=True)
 
+is_today = selected_date == today
 if force_live:
     st.cache_data.clear()
 
-data = load_data(force_live)
+try:
+    data = load_data(selected_date.isoformat(), is_today)
+except Exception as exc:
+    st.error(f"데이터를 불러오지 못했습니다: {exc}")
+    st.stop()
 
-st.caption(
-    f"기준일(전일 미국장 마감 종가): **{data['as_of']}**  ·  생성시각(KST): {data['generated_at']}"
-)
-st.caption(
-    "⚠️ 실시간 시세가 아닙니다. 원자재·금리 데이터는 대부분 일봉(전일 확정 종가) 기준이며, "
-    "이 표는 매일 아침 7시(KST)에 자동 갱신됩니다."
-)
+close_row_label = "전일종가" if is_today else "종가"
+
+if is_today:
+    st.caption(
+        f"기준일(전일 미국장 마감 종가): **{data['as_of']}**  ·  생성시각(KST): {data['generated_at']}"
+    )
+    st.caption(
+        "⚠️ 실시간 시세가 아닙니다. 원자재·금리 데이터는 대부분 일봉(전일 확정 종가) 기준이며, "
+        "이 표는 매일 아침 7시(KST)에 자동 갱신됩니다."
+    )
+else:
+    st.caption(
+        f"선택한 기준일: **{selected_date}** → 실제 반영된 거래일: **{data['as_of']}** "
+        "(주말·휴장일이면 직전 거래일 종가가 표시됩니다)"
+    )
+    st.caption("ℹ️ 과거 기준일은 매일 자동 갱신되는 캐시가 아니라 그때그때 실시간으로 계산됩니다.")
 st.caption("🟢 옅은 녹색 배경 = 해당 이동평균선을 상향 돌파한 후 유지 중인 셀")
 
 indicator_order = data["indicator_order"]
@@ -84,7 +114,7 @@ for window in data["ma_windows"]:
     rows_html.append(f"<tr>{header_cell(f'{window}일선 돌파지속')}{cells}</tr>")
 
 close_cells = "".join(data_cell(indicators[k]["prev_close"]["display"]) for k in indicator_order)
-rows_html.append(f"<tr>{header_cell('전일종가')}{close_cells}</tr>")
+rows_html.append(f"<tr>{header_cell(close_row_label)}{close_cells}</tr>")
 
 table_html = (
     '<table style="border-collapse:collapse;width:100%;font-size:14px">'
