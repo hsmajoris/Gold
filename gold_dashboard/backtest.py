@@ -14,16 +14,15 @@ from datetime import date, timedelta
 
 import pandas as pd
 
-from . import data_sources as ds
 from . import metrics
+from . import timeseries as ts
 from .timeutil import today_kst
 
-DXY_TICKERS = ["DX-Y.NYB", "^DXY", "DX=F"]
 MA_WINDOWS = [60, 30, 5]
 
-BACKTEST_YEARS = 7
-BUFFER_DAYS = 90  # extra calendar days of history fetched before the analysis start,
-# so the 60-day SMA already has a full window on day 1 of the backtest.
+BACKTEST_YEARS = ts.YEARS
+BUFFER_DAYS = ts.BUFFER_DAYS  # extra calendar days of history fetched before the
+# analysis start, so the 60-day SMA already has a full window on day 1 of the backtest.
 
 BUY_GREEN_COUNT = 5
 BUY_RATIO = 90
@@ -32,37 +31,10 @@ SELL_RATIO = 40
 
 
 def fetch_raw_data(as_of: date | None = None) -> pd.DataFrame:
-    """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame.
-
-    Covers BACKTEST_YEARS + BUFFER_DAYS of history ending at `as_of` (default
-    today). Different markets close on different days (rates vs. commodities),
-    so the four series are joined on the union of their dates and gaps are
-    forward-filled from the prior available value.
-    """
-    end_date = as_of or today_kst()
-    fetch_start = end_date - timedelta(days=BACKTEST_YEARS * 365 + BUFFER_DAYS)
-    yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
-
-    real_rate = ds.fetch_fred_series("DFII10", end=end_date)
-    real_rate = real_rate[real_rate.index >= pd.Timestamp(fetch_start)]
-    dxy = ds.fetch_yfinance_close(DXY_TICKERS, start=fetch_start, end=yf_end)
-    gold = ds.fetch_yfinance_close("GC=F", start=fetch_start, end=yf_end)
-    silver = ds.fetch_yfinance_close("SI=F", start=fetch_start, end=yf_end)
-
-    df = pd.concat(
-        [
-            real_rate.rename("real_rate"),
-            dxy.rename("dxy"),
-            gold.rename("gold"),
-            silver.rename("silver"),
-        ],
-        axis=1,
-        join="outer",
-    ).sort_index()
-    df = df[df.index <= pd.Timestamp(end_date)]
-    df = df.ffill()
-    df = df.dropna()  # drop the leading stretch before all four series have started
-    return df
+    """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
+    covering BACKTEST_YEARS + BUFFER_DAYS of history ending at `as_of` (default
+    today, KST). Thin wrapper around the shared fetcher in timeseries.py."""
+    return ts.fetch_backtest_frame(as_of)
 
 
 def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
