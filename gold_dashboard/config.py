@@ -64,6 +64,20 @@ STATIC_ROWS = {
 
 ROW_ORDER = ["구조", "의미", "상관관계 방향"]
 
+# Machine-readable version of the "상관관계 방향" row above, used to decide what
+# counts as "gold-friendly" for MA-row highlighting:
+# - "positive": indicator rising above its MA is gold-friendly (WTI, VIX)
+# - "inverse": indicator falling below its MA is gold-friendly (real rate, DXY)
+# - "threshold": not a directional signal (gold/silver ratio) — keeps its own
+#   existing highlight logic (highlighted while above its MA), unchanged
+CORRELATION_DIRECTION = {
+    "real_rate": "inverse",
+    "dxy": "inverse",
+    "gold_silver_ratio": "threshold",
+    "wti": "positive",
+    "vix": "positive",
+}
+
 FOOTNOTES = {
     "real_rate": (
         "Erb & Harvey (2013), <i>The Golden Dilemma</i>, Financial Analysts Journal — "

@@ -58,10 +58,13 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
     latest_value = series.iloc[-1]
     close_display = _format_value(key, latest_value)
 
+    direction = config.CORRELATION_DIRECTION[key]
+
     sma_info = {}
     for window in config.MA_WINDOWS:
         ma = metrics.compute_sma(series, window)
         # Streak calc is unchanged: consecutive most-recent days close > MA, reset to 0 otherwise.
+        # This is the literal technical fact (close vs. MA) and does not depend on direction.
         streak = metrics.breakout_streak(series, ma)
         breakout = streak > 0
         ma_value = ma.iloc[-1] if not ma.empty else None
@@ -69,6 +72,16 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
             "-" if ma_value is None or pd.isna(ma_value) else _format_value(key, ma_value)
         )
         status_text = "상향 돌파" if breakout else "이평선 아래"
+
+        # Highlighting answers a different question from status_text: "is this signal
+        # gold-friendly?", not "is the close above its own MA?". For an inverse-correlation
+        # indicator (real rate, DXY), a gold-friendly signal is the close *below* its MA.
+        if direction == "positive":
+            gold_friendly = breakout
+        elif direction == "inverse":
+            gold_friendly = not breakout
+        else:  # "threshold" (gold/silver ratio): not directional, keep prior behavior
+            gold_friendly = breakout
 
         sma_info[str(window)] = {
             # Primary: the actual MA value vs. close, and whether close sits above/below it.
@@ -80,6 +93,8 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
             "streak": streak,
             "breakout": breakout,
             "streak_display": f"{streak}일째" if breakout else "",
+            # Highlight trigger: whether this signal currently favors gold, per correlation direction.
+            "gold_friendly": gold_friendly,
         }
 
     return {
