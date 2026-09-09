@@ -56,15 +56,30 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
 
     latest_date = series.index[-1]
     latest_value = series.iloc[-1]
+    close_display = _format_value(key, latest_value)
 
     sma_info = {}
     for window in config.MA_WINDOWS:
         ma = metrics.compute_sma(series, window)
+        # Streak calc is unchanged: consecutive most-recent days close > MA, reset to 0 otherwise.
         streak = metrics.breakout_streak(series, ma)
+        breakout = streak > 0
+        ma_value = ma.iloc[-1] if not ma.empty else None
+        ma_display = (
+            "-" if ma_value is None or pd.isna(ma_value) else _format_value(key, ma_value)
+        )
+        status_text = "상향 돌파" if breakout else "이평선 아래"
+
         sma_info[str(window)] = {
+            # Primary: the actual MA value vs. close, and whether close sits above/below it.
+            "ma_value": None if ma_value is None or pd.isna(ma_value) else round(float(ma_value), 4),
+            "ma_display": ma_display,
+            "status_text": status_text,
+            "display": f"{ma_display} (종가 {close_display} → {status_text})",
+            # Secondary/supplementary: breakout-streak day count (only meaningful while breakout).
             "streak": streak,
-            "breakout": streak > 0,
-            "display": f"{streak}일" if streak > 0 else "0일",
+            "breakout": breakout,
+            "streak_display": f"{streak}일째" if breakout else "",
         }
 
     return {
@@ -73,7 +88,7 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
         "as_of": latest_date.strftime("%Y-%m-%d"),
         "prev_close": {
             "value": round(float(latest_value), 4),
-            "display": _format_value(key, latest_value),
+            "display": close_display,
         },
         "sma": sma_info,
     }
