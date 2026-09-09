@@ -9,6 +9,7 @@ import pandas as pd
 from . import config
 from . import data_sources as ds
 from . import metrics
+from . import signals
 from .timeutil import today_kst
 
 # Lookback window behind the as-of date, long enough for the 60-day SMA plus
@@ -75,14 +76,11 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
         status_text = "상향 돌파" if breakout else "이평선 아래"
 
         # Highlighting answers a different question from status_text: "is this signal
-        # gold-friendly?", not "is the close above its own MA?". For an inverse-correlation
-        # indicator (real rate, DXY), a gold-friendly signal is the close *below* its MA.
-        if direction == "positive":
-            gold_friendly = breakout
-        elif direction == "inverse":
-            gold_friendly = not breakout
-        else:  # "threshold" (gold/silver ratio): not directional, keep prior behavior
-            gold_friendly = breakout
+        # gold-friendly?", not "is the close above its own MA?". Delegates to the single
+        # shared comparison in signals.py so this can never drift from the backtest's
+        # green_count or the main chart's shading, which use the same function.
+        gold_friendly_series = signals.gold_friendly_vs_ma(series, ma, direction)
+        gold_friendly = bool(gold_friendly_series.iloc[-1]) if not gold_friendly_series.empty else False
 
         sma_info[str(window)] = {
             # Primary: the actual MA value vs. close, and whether close sits above/below it.
