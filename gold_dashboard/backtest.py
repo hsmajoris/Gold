@@ -62,7 +62,9 @@ def fetch_raw_data(as_of: date | None = None) -> pd.DataFrame:
 
 def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     """Adds SMA-based gold-friendly flags for real_rate/dxy, green_count (0-6),
-    and the raw gold/silver ratio (no MA needed for the ratio itself)."""
+    the raw gold/silver ratio (no MA needed for the ratio itself), and a
+    gold_new_high flag (today's close exceeds every prior close seen so far
+    in the fetched history, i.e. a fresh record high)."""
     df = df.copy()
     gf_cols = []
     for col in ("real_rate", "dxy"):
@@ -75,6 +77,8 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
             gf_cols.append(gf_col)
     df["green_count"] = df[gf_cols].sum(axis=1).astype(int)
     df["gold_silver_ratio"] = df["gold"] / df["silver"]
+    prior_high = df["gold"].shift(1).cummax()
+    df["gold_new_high"] = (df["gold"] > prior_high).fillna(False)
     return df
 
 
@@ -87,10 +91,31 @@ def trim_to_backtest_window(df: pd.DataFrame, as_of: date | None = None) -> pd.D
     return trimmed
 
 
+def _buy_reason(gc: int, r: float, is_new_high: bool, use_new_high_buy: bool) -> str:
+    reasons = []
+    if gc >= BUY_GREEN_COUNT:
+        reasons.append(f"green_count≥{BUY_GREEN_COUNT}")
+    if r >= BUY_RATIO:
+        reasons.append(f"금/은비율≥{BUY_RATIO}")
+    if use_new_high_buy and is_new_high:
+        reasons.append("신고가 갱신")
+    return ", ".join(reasons)
+
+
+def _sell_reason(gc: int, r: float) -> str:
+    reasons = []
+    if gc == SELL_GREEN_COUNT:
+        reasons.append(f"green_count={SELL_GREEN_COUNT}")
+    if r <= SELL_RATIO:
+        reasons.append(f"금/은비율≤{SELL_RATIO}")
+    return ", ".join(reasons)
+
+
 def run_backtest(
     signals: pd.DataFrame,
     entry_delay_days: int = 0,
     exit_delay_days: int = 0,
+    use_new_high_buy: bool = False,
 ) -> tuple[list[dict], pd.Series, pd.Series]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
@@ -103,6 +128,14 @@ def run_backtest(
     While an order is pending, new signals on the same side are ignored (only
     one pending order per side at a time).
 
+    `use_new_high_buy`: when True, a fresh record high in gold (see
+    compute_signals' gold_new_high) is an additional, independent buy
+    trigger alongside green_count/ratio (optional — off by default).
+
+    Each trade records the reason(s) that triggered its (pending) order, as
+    of the day the signal fired — not necessarily still true by execution
+    day if a delay is set.
+
     Returns (trades, equity_curve, bh_equity_curve). Both equity curves start
     at 1.0 on the first date. The strategy curve is flat (1.0x, i.e. 0% return)
     while in cash and compounds only through held periods; the Buy & Hold curve
@@ -112,14 +145,18 @@ def run_backtest(
     gold = signals["gold"]
     green_count = signals["green_count"]
     ratio = signals["gold_silver_ratio"]
+    new_high = signals["gold_new_high"]
 
     holding = False
     entry_date = None
     entry_price = None
+    entry_reason = None
     equity_at_entry = None  # strategy equity value at the moment this position was opened
     running_equity = 1.0
     pending_buy_date = None
+    pending_buy_reason = None
     pending_sell_date = None
+    pending_sell_reason = None
     trades: list[dict] = []
     equity_values = []
 
@@ -127,21 +164,26 @@ def run_backtest(
         gc = int(green_count.loc[dt])
         r = float(ratio.loc[dt])
         price = float(gold.loc[dt])
+        is_new_high = bool(new_high.loc[dt])
 
         if not holding:
             if pending_buy_date is None:
-                if gc >= BUY_GREEN_COUNT or r >= BUY_RATIO:
+                if gc >= BUY_GREEN_COUNT or r >= BUY_RATIO or (use_new_high_buy and is_new_high):
                     pending_buy_date = dt + timedelta(days=entry_delay_days)
+                    pending_buy_reason = _buy_reason(gc, r, is_new_high, use_new_high_buy)
             if pending_buy_date is not None and dt >= pending_buy_date:
                 holding = True
                 entry_date = dt
                 entry_price = price
+                entry_reason = pending_buy_reason
                 equity_at_entry = running_equity
                 pending_buy_date = None
+                pending_buy_reason = None
         else:
             if pending_sell_date is None:
                 if gc == SELL_GREEN_COUNT or r <= SELL_RATIO:
                     pending_sell_date = dt + timedelta(days=exit_delay_days)
+                    pending_sell_reason = _sell_reason(gc, r)
             if pending_sell_date is not None and dt >= pending_sell_date:
                 exit_price = price
                 running_equity = equity_at_entry * (exit_price / entry_price)
@@ -149,8 +191,10 @@ def run_backtest(
                     {
                         "entry_date": entry_date,
                         "entry_price": entry_price,
+                        "entry_reason": entry_reason,
                         "exit_date": dt,
                         "exit_price": exit_price,
+                        "exit_reason": pending_sell_reason,
                         "hold_days": (dt - entry_date).days,
                         "period_return": exit_price / entry_price - 1.0,
                         "open": False,
@@ -159,8 +203,10 @@ def run_backtest(
                 holding = False
                 entry_date = None
                 entry_price = None
+                entry_reason = None
                 equity_at_entry = None
                 pending_sell_date = None
+                pending_sell_reason = None
 
         equity_values.append(equity_at_entry * (price / entry_price) if holding else running_equity)
 
@@ -171,8 +217,10 @@ def run_backtest(
             {
                 "entry_date": entry_date,
                 "entry_price": entry_price,
+                "entry_reason": entry_reason,
                 "exit_date": None,
                 "exit_price": last_price,
+                "exit_reason": None,
                 "hold_days": (last_dt - entry_date).days,
                 "period_return": last_price / entry_price - 1.0,
                 "open": True,
@@ -277,11 +325,15 @@ def simulate(
     signals: pd.DataFrame,
     entry_delay_days: int = 0,
     exit_delay_days: int = 0,
+    use_new_high_buy: bool = False,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
     prepared signals and derive trades/equity curves/metrics/yearly returns."""
     trades, equity_curve, bh_equity_curve = run_backtest(
-        signals, entry_delay_days=entry_delay_days, exit_delay_days=exit_delay_days
+        signals,
+        entry_delay_days=entry_delay_days,
+        exit_delay_days=exit_delay_days,
+        use_new_high_buy=use_new_high_buy,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
     yearly = yearly_returns(equity_curve, bh_equity_curve)
@@ -298,8 +350,14 @@ def run(
     as_of: date | None = None,
     entry_delay_days: int = 0,
     exit_delay_days: int = 0,
+    use_new_high_buy: bool = False,
 ) -> dict:
     signals = prepare_signals(as_of)
-    result = simulate(signals, entry_delay_days=entry_delay_days, exit_delay_days=exit_delay_days)
+    result = simulate(
+        signals,
+        entry_delay_days=entry_delay_days,
+        exit_delay_days=exit_delay_days,
+        use_new_high_buy=use_new_high_buy,
+    )
     result["signals"] = signals
     return result

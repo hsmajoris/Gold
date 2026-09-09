@@ -32,7 +32,7 @@ with st.expander("전략 규칙 보기"):
         f"""
 - **매수** (미보유 상태일 때만): `green_count ≥ {backtest.BUY_GREEN_COUNT}`
   (실질금리·달러인덱스 × 5/30/60일 이평선, 총 6개 셀 중 금값에 우호적인 셀 수) **또는**
-  금/은비율 ≥ {backtest.BUY_RATIO}
+  금/은비율 ≥ {backtest.BUY_RATIO} **또는** (아래에서 켠 경우) 금 신고가 갱신
 - **매도** (보유 상태일 때만): `green_count = {backtest.SELL_GREEN_COUNT}` **또는**
   금/은비율 ≤ {backtest.SELL_RATIO}
 - 신호가 발생하면 아래 지연일수만큼 기다린 뒤, 그 시점 이후 첫 거래일 **종가**로 체결됩니다
@@ -42,7 +42,13 @@ with st.expander("전략 규칙 보기"):
         """
     )
 
-st.subheader("매수·매도 신호 지연 설정")
+st.subheader("매수 조건 · 신호 지연 설정")
+use_new_high_buy = st.checkbox(
+    "신고가 갱신 시 매수 조건 추가",
+    value=False,
+    help="켜면 금(GC=F) 종가가 분석 기간 내 최고가를 새로 경신하는 날에도 매수 신호가 발생합니다 "
+    "(green_count/금은비율 조건과는 OR로 결합 — 셋 중 하나만 만족해도 매수).",
+)
 delay_col1, delay_col2 = st.columns(2)
 with delay_col1:
     entry_delay_days = st.number_input(
@@ -71,7 +77,10 @@ if refresh_clicked:
 try:
     signals = load_signals(date.today().isoformat())
     result = backtest.simulate(
-        signals, entry_delay_days=int(entry_delay_days), exit_delay_days=int(exit_delay_days)
+        signals,
+        entry_delay_days=int(entry_delay_days),
+        exit_delay_days=int(exit_delay_days),
+        use_new_high_buy=use_new_high_buy,
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
@@ -127,6 +136,7 @@ for t in trades:
             "구분": "매수",
             "return": float(equity.loc[t["entry_date"]]) - 1.0,
             "가격": round(t["entry_price"], 2),
+            "사유": t["entry_reason"] or "-",
         }
     )
     if not t["open"]:
@@ -136,6 +146,7 @@ for t in trades:
                 "구분": "매도",
                 "return": float(equity.loc[t["exit_date"]]) - 1.0,
                 "가격": round(t["exit_price"], 2),
+                "사유": t["exit_reason"] or "-",
             }
         )
 marker_df = pd.DataFrame(marker_rows)
@@ -158,6 +169,7 @@ if not marker_df.empty:
                 alt.Tooltip("구분:N", title="구분"),
                 alt.Tooltip("가격:Q", title="체결가"),
                 alt.Tooltip("return:Q", title="당시 누적수익률", format=".1%"),
+                alt.Tooltip("사유:N", title="사유"),
             ],
         )
     )
@@ -247,14 +259,20 @@ if trades:
         {
             "매수일": t["entry_date"].date(),
             "매수가": round(t["entry_price"], 2),
+            "매수 사유": t["entry_reason"] or "-",
             "매도일": t["exit_date"].date() if t["exit_date"] is not None else "미청산(보유 중)",
             "매도가": round(t["exit_price"], 2),
+            "매도 사유": t["exit_reason"] or ("미청산" if t["open"] else "-"),
             "보유일수": t["hold_days"],
             "구간수익률": f"{t['period_return']:.2%}" + (" (평가)" if t["open"] else ""),
         }
         for t in trades
     ]
     st.dataframe(pd.DataFrame(trade_rows), use_container_width=True, hide_index=True)
+    st.caption(
+        "매수 사유/매도 사유는 지연일수 적용 전 신호가 처음 발생한 날 기준입니다 "
+        "(지연이 설정된 경우 실제 체결일과 다를 수 있음)."
+    )
 else:
     st.caption("이 기간 동안 매수 신호가 발생하지 않아 거래 내역이 없습니다.")
 
