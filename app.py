@@ -11,12 +11,26 @@ import json
 from datetime import date
 from pathlib import Path
 
+import altair as alt
+import pandas as pd
 import streamlit as st
 
+from gold_dashboard import config, timeseries
 from gold_dashboard.timeutil import today_kst
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
 EARLIEST_DATE = date(1990, 1, 1)
+
+# dataviz reference palette: the indicator gets a sequential blue ramp (darkest =
+# its own daily close, progressively lighter for the 5/30/60-day SMAs so shorter
+# windows read closer to the raw series), gold price gets categorical slot 2
+# (orange) so it never reads as "one more shade of the same family" on its own
+# (right-hand) axis, and reference threshold lines use a neutral gray.
+CHART_INDICATOR_COLOR = "#256abf"
+CHART_SMA_COLORS = {5: "#5598e7", 30: "#86b6ef", 60: "#b7d3f6"}
+CHART_GOLD_COLOR = "#eb6834"
+CHART_THRESHOLD_COLOR = "#8a8a86"
+CHART_YEARS = timeseries.YEARS
 
 st.set_page_config(page_title="금(Gold) 상관관계 대시보드", layout="wide")
 
@@ -30,6 +44,121 @@ def load_data(selected_date_iso: str, is_today: bool):
 
     as_of = None if is_today else date.fromisoformat(selected_date_iso)
     return build(as_of=as_of)
+
+
+@st.cache_data(ttl=86400, show_spinner="7년치 시계열 데이터를 불러오는 중입니다...")
+def load_chart_data(indicator_key: str, as_of_iso: str) -> dict:
+    return timeseries.build_indicator_chart_data(indicator_key, as_of=date.fromisoformat(as_of_iso))
+
+
+def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> None:
+    try:
+        chart_data = load_chart_data(indicator_key, as_of_iso)
+    except Exception as exc:
+        st.error(f"{label} 시계열을 불러오지 못했습니다: {exc}")
+        return
+
+    meta = config.INDICATOR_META[indicator_key]
+    unit_suffix = f" ({meta['unit']})" if meta["unit"] else ""
+    indicator_series_name = f"{label} 종가{unit_suffix}"
+    gold_series_name = "금(GC=F) 가격 ($)"
+
+    left_rows = [
+        {"date": d, "value": v, "series": indicator_series_name}
+        for d, v in chart_data["indicator"].items()
+    ]
+    if chart_data["kind"] == "ma":
+        window_labels = {5: "5일 이동평균", 30: "30일 이동평균", 60: "60일 이동평균"}
+        for window in (5, 30, 60):
+            sma_series = chart_data["smas"][window]
+            left_rows.extend(
+                {"date": d, "value": v, "series": window_labels[window]}
+                for d, v in sma_series.items()
+            )
+        left_domain = [indicator_series_name, "5일 이동평균", "30일 이동평균", "60일 이동평균"]
+        left_range = [CHART_INDICATOR_COLOR, CHART_SMA_COLORS[5], CHART_SMA_COLORS[30], CHART_SMA_COLORS[60]]
+    else:
+        left_domain = [indicator_series_name]
+        left_range = [CHART_INDICATOR_COLOR]
+
+    combined_domain = left_domain + [gold_series_name]
+    combined_range = left_range + [CHART_GOLD_COLOR]
+    color_scale = alt.Scale(domain=combined_domain, range=combined_range)
+
+    left_df = pd.DataFrame(left_rows)
+    left_chart = (
+        alt.Chart(left_df)
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X("date:T", title=None),
+            y=alt.Y(
+                "value:Q",
+                title=indicator_series_name,
+                axis=alt.Axis(titleColor=CHART_INDICATOR_COLOR),
+            ),
+            color=alt.Color("series:N", scale=color_scale, legend=alt.Legend(title=None)),
+            strokeDash=alt.StrokeDash(
+                "series:N",
+                scale=alt.Scale(domain=left_domain, range=[[]] + [[4, 2]] * (len(left_domain) - 1)),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("date:T", title="날짜"),
+                alt.Tooltip("series:N", title="시리즈"),
+                alt.Tooltip("value:Q", title="값", format=".2f"),
+            ],
+        )
+    )
+
+    layers = [left_chart]
+    if chart_data["kind"] == "ratio":
+        threshold_df = pd.DataFrame(
+            {"y": [80, 40], "label": ["기술적 임계값 80", "기술적 임계값 40"]}
+        )
+        layers.append(
+            alt.Chart(threshold_df)
+            .mark_rule(strokeDash=[4, 4], strokeWidth=1.5, color=CHART_THRESHOLD_COLOR)
+            .encode(y="y:Q", tooltip=[alt.Tooltip("label:N", title="기준선")])
+        )
+
+    gold_df = pd.DataFrame(
+        {"date": d, "value": v, "series": gold_series_name} for d, v in chart_data["gold"].items()
+    )
+    gold_chart = (
+        alt.Chart(gold_df)
+        .mark_line(strokeWidth=2)
+        .encode(
+            x=alt.X("date:T", title=None),
+            y=alt.Y(
+                "value:Q",
+                title=gold_series_name,
+                axis=alt.Axis(orient="right", titleColor=CHART_GOLD_COLOR),
+            ),
+            color=alt.Color("series:N", scale=color_scale, legend=alt.Legend(title=None)),
+            tooltip=[
+                alt.Tooltip("date:T", title="날짜"),
+                alt.Tooltip("value:Q", title="금 가격", format="$.2f"),
+            ],
+        )
+    )
+
+    combined_chart = (
+        alt.layer(alt.layer(*layers), gold_chart)
+        .resolve_scale(y="independent")
+        .properties(height=360, title=f"{label} vs 금 가격 — 최근 {CHART_YEARS}년")
+    )
+    st.altair_chart(combined_chart, use_container_width=True)
+
+    if chart_data["kind"] == "ratio":
+        st.caption(
+            f"🔵 {label}(왼쪽 축) · 🟠 금 가격(오른쪽 축, $) · 회색 점선 = 기술적 임계값(80, 40) — "
+            "절대적 기준은 아님"
+        )
+    else:
+        st.caption(
+            f"🔵 진한 파랑 = {label} 종가, 옅어질수록 5→30→60일 이동평균(왼쪽 축) · "
+            "🟠 금 가격(오른쪽 축, $)"
+        )
 
 
 st.title("금(Gold) 상관관계 대시보드")
@@ -138,6 +267,30 @@ table_html = (
     + "</table>"
 )
 st.markdown(table_html, unsafe_allow_html=True)
+
+st.markdown("#### 지표별 시계열 그래프")
+st.caption(
+    f"버튼을 누른 지표만 그 시점에 최근 {CHART_YEARS}년치 데이터를 받아와 그립니다 — 누르기 "
+    "전에는 어떤 지표도 미리 계산하지 않습니다."
+)
+
+chart_cols = st.columns(len(indicator_order))
+for col, key in zip(chart_cols, indicator_order):
+    state_key = f"show_chart_{key}"
+    st.session_state.setdefault(state_key, False)
+    with col:
+        button_label = (
+            f"📉 {indicators[key]['label']} 그래프 숨기기"
+            if st.session_state[state_key]
+            else f"📈 {indicators[key]['label']} 그래프 보기"
+        )
+        if st.button(button_label, key=f"btn_{state_key}", use_container_width=True):
+            st.session_state[state_key] = not st.session_state[state_key]
+            st.rerun()
+
+for key in indicator_order:
+    if st.session_state.get(f"show_chart_{key}", False):
+        render_indicator_chart(key, indicators[key]["label"], today.isoformat())
 
 st.markdown("#### 지표별 참고 출처")
 for k in indicator_order:
