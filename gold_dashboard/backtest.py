@@ -16,6 +16,7 @@ import pandas as pd
 
 from . import data_sources as ds
 from . import metrics
+from .timeutil import today_kst
 
 DXY_TICKERS = ["DX-Y.NYB", "^DXY", "DX=F"]
 MA_WINDOWS = [60, 30, 5]
@@ -38,7 +39,7 @@ def fetch_raw_data(as_of: date | None = None) -> pd.DataFrame:
     so the four series are joined on the union of their dates and gaps are
     forward-filled from the prior available value.
     """
-    end_date = as_of or date.today()
+    end_date = as_of or today_kst()
     fetch_start = end_date - timedelta(days=BACKTEST_YEARS * 365 + BUFFER_DAYS)
     yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
 
@@ -87,7 +88,7 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def trim_to_backtest_window(df: pd.DataFrame, as_of: date | None = None) -> pd.DataFrame:
-    end_date = as_of or date.today()
+    end_date = as_of or today_kst()
     start_date = end_date - timedelta(days=BACKTEST_YEARS * 365)
     trimmed = df[df.index >= pd.Timestamp(start_date)]
     if trimmed.empty:
