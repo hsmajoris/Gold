@@ -74,8 +74,11 @@ else:
     )
     st.caption("ℹ️ 과거 기준일은 매일 자동 갱신되는 캐시가 아니라 그때그때 실시간으로 계산됩니다.")
 st.caption(
-    "🟢 옅은 녹색 배경 = 종가가 해당 이동평균선 위에 있는 셀(상향 돌파 후 유지 중). "
-    "각 셀 하단의 작은 글씨는 돌파가 며칠째 지속 중인지를 나타내는 보조 정보입니다."
+    "🟢 옅은 녹색 배경 = 그 신호가 현재 금값에 우호적인 방향인 셀입니다. "
+    "정방향 지표(WTI·VIX)는 종가가 이평선 위일 때, 역방향 지표(실질금리·달러인덱스)는 "
+    "종가가 이평선 아래일 때 초록색으로 표시되며, 금/은비율은 이평선 상향 돌파 여부를 그대로 표시합니다. "
+    "셀에 보이는 '상향 돌파/이평선 아래' 문구는 하이라이트 색과 무관한, 종가와 이평선의 기술적 위치입니다. "
+    "각 셀 하단의 작은 글씨는 그 상향 돌파가 며칠째 지속 중인지를 나타내는 보조 정보입니다."
 )
 
 indicator_order = data["indicator_order"]
@@ -97,8 +100,10 @@ def data_cell(text: str, highlight: bool = False) -> str:
 
 def ma_cell(sma: dict) -> str:
     """MA row cell: the MA value vs. close (primary) with the breakout-streak
-    day count shown only as a small supplementary badge, not the headline."""
-    bg = "background-color: rgba(76,175,80,0.28);" if sma["breakout"] else ""
+    day count shown only as a small supplementary badge, not the headline.
+    Highlighting reflects whether the signal is gold-friendly given the
+    indicator's correlation direction, not simply "close above its own MA"."""
+    bg = "background-color: rgba(76,175,80,0.28);" if sma["gold_friendly"] else ""
     badge = (
         f'<div style="font-size:11px;color:#5a5a5a;margin-top:2px">{sma["streak_display"]}</div>'
         if sma["streak_display"]
