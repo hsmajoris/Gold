@@ -9,6 +9,7 @@ import pandas as pd
 from . import config
 from . import data_sources as ds
 from . import metrics
+from .timeutil import today_kst
 
 # Lookback window behind the as-of date, long enough for the 60-day SMA plus
 # a comfortable margin for breakout-streak history (mirrors the old "2y" default).
@@ -44,7 +45,7 @@ def _format_value(key: str, value: float) -> str:
 
 
 def build_indicator(key: str, as_of: date | None = None) -> dict:
-    as_of_date = as_of if as_of is not None else date.today()
+    as_of_date = as_of if as_of is not None else today_kst()
     start_date = as_of_date - timedelta(days=LOOKBACK_DAYS)
     yf_end_date = as_of_date + timedelta(days=1)  # yfinance's `end` is exclusive
 

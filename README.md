@@ -75,6 +75,13 @@ FRED 데이터는 공식 API(`https://api.stlouisfed.org/fred/series/observation
 `gold_dashboard/update_data.py`를 실행해 `data/latest.json`을 갱신·커밋하고, Streamlit
 앱은 이 파일을 읽어 즉시 표시합니다(파일이 없으면 그때그때 실시간으로 계산).
 
+앱이 "오늘"을 계산할 때는 반드시 `gold_dashboard/timeutil.py`의 `today_kst()`를 사용합니다
+(파이썬 기본 `date.today()`는 호스팅 서버의 로컬 시간대를 따르는데, Streamlit Cloud 등
+대부분의 서버는 UTC라서 KST보다 최대 하루 늦게 날짜가 바뀝니다 — 예: KST 오전 7~8시는 아직
+UTC로는 전날이라, `date.today()`를 그대로 쓰면 기준일 선택 캘린더가 오늘 날짜를 하루 늦게
+표시/제한하는 문제가 생깁니다). 새 코드에서 "오늘 날짜"가 필요하면 `date.today()` 대신
+`today_kst()`를 사용하세요.
+
 ## 기준일 선택
 
 화면 상단의 "기준일 선택" 날짜 입력으로 원하는 과거 날짜를 고를 수 있습니다.

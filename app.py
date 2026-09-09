@@ -13,6 +13,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from gold_dashboard.timeutil import today_kst
+
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
 EARLIEST_DATE = date(1990, 1, 1)
 
@@ -32,7 +34,7 @@ def load_data(selected_date_iso: str, is_today: bool):
 
 st.title("금(Gold) 상관관계 대시보드")
 
-today = date.today()
+today = today_kst()
 date_col, refresh_col = st.columns([4, 1])
 with date_col:
     selected_date = st.date_input(

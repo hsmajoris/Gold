@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from gold_dashboard import backtest
+from gold_dashboard.timeutil import today_kst
 
 st.set_page_config(page_title="백테스트 — 금(Gold) 상관관계 대시보드", layout="wide")
 
@@ -157,7 +158,7 @@ if refresh_clicked:
     st.cache_data.clear()
 
 try:
-    signals = load_signals(date.today().isoformat())
+    signals = load_signals(today_kst().isoformat())
     result = backtest.simulate(
         signals,
         entry_delay_days=int(entry_delay_days),
