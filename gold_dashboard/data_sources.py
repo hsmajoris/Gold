@@ -1,8 +1,8 @@
 """Fetches raw daily price/rate series from free data sources (FRED CSV export
 and Yahoo Finance via yfinance)."""
 
-import io
 import logging
+import os
 
 import pandas as pd
 import requests
@@ -14,7 +14,7 @@ from tenacity import (
     wait_exponential,
 )
 
-FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+FRED_OBSERVATIONS_URL = "https://api.stlouisfed.org/fred/series/observations"
 REQUEST_TIMEOUT = 60
 
 logger = logging.getLogger(__name__)
@@ -35,28 +35,33 @@ _retry_network_call = retry(
 
 
 @_retry_network_call
-def _download_fred_csv(series_id: str) -> str:
-    url = FRED_CSV_URL.format(series_id=series_id)
-    resp = requests.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": "Mozilla/5.0"})
+def _download_fred_observations(series_id: str, api_key: str) -> list:
+    params = {
+        "series_id": series_id,
+        "api_key": api_key,
+        "file_type": "json",
+    }
+    resp = requests.get(FRED_OBSERVATIONS_URL, params=params, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
-    return resp.text
+    return resp.json()["observations"]
 
 
 def fetch_fred_series(series_id: str) -> pd.Series:
-    """Fetch a FRED series as a date-indexed float Series (no API key required).
+    """Fetch a FRED series via the official FRED API as a date-indexed float Series.
 
-    Retries up to 3 times with a 5-10s exponential backoff on any failure
-    (e.g. read timeouts); raises the last error if all attempts fail.
+    Requires the FRED_API_KEY environment variable. Retries up to 3 times
+    with a 5-10s exponential backoff on any failure (e.g. read timeouts);
+    raises the last error if all attempts fail.
     """
+    api_key = os.environ["FRED_API_KEY"]
     try:
-        csv_text = _download_fred_csv(series_id)
+        observations = _download_fred_observations(series_id, api_key)
     except Exception as exc:
         raise RuntimeError(
             f"failed to fetch FRED series {series_id!r} after 3 attempts: {exc!r}"
         ) from exc
 
-    df = pd.read_csv(io.StringIO(csv_text))
-    df.columns = ["date", "value"]
+    df = pd.DataFrame(observations)[["date", "value"]]
     df["date"] = pd.to_datetime(df["date"])
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     df = df.dropna(subset=["value"]).set_index("date")
