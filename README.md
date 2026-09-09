@@ -6,7 +6,7 @@
 ## 구성
 
 - `gold_dashboard/config.py` — 지표별 구조/의미/상관관계 방향(고정 텍스트)과 출처 각주
-- `gold_dashboard/data_sources.py` — FRED CSV(무료, API 키 불필요) 및 yfinance 데이터 수집
+- `gold_dashboard/data_sources.py` — FRED 공식 API 및 yfinance 데이터 수집 (재시도/백오프 포함)
 - `gold_dashboard/metrics.py` — 5/30/60일 이동평균 및 "돌파지속 일수" 계산
 - `gold_dashboard/build_table.py` — 지표별 데이터 수집 + 계산 결과를 하나의 표로 조립
 - `gold_dashboard/update_data.py` — `data/latest.json`을 생성하는 CLI 스크립트
@@ -23,7 +23,10 @@
 | WTI | FRED `DCOILWTICO` |
 | VIX | Yahoo Finance `^VIX` |
 
-FRED 데이터는 API 키 없이 `fredgraph.csv` 엔드포인트로 받아옵니다.
+FRED 데이터는 공식 API(`https://api.stlouisfed.org/fred/series/observations`)로 받아오며,
+[무료 API 키](https://fred.stlouisfed.org/docs/api/api_key.html)가 필요합니다. 환경변수
+`FRED_API_KEY`로 전달하고, GitHub Actions에서는 저장소 Secrets의 `FRED_API_KEY`를 사용합니다.
+네트워크 오류(타임아웃 등) 발생 시 최대 3회까지 5~10초 지수 백오프로 재시도합니다.
 
 ## 갱신 주기
 
@@ -42,6 +45,7 @@ FRED 데이터는 API 키 없이 `fredgraph.csv` 엔드포인트로 받아옵니
 
 ```bash
 pip install -r requirements.txt
+export FRED_API_KEY=your_fred_api_key
 python -m gold_dashboard.update_data   # data/latest.json 생성(선택)
 streamlit run app.py
 ```
