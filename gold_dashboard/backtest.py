@@ -122,6 +122,7 @@ def run_backtest(
     use_new_high_buy: bool = False,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
+    min_holding_days: int = 0,
 ) -> tuple[list[dict], pd.Series, pd.Series]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
@@ -139,6 +140,13 @@ def run_backtest(
       compute_signals' gold_new_high) are both *immediate*: they always fill
       the same day, ignoring the delay settings, and preempt any green_count
       order still pending.
+
+    `min_holding_days`: once a position is opened, every sell trigger (both the
+    immediate ratio sell and the delayed green_count sell) is ignored entirely
+    until at least this many calendar days have passed since entry — a minimum
+    holding period for a longer-horizon strategy, not day-trading. No pending
+    sell order can even be scheduled during this window; sell evaluation
+    resumes normally (delay settings included) once it has elapsed.
 
     Each trade records the reason(s) that triggered its order, as of the day
     the signal fired — for a delayed green_count order this is the day it was
@@ -202,21 +210,24 @@ def run_backtest(
                 equity_at_entry = running_equity
         else:
             exit_reason_today = None
-            if r <= sell_ratio:
-                # Ratio sells are immediate: no delay, and this preempts any
-                # still-pending green_count order.
-                exit_reason_today = _sell_reason(gc, r, sell_ratio)
-                pending_sell_date = None
-                pending_sell_reason = None
-            else:
-                if pending_sell_date is None:
-                    if gc == SELL_GREEN_COUNT:
-                        pending_sell_date = dt + timedelta(days=exit_delay_days)
-                        pending_sell_reason = _sell_reason(gc, r, sell_ratio)
-                if pending_sell_date is not None and dt >= pending_sell_date:
-                    exit_reason_today = pending_sell_reason
+            # Minimum holding period: no sell trigger (immediate ratio or
+            # delayed green_count) is even evaluated until this elapses.
+            if (dt - entry_date).days >= min_holding_days:
+                if r <= sell_ratio:
+                    # Ratio sells are immediate: no delay, and this preempts any
+                    # still-pending green_count order.
+                    exit_reason_today = _sell_reason(gc, r, sell_ratio)
                     pending_sell_date = None
                     pending_sell_reason = None
+                else:
+                    if pending_sell_date is None:
+                        if gc == SELL_GREEN_COUNT:
+                            pending_sell_date = dt + timedelta(days=exit_delay_days)
+                            pending_sell_reason = _sell_reason(gc, r, sell_ratio)
+                    if pending_sell_date is not None and dt >= pending_sell_date:
+                        exit_reason_today = pending_sell_reason
+                        pending_sell_date = None
+                        pending_sell_reason = None
 
             if exit_reason_today is not None:
                 exit_price = price
@@ -360,6 +371,7 @@ def simulate(
     use_new_high_buy: bool = False,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
+    min_holding_days: int = 0,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
     prepared signals and derive trades/equity curves/metrics/yearly returns."""
@@ -370,6 +382,7 @@ def simulate(
         use_new_high_buy=use_new_high_buy,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
+        min_holding_days=min_holding_days,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
     yearly = yearly_returns(equity_curve, bh_equity_curve)
@@ -389,6 +402,7 @@ def run(
     use_new_high_buy: bool = False,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
+    min_holding_days: int = 0,
 ) -> dict:
     signals = prepare_signals(as_of)
     result = simulate(
@@ -398,6 +412,7 @@ def run(
         use_new_high_buy=use_new_high_buy,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
+        min_holding_days=min_holding_days,
     )
     result["signals"] = signals
     return result

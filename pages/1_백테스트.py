@@ -42,6 +42,9 @@ with st.expander("전략 규칙 보기"):
   조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
   신고가 갱신 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
   green_count 지연 주문이 있어도 먼저 체결됩니다
+- **최소 보유일수**를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
+  금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
+  두는 전략을 시뮬레이션할 때 사용
 - 분석 기간: 오늘 기준 최근 **{backtest.BACKTEST_YEARS}년** (이동평균 계산용으로 그 이전
   {backtest.BUFFER_DAYS}캘린더일치 데이터를 추가로 사용)
         """
@@ -74,6 +77,14 @@ with ratio_col3:
     )
 if sell_ratio >= buy_ratio:
     st.warning("매도 임계값이 매수 임계값보다 크거나 같습니다. 매수 즉시 매도 조건도 함께 만족해 거의 바로 청산될 수 있습니다.")
+
+min_holding_days = st.number_input(
+    "매수 후 최소 보유일수 (일)", min_value=0, max_value=1825, value=0, step=1,
+    help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count, 금/은비율 모두)을 아예 "
+    "확인하지 않습니다. 예: 90을 입력하면 '매수 후 최소 90일은 보유하고, 그 이후 매도 신호가 "
+    "발생하면 매도'를 시뮬레이션합니다. 단기 트레이딩이 아닌 전략에 적합합니다.",
+)
+st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
 delay_col1, delay_col2 = st.columns(2)
 with delay_col1:
@@ -111,6 +122,7 @@ try:
         use_new_high_buy=use_new_high_buy,
         buy_ratio=float(buy_ratio),
         sell_ratio=float(sell_ratio),
+        min_holding_days=int(min_holding_days),
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
