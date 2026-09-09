@@ -1,6 +1,7 @@
 {
-  "generated_at": "2026-09-09T12:51:27.659959+09:00",
-  "as_of": "2026-09-08",
+  "generated_at": "2026-09-09T13:48:28.477738+09:00",
+  "requested_as_of": null,
+  "as_of": "2026-09-09",
   "indicator_order": [
     "real_rate",
     "dxy",
@@ -19,71 +20,107 @@
       },
       "sma": {
         "60": {
+          "ma_value": 2.3407,
+          "ma_display": "2.34%",
+          "status_text": "상향 돌파",
+          "display": "2.34% (종가 2.43% → 상향 돌파)",
           "streak": 92,
           "breakout": true,
-          "display": "92일"
+          "streak_display": "92일째"
         },
         "30": {
+          "ma_value": 2.4073,
+          "ma_display": "2.41%",
+          "status_text": "상향 돌파",
+          "display": "2.41% (종가 2.43% → 상향 돌파)",
           "streak": 6,
           "breakout": true,
-          "display": "6일"
+          "streak_display": "6일째"
         },
         "5": {
+          "ma_value": 2.436,
+          "ma_display": "2.44%",
+          "status_text": "이평선 아래",
+          "display": "2.44% (종가 2.43% → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         }
       }
     },
     "dxy": {
       "label": "달러인덱스",
       "source": "Yahoo Finance (DX-Y.NYB)",
-      "as_of": "2026-09-08",
+      "as_of": "2026-09-09",
       "prev_close": {
-        "value": 98.761,
-        "display": "98.76"
+        "value": 98.748,
+        "display": "98.75"
       },
       "sma": {
         "60": {
+          "ma_value": 100.2485,
+          "ma_display": "100.25",
+          "status_text": "이평선 아래",
+          "display": "100.25 (종가 98.75 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         },
         "30": {
+          "ma_value": 99.5056,
+          "ma_display": "99.51",
+          "status_text": "이평선 아래",
+          "display": "99.51 (종가 98.75 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         },
         "5": {
+          "ma_value": 99.0616,
+          "ma_display": "99.06",
+          "status_text": "이평선 아래",
+          "display": "99.06 (종가 98.75 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         }
       }
     },
     "gold_silver_ratio": {
       "label": "금/은비율",
       "source": "yfinance GC=F / SI=F",
-      "as_of": "2026-09-08",
+      "as_of": "2026-09-09",
       "prev_close": {
-        "value": 66.0909,
+        "value": 66.1407,
         "display": "66.1"
       },
       "sma": {
         "60": {
+          "ma_value": 67.8734,
+          "ma_display": "67.9",
+          "status_text": "이평선 아래",
+          "display": "67.9 (종가 66.1 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         },
         "30": {
+          "ma_value": 67.705,
+          "ma_display": "67.7",
+          "status_text": "이평선 아래",
+          "display": "67.7 (종가 66.1 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         },
         "5": {
+          "ma_value": 66.8032,
+          "ma_display": "66.8",
+          "status_text": "이평선 아래",
+          "display": "66.8 (종가 66.1 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         }
       }
     },
@@ -97,19 +134,31 @@
       },
       "sma": {
         "60": {
+          "ma_value": 81.9997,
+          "ma_display": "$82.00",
+          "status_text": "상향 돌파",
+          "display": "$82.00 (종가 $91.48 → 상향 돌파)",
           "streak": 12,
           "breakout": true,
-          "display": "12일"
+          "streak_display": "12일째"
         },
         "30": {
+          "ma_value": 84.9453,
+          "ma_display": "$84.95",
+          "status_text": "상향 돌파",
+          "display": "$84.95 (종가 $91.48 → 상향 돌파)",
           "streak": 2,
           "breakout": true,
-          "display": "2일"
+          "streak_display": "2일째"
         },
         "5": {
+          "ma_value": 86.27,
+          "ma_display": "$86.27",
+          "status_text": "상향 돌파",
+          "display": "$86.27 (종가 $91.48 → 상향 돌파)",
           "streak": 2,
           "breakout": true,
-          "display": "2일"
+          "streak_display": "2일째"
         }
       }
     },
@@ -123,19 +172,31 @@
       },
       "sma": {
         "60": {
+          "ma_value": 16.3793,
+          "ma_display": "16.38",
+          "status_text": "이평선 아래",
+          "display": "16.38 (종가 15.72 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
-          "display": "0일"
+          "streak_display": ""
         },
         "30": {
+          "ma_value": 15.499,
+          "ma_display": "15.50",
+          "status_text": "상향 돌파",
+          "display": "15.50 (종가 15.72 → 상향 돌파)",
           "streak": 1,
           "breakout": true,
-          "display": "1일"
+          "streak_display": "1일째"
         },
         "5": {
+          "ma_value": 15.014,
+          "ma_display": "15.01",
+          "status_text": "상향 돌파",
+          "display": "15.01 (종가 15.72 → 상향 돌파)",
           "streak": 2,
           "breakout": true,
-          "display": "2일"
+          "streak_display": "2일째"
         }
       }
     }
@@ -149,18 +210,18 @@
       "vix": "S&P500 옵션 내재변동성지수"
     },
     "의미": {
-      "real_rate": "기회비용의 요인",
-      "dxy": "달러가치 상승 시 해외에서 금 수요 악화",
-      "gold_silver_ratio": "귀금속 하락 시 은이 금보다 변동성이 큼",
-      "wti": "물가 상승 요인",
-      "vix": "위험회피 심리 지표"
+      "real_rate": "금 보유의 기회비용을 결정하는 핵심 변수 — 실질금리 상승 시 무이자자산인 금의 상대적 매력이 감소함",
+      "dxy": "달러 표시 자산인 금의 역내 구매력에 영향 — 달러 강세 시 비달러권의 실물 수요가 위축되는 경로로 작용함",
+      "gold_silver_ratio": "은은 금 대비 산업재 수요 민감도가 높아 하락 국면에서 상대 변동성이 확대됨",
+      "wti": "원자재발 인플레이션 기대를 매개로 금의 인플레이션 헤지 수요에 영향을 미침",
+      "vix": "시장의 위험회피 심리를 나타내는 변동성 지표로, 금의 안전자산 수요와 연동되는 경향이 있음"
     },
     "상관관계 방향": {
-      "real_rate": "역방향",
-      "dxy": "역방향",
-      "gold_silver_ratio": "80 이상이면 하락 가능성(기술적 하락)",
-      "wti": "정방향",
-      "vix": "약한 정방향(조건부, 최근 효과 약화 추세)"
+      "real_rate": "역상관 (기회비용 가설)",
+      "dxy": "역상관 (구조적 음(-)의 상관)",
+      "gold_silver_ratio": "임계값(80) 초과 시 하락 반전 가능성 — 기술적 신호로, 통계적 인과관계는 아님",
+      "wti": "정상관 (단기 효과 중심)",
+      "vix": "약한 정상관 — 조건부이며 최근 표본에서 효과 약화 추세"
     }
   },
   "row_order": [
