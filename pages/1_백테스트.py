@@ -21,6 +21,19 @@ SELL_COLOR = "#e34948"
 STRATEGY_LABEL = "신호전략"
 BH_LABEL = "Buy & Hold"
 
+DEFAULTS = {
+    "bt_buy_green_count": backtest.BUY_GREEN_COUNT,
+    "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
+    "bt_buy_ratio": float(backtest.BUY_RATIO),
+    "bt_sell_ratio": float(backtest.SELL_RATIO),
+    "bt_use_new_high_buy": False,
+    "bt_entry_delay_days": 0,
+    "bt_exit_delay_days": 0,
+    "bt_min_holding_days": 0,
+}
+for _key, _default in DEFAULTS.items():
+    st.session_state.setdefault(_key, _default)
+
 st.title("신호 기반 매매 전략 백테스트")
 st.caption(
     "실질금리·달러인덱스의 이동평균 돌파 신호와 금/은비율 임계값을 결합한 매수·매도 규칙을, "
@@ -29,78 +42,108 @@ st.caption(
 
 with st.expander("전략 규칙 보기"):
     st.markdown(
-        f"""
-- **매수** (미보유 상태일 때만): `green_count ≥ {backtest.BUY_GREEN_COUNT}`
-  (실질금리·달러인덱스 × 5/30/60일 이평선, 총 6개 셀 중 금값에 우호적인 셀 수) — 아래 매수
-  지연일수만큼 기다린 뒤 체결. **또는** 금/은비율 ≥ (아래에서 설정한 값) — 지연 없이 **당일
-  즉시 매수**. **또는** (아래 체크박스를 켠 경우) **금 신고가 갱신** — 이것도 지연 없이 당일
-  즉시 매수. 셋 중 아무 조건이나 먼저 만족하면 매수합니다
-- **매도** (보유 상태일 때만): `green_count = {backtest.SELL_GREEN_COUNT}` — 아래 매도
-  지연일수만큼 기다린 뒤 체결. **또는** 금/은비율 ≤ (아래에서 설정한 값) — 지연 없이 **당일
-  즉시 매도**
+        """
+- **매수** (미보유 상태일 때만): 아래 "매수 조건" 카드의 `green_count ≥ 임계값` — 고급 설정의
+  매수 지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≥ 임계값` — 지연 없이 **당일 즉시 매수**.
+  **또는** (고급 설정에서 켠 경우) **금 신고가 갱신** — 이것도 지연 없이 당일 즉시 매수. 셋 중
+  아무 조건이나 먼저 만족하면 매수합니다
+- **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 고급 설정의 매도
+  지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≤ 임계값` — 지연 없이 **당일 즉시 매도**
 - 지연이 설정된 green_count 신호는 그 시점 이후 첫 거래일 **종가**로 체결됩니다(지연 기간 중
   조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
   신고가 갱신 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
   green_count 지연 주문이 있어도 먼저 체결됩니다
-- **최소 보유일수**를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
-  금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
-  두는 전략을 시뮬레이션할 때 사용
-- 분석 기간: 오늘 기준 최근 **{backtest.BACKTEST_YEARS}년** (이동평균 계산용으로 그 이전
-  {backtest.BUFFER_DAYS}캘린더일치 데이터를 추가로 사용)
-        """
+- 고급 설정의 **최소 보유일수**를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건
+  (green_count와 금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라
+  최소 보유 기간을 두는 전략을 시뮬레이션할 때 사용
+- 분석 기간: 오늘 기준 최근 **{years}년** (이동평균 계산용으로 그 이전 {buffer}캘린더일치
+  데이터를 추가로 사용)
+        """.format(years=backtest.BACKTEST_YEARS, buffer=backtest.BUFFER_DAYS)
     )
 
-st.subheader("매수·매도 조건 설정")
-st.caption(
-    "금/은비율 임계값과 신고가 갱신 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다. "
-    "지연일수는 green_count 신호에만 적용됩니다."
-)
-ratio_col1, ratio_col2, ratio_col3 = st.columns(3)
-with ratio_col1:
-    buy_ratio = st.number_input(
-        "매수 금/은비율 임계값 (이상, 즉시 매수)",
-        min_value=1.0, max_value=200.0, value=float(backtest.BUY_RATIO), step=1.0,
-        help="금/은비율이 이 값 이상이면 그날 즉시 매수합니다 (지연 미적용).",
-    )
-with ratio_col2:
-    sell_ratio = st.number_input(
-        "매도 금/은비율 임계값 (이하, 즉시 매도)",
-        min_value=1.0, max_value=200.0, value=float(backtest.SELL_RATIO), step=1.0,
-        help="금/은비율이 이 값 이하이면 그날 즉시 매도합니다 (지연 미적용).",
-    )
-with ratio_col3:
-    use_new_high_buy = st.checkbox(
-        "신고가 갱신 시 매수 조건 추가",
-        value=False,
-        help="켜면 금(GC=F) 종가가 분석 기간 내 최고가를 새로 경신하는 날 그 즉시 매수합니다 "
-        "(지연 미적용, green_count/금은비율 조건과는 OR로 결합).",
-    )
+header_col, reset_col = st.columns([5, 1])
+with header_col:
+    st.subheader("매수·매도 조건")
+with reset_col:
+    st.write("")
+    if st.button("↺ 기본값으로 초기화", use_container_width=True):
+        for _key, _default in DEFAULTS.items():
+            st.session_state[_key] = _default
+        st.rerun()
+
+buy_card, sell_card = st.columns(2)
+with buy_card:
+    with st.container(border=True):
+        st.markdown("#### 🔵 매수 조건")
+        buy_green_count = st.number_input(
+            "green_count 임계값 (이상)",
+            min_value=0, max_value=6, step=1, key="bt_buy_green_count",
+            help="실질금리·달러인덱스 × 5/30/60일 이평선, 총 6개 셀 중 금값에 우호적인 셀 수가 "
+            "이 값 이상이면 매수 신호 (고급 설정의 매수 지연일수만큼 기다린 뒤 체결).",
+        )
+        buy_ratio = st.number_input(
+            "금/은비율 임계값 (이상)",
+            min_value=1.0, max_value=200.0, step=1.0, key="bt_buy_ratio",
+            help="금/은비율이 이 값 이상이면 그날 즉시 매수합니다 (지연 미적용).",
+        )
+with sell_card:
+    with st.container(border=True):
+        st.markdown("#### 🔴 매도 조건")
+        sell_green_count = st.number_input(
+            "green_count 임계값 (이하)",
+            min_value=0, max_value=6, step=1, key="bt_sell_green_count",
+            help="금값에 우호적인 셀 수가 이 값 이하로 떨어지면 매도 신호 (고급 설정의 매도 "
+            "지연일수만큼 기다린 뒤 체결).",
+        )
+        sell_ratio = st.number_input(
+            "금/은비율 임계값 (이하)",
+            min_value=1.0, max_value=200.0, step=1.0, key="bt_sell_ratio",
+            help="금/은비율이 이 값 이하이면 그날 즉시 매도합니다 (지연 미적용).",
+        )
+
 if sell_ratio >= buy_ratio:
-    st.warning("매도 임계값이 매수 임계값보다 크거나 같습니다. 매수 즉시 매도 조건도 함께 만족해 거의 바로 청산될 수 있습니다.")
-
-min_holding_days = st.number_input(
-    "매수 후 최소 보유일수 (일)", min_value=0, max_value=1825, value=0, step=1,
-    help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count, 금/은비율 모두)을 아예 "
-    "확인하지 않습니다. 예: 90을 입력하면 '매수 후 최소 90일은 보유하고, 그 이후 매도 신호가 "
-    "발생하면 매도'를 시뮬레이션합니다. 단기 트레이딩이 아닌 전략에 적합합니다.",
-)
-st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
-
-delay_col1, delay_col2 = st.columns(2)
-with delay_col1:
-    entry_delay_days = st.number_input(
-        "매수 지연일수 (일, green_count 신호에만 적용)", min_value=0, max_value=180, value=0, step=1,
-        help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매수'를 시뮬레이션합니다. "
-        "금/은비율·신고가 갱신 매수에는 적용되지 않습니다.",
+    st.warning(
+        "매도 임계값이 매수 임계값보다 크거나 같습니다. 매수 즉시 매도 조건도 함께 만족해 "
+        "거의 바로 청산될 수 있습니다."
     )
-    st.caption(f"≈ {entry_delay_days / 30:.1f}개월 후 매수 (금/은비율·신고가 갱신 매수는 항상 즉시 체결)")
-with delay_col2:
-    exit_delay_days = st.number_input(
-        "매도 지연일수 (일, green_count 신호에만 적용)", min_value=0, max_value=180, value=0, step=1,
-        help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매도'를 시뮬레이션합니다. "
-        "금/은비율 매도에는 적용되지 않습니다.",
+
+with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · 신고가 갱신 — 기본값 그대로 둬도 무방)"):
+    st.caption(
+        "금/은비율 임계값과 신고가 갱신 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다. "
+        "아래 지연일수는 green_count 신호에만 적용됩니다."
     )
-    st.caption(f"≈ {exit_delay_days / 30:.1f}개월 후 매도 (금/은비율 매도는 항상 즉시 체결)")
+    adv_buy_col, adv_sell_col = st.columns(2)
+    with adv_buy_col:
+        st.markdown("**매수 관련**")
+        entry_delay_days = st.number_input(
+            "매수 지연일수 (일, green_count 신호에만 적용)",
+            min_value=0, max_value=180, step=1, key="bt_entry_delay_days",
+            help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매수'를 시뮬레이션합니다. "
+            "금/은비율·신고가 갱신 매수에는 적용되지 않습니다.",
+        )
+        st.caption(f"≈ {entry_delay_days / 30:.1f}개월 후 매수")
+        use_new_high_buy = st.checkbox(
+            "신고가 갱신 시 매수 조건 추가",
+            key="bt_use_new_high_buy",
+            help="켜면 금(GC=F) 종가가 분석 기간 내 최고가를 새로 경신하는 날 그 즉시 매수합니다 "
+            "(지연 미적용, 위 두 매수 조건과는 OR로 결합).",
+        )
+    with adv_sell_col:
+        st.markdown("**매도 관련**")
+        exit_delay_days = st.number_input(
+            "매도 지연일수 (일, green_count 신호에만 적용)",
+            min_value=0, max_value=180, step=1, key="bt_exit_delay_days",
+            help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매도'를 시뮬레이션합니다. "
+            "금/은비율 매도에는 적용되지 않습니다.",
+        )
+        st.caption(f"≈ {exit_delay_days / 30:.1f}개월 후 매도")
+        min_holding_days = st.number_input(
+            "매수 후 최소 보유일수 (일)",
+            min_value=0, max_value=1825, step=1, key="bt_min_holding_days",
+            help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count, 금/은비율 모두)을 "
+            "아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다.",
+        )
+        st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
 refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
 
@@ -122,6 +165,8 @@ try:
         use_new_high_buy=use_new_high_buy,
         buy_ratio=float(buy_ratio),
         sell_ratio=float(sell_ratio),
+        buy_green_count=int(buy_green_count),
+        sell_green_count=int(sell_green_count),
         min_holding_days=int(min_holding_days),
     )
 except Exception as exc:
@@ -141,7 +186,52 @@ st.caption(
     "(신호전략과 Buy & Hold 모두 이 기간의 첫날에 시작 — 동일 시작일 비교)"
 )
 
-# ---- 1. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
+# ---- 1. 요약 지표 (설정 바로 아래에 배치 — 값을 바꿔가며 바로 확인) ----
+st.subheader("요약 지표")
+col1, col2, col3 = st.columns(3)
+col1.metric("총 거래 횟수", f"{m['closed_trade_count']}회")
+col1.metric("승률", f"{m['win_rate']:.1%}" if m["win_rate"] is not None else "-")
+col2.metric(f"누적수익률 ({STRATEGY_LABEL})", f"{m['strategy_total_return']:.1%}")
+col2.metric(f"누적수익률 ({BH_LABEL})", f"{m['bh_total_return']:.1%}")
+col3.metric(
+    f"연환산수익률(CAGR) ({STRATEGY_LABEL}, 순수투자기간)",
+    f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
+)
+col3.metric(f"연환산수익률(CAGR) ({BH_LABEL}, 전체기간)", f"{m['bh_cagr']:.1%}")
+st.metric("최대 낙폭 (MDD, 신호전략)", f"{m['max_drawdown']:.1%}")
+
+if m["has_open_position"]:
+    st.info(
+        "현재 포지션을 보유 중입니다. 마지막 거래는 미청산 상태이며, 위 수익률·아래 거래 내역에 "
+        "표시된 값은 오늘 종가 기준 평가손익입니다."
+    )
+if m["strategy_cagr"] is None:
+    st.caption("ℹ️ 신호전략이 이 기간 동안 한 번도 매수 신호를 내지 않아 CAGR을 계산할 수 없습니다.")
+
+# ---- 2. 연환산수익률(CAGR) 비교 차트 ----
+st.subheader("연환산수익률(CAGR) 비교")
+cagr_labels = [f"{STRATEGY_LABEL} (순수투자기간)", f"{BH_LABEL} (전체기간)"]
+cagr_df = pd.DataFrame(
+    {"series": cagr_labels, "cagr": [m["strategy_cagr"] or 0.0, m["bh_cagr"] or 0.0]}
+)
+cagr_chart = (
+    alt.Chart(cagr_df)
+    .mark_bar(size=70)
+    .encode(
+        x=alt.X("series:N", title=None, sort=None),
+        y=alt.Y("cagr:Q", title="CAGR", axis=alt.Axis(format="%")),
+        color=alt.Color(
+            "series:N",
+            legend=None,
+            scale=alt.Scale(domain=cagr_labels, range=[STRATEGY_COLOR, BH_COLOR]),
+        ),
+        tooltip=[alt.Tooltip("series:N", title="전략"), alt.Tooltip("cagr:Q", title="CAGR", format=".2%")],
+    )
+    .properties(height=280)
+)
+st.altair_chart(cagr_chart, use_container_width=True)
+
+# ---- 3. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
 st.subheader("누적수익률")
 cum_df = pd.DataFrame(
     {
@@ -222,32 +312,7 @@ else:
 st.altair_chart(combined_chart.properties(height=380).interactive(), use_container_width=True)
 st.caption("▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고)")
 
-# ---- 2. 연환산수익률(CAGR) 비교 ----
-st.subheader("연환산수익률(CAGR) 비교")
-cagr_labels = [f"{STRATEGY_LABEL} (순수투자기간)", f"{BH_LABEL} (전체기간)"]
-cagr_df = pd.DataFrame(
-    {"series": cagr_labels, "cagr": [m["strategy_cagr"] or 0.0, m["bh_cagr"] or 0.0]}
-)
-cagr_chart = (
-    alt.Chart(cagr_df)
-    .mark_bar(size=70)
-    .encode(
-        x=alt.X("series:N", title=None, sort=None),
-        y=alt.Y("cagr:Q", title="CAGR", axis=alt.Axis(format="%")),
-        color=alt.Color(
-            "series:N",
-            legend=None,
-            scale=alt.Scale(domain=cagr_labels, range=[STRATEGY_COLOR, BH_COLOR]),
-        ),
-        tooltip=[alt.Tooltip("series:N", title="전략"), alt.Tooltip("cagr:Q", title="CAGR", format=".2%")],
-    )
-    .properties(height=300)
-)
-st.altair_chart(cagr_chart, use_container_width=True)
-if m["strategy_cagr"] is None:
-    st.caption("ℹ️ 신호전략이 이 기간 동안 한 번도 매수 신호를 내지 않아 CAGR을 계산할 수 없습니다.")
-
-# ---- 3. 연도별 연환산수익률 막대그래프 ----
+# ---- 4. 연도별 연환산수익률 막대그래프 ----
 st.subheader("연도별 연환산수익률")
 yearly_long = yearly.melt(
     id_vars=["year", "days_span"],
@@ -294,7 +359,7 @@ st.caption(
     "수익률 확인 가능). 신호전략이 그 해 내내 현금(미보유) 상태였다면 0%로 표시됩니다."
 )
 
-# ---- 4. 거래 내역 표 ----
+# ---- 5. 거래 내역 표 ----
 st.subheader("거래 내역")
 if trades:
     trade_rows = [
@@ -312,32 +377,12 @@ if trades:
     ]
     st.dataframe(pd.DataFrame(trade_rows), use_container_width=True, hide_index=True)
     st.caption(
-        "매수 사유/매도 사유는 신호가 처음 발생한 날 기준입니다. green_count/금은비율 매수는 "
-        "매수 지연일수만큼 지난 뒤 체결되어 매수일이 신호 발생일과 다를 수 있지만, 신고가 갱신 "
-        "매수는 항상 매수일 = 신호 발생일입니다."
+        "매수 사유/매도 사유는 신호가 처음 발생한 날 기준입니다. green_count 매수/매도는 "
+        "지연일수만큼 지난 뒤 체결되어 매수·매도일이 신호 발생일과 다를 수 있지만, 금/은비율·"
+        "신고가 갱신 매수는 항상 체결일 = 신호 발생일입니다."
     )
 else:
     st.caption("이 기간 동안 매수 신호가 발생하지 않아 거래 내역이 없습니다.")
-
-# ---- 5. 요약 지표 ----
-st.subheader("요약 지표")
-col1, col2, col3 = st.columns(3)
-col1.metric("총 거래 횟수", f"{m['closed_trade_count']}회")
-col1.metric("승률", f"{m['win_rate']:.1%}" if m["win_rate"] is not None else "-")
-col2.metric(f"누적수익률 ({STRATEGY_LABEL})", f"{m['strategy_total_return']:.1%}")
-col2.metric(f"누적수익률 ({BH_LABEL})", f"{m['bh_total_return']:.1%}")
-col3.metric(
-    f"CAGR ({STRATEGY_LABEL}, 순수투자기간)",
-    f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
-)
-col3.metric(f"CAGR ({BH_LABEL}, 전체기간)", f"{m['bh_cagr']:.1%}")
-st.metric("최대 낙폭 (MDD, 신호전략)", f"{m['max_drawdown']:.1%}")
-
-if m["has_open_position"]:
-    st.info(
-        "현재 포지션을 보유 중입니다. 마지막 거래는 미청산 상태이며, 위 거래 내역·수익률에 "
-        "표시된 값은 오늘 종가 기준 평가손익입니다."
-    )
 
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "
