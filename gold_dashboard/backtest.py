@@ -91,13 +91,13 @@ def trim_to_backtest_window(df: pd.DataFrame, as_of: date | None = None) -> pd.D
     return trimmed
 
 
-def _buy_reason(gc: int, r: float, is_new_high: bool, use_new_high_buy: bool) -> str:
+def _buy_reason(gc: int, r: float, include_new_high: bool = False) -> str:
     reasons = []
     if gc >= BUY_GREEN_COUNT:
         reasons.append(f"green_count≥{BUY_GREEN_COUNT}")
     if r >= BUY_RATIO:
         reasons.append(f"금/은비율≥{BUY_RATIO}")
-    if use_new_high_buy and is_new_high:
+    if include_new_high:
         reasons.append("신고가 갱신")
     return ", ".join(reasons)
 
@@ -131,6 +131,9 @@ def run_backtest(
     `use_new_high_buy`: when True, a fresh record high in gold (see
     compute_signals' gold_new_high) is an additional, independent buy
     trigger alongside green_count/ratio (optional — off by default).
+    Unlike the green_count/ratio triggers, a new-high buy always fills
+    immediately (same day, ignoring entry_delay_days) and preempts any
+    green_count/ratio order still pending.
 
     Each trade records the reason(s) that triggered its (pending) order, as
     of the day the signal fired — not necessarily still true by execution
@@ -167,18 +170,29 @@ def run_backtest(
         is_new_high = bool(new_high.loc[dt])
 
         if not holding:
-            if pending_buy_date is None:
-                if gc >= BUY_GREEN_COUNT or r >= BUY_RATIO or (use_new_high_buy and is_new_high):
-                    pending_buy_date = dt + timedelta(days=entry_delay_days)
-                    pending_buy_reason = _buy_reason(gc, r, is_new_high, use_new_high_buy)
-            if pending_buy_date is not None and dt >= pending_buy_date:
+            if use_new_high_buy and is_new_high:
+                # New-high buys are immediate: no delay, and this preempts
+                # any still-pending green_count/ratio order.
                 holding = True
                 entry_date = dt
                 entry_price = price
-                entry_reason = pending_buy_reason
+                entry_reason = _buy_reason(gc, r, include_new_high=True)
                 equity_at_entry = running_equity
                 pending_buy_date = None
                 pending_buy_reason = None
+            else:
+                if pending_buy_date is None:
+                    if gc >= BUY_GREEN_COUNT or r >= BUY_RATIO:
+                        pending_buy_date = dt + timedelta(days=entry_delay_days)
+                        pending_buy_reason = _buy_reason(gc, r)
+                if pending_buy_date is not None and dt >= pending_buy_date:
+                    holding = True
+                    entry_date = dt
+                    entry_price = price
+                    entry_reason = pending_buy_reason
+                    equity_at_entry = running_equity
+                    pending_buy_date = None
+                    pending_buy_reason = None
         else:
             if pending_sell_date is None:
                 if gc == SELL_GREEN_COUNT or r <= SELL_RATIO:
