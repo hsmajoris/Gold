@@ -37,6 +37,11 @@ BUY_RATIO = config.DEFAULT_GS_RATIO_BUY_THRESHOLD
 SELL_GREEN_COUNT = 0
 SELL_RATIO = config.DEFAULT_GS_RATIO_SELL_THRESHOLD
 
+# Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
+# below — a rough US 10-year Treasury reference point, not fetched live.
+# Adjustable per-run via simulate()'s bond_annual_yield argument.
+DEFAULT_BOND_ANNUAL_YIELD = 0.04
+
 
 def fetch_raw_data(as_of: date | None = None, years: int = BACKTEST_YEARS) -> pd.DataFrame:
     """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
@@ -141,10 +146,13 @@ def run_backtest(
     the signal fired — for a delayed green_count order this is the day it was
     scheduled, not necessarily still true by execution day.
 
-    Returns (trades, equity_curve, bh_equity_curve). Both equity curves start
-    at 1.0 on the first date. The strategy curve is flat (1.0x, i.e. 0% return)
-    while in cash and compounds only through held periods; the Buy & Hold curve
-    is always invested from that same first date.
+    Returns (trades, equity_curve, bh_equity_curve, holding_curve). Both equity
+    curves start at 1.0 on the first date. The strategy curve is flat (1.0x,
+    i.e. 0% return) while in cash and compounds only through held periods; the
+    Buy & Hold curve is always invested from that same first date.
+    holding_curve is a same-index boolean Series (True = holding gold that
+    day), used by compute_hybrid_cagr() to build the "미보유기간 채권투자
+    가정" hybrid equity curve.
     """
     dates = signals.index
     gold = signals["gold"]
@@ -164,6 +172,7 @@ def run_backtest(
     pending_sell_reason = None
     trades: list[dict] = []
     equity_values = []
+    holding_values = []
 
     for dt in dates:
         gc = int(green_count.loc[dt])
@@ -245,6 +254,7 @@ def run_backtest(
                 equity_at_entry = None
 
         equity_values.append(equity_at_entry * (price / entry_price) if holding else running_equity)
+        holding_values.append(holding)
 
     if holding:
         last_dt = dates[-1]
@@ -265,7 +275,8 @@ def run_backtest(
 
     equity_curve = pd.Series(equity_values, index=dates, name="strategy_equity")
     bh_equity_curve = (gold / gold.iloc[0]).rename("bh_equity")
-    return trades, equity_curve, bh_equity_curve
+    holding_curve = pd.Series(holding_values, index=dates, name="holding")
+    return trades, equity_curve, bh_equity_curve, holding_curve
 
 
 def compute_metrics(trades: list[dict], equity_curve: pd.Series, bh_equity_curve: pd.Series) -> dict:
@@ -305,6 +316,53 @@ def compute_metrics(trades: list[dict], equity_curve: pd.Series, bh_equity_curve
         "invested_days": invested_days,
         "total_days": total_days,
         "has_open_position": open_trade is not None,
+    }
+
+
+def compute_hybrid_cagr(
+    holding_curve: pd.Series, gold: pd.Series, bond_annual_yield: float
+) -> dict:
+    """The full-period CAGR variant that fills non-holding days with an
+    assumed bond return instead of leaving them flat: holding days compound at
+    gold's actual day-over-day return, non-holding days compound at
+    `bond_annual_yield` annualized over the elapsed calendar days since the
+    previous row. This directly complements compute_metrics()'s
+    "strategy_cagr" (which is invested-days-only) with a whole-period figure,
+    so the two can be compared side by side.
+
+    Each step from day i-1 to day i is classified by whether the position was
+    already held going INTO that step (holding_curve.iloc[i-1]), not whether
+    it ends the step held — matching run_backtest()'s own "buy/sell at that
+    day's close" convention, where the entry day itself earns no gold return
+    (bought at today's close, so today's price move isn't captured) and the
+    exit day earns the full gold return (held all day, sold at today's
+    close). Using the current day's flag instead would double-count the
+    entry day's price move that the strategy never actually captured.
+    """
+    dates = holding_curve.index
+    hybrid_equity = 1.0
+    non_holding_days = 0
+    total_days = 0
+    for i in range(1, len(dates)):
+        elapsed_days = (dates[i] - dates[i - 1]).days
+        total_days += elapsed_days
+        if bool(holding_curve.iloc[i - 1]):
+            factor = float(gold.iloc[i] / gold.iloc[i - 1])
+        else:
+            factor = (1.0 + bond_annual_yield) ** (elapsed_days / 365.25)
+            non_holding_days += elapsed_days
+        hybrid_equity *= factor
+
+    hybrid_total_return = hybrid_equity - 1.0
+    hybrid_cagr = hybrid_equity ** (365.25 / total_days) - 1.0 if total_days > 0 else None
+    non_holding_fraction = non_holding_days / total_days if total_days > 0 else None
+
+    return {
+        "bond_annual_yield": bond_annual_yield,
+        "hybrid_total_return": hybrid_total_return,
+        "hybrid_cagr": hybrid_cagr,
+        "non_holding_days": non_holding_days,
+        "non_holding_fraction": non_holding_fraction,
     }
 
 
@@ -367,10 +425,11 @@ def simulate(
     buy_green_count: int = BUY_GREEN_COUNT,
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
+    bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
     prepared signals and derive trades/equity curves/metrics/yearly returns."""
-    trades, equity_curve, bh_equity_curve = run_backtest(
+    trades, equity_curve, bh_equity_curve, holding_curve = run_backtest(
         signals,
         entry_delay_days=entry_delay_days,
         exit_delay_days=exit_delay_days,
@@ -382,11 +441,13 @@ def simulate(
         min_holding_days=min_holding_days,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
+    metrics_out.update(compute_hybrid_cagr(holding_curve, signals["gold"], bond_annual_yield))
     yearly = yearly_returns(equity_curve, bh_equity_curve)
     return {
         "trades": trades,
         "equity_curve": equity_curve,
         "bh_equity_curve": bh_equity_curve,
+        "holding_curve": holding_curve,
         "metrics": metrics_out,
         "yearly_returns": yearly,
     }
@@ -403,6 +464,7 @@ def run(
     buy_green_count: int = BUY_GREEN_COUNT,
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
+    bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
 ) -> dict:
     signals = prepare_signals(as_of, years=years)
     result = simulate(
@@ -415,6 +477,7 @@ def run(
         buy_green_count=buy_green_count,
         sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
+        bond_annual_yield=bond_annual_yield,
     )
     result["signals"] = signals
     return result
