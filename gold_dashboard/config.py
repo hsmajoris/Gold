@@ -5,13 +5,15 @@ INDICATOR_ORDER = ["real_rate", "dxy", "gold_silver_ratio", "wti", "vix"]
 
 MA_WINDOWS = [60, 30, 5]
 
-# The backtest's default gold/silver-ratio buy threshold (immediate-buy trigger)
-# and the main dashboard's chart-shading threshold must always agree, so both
-# gold_dashboard/backtest.py and app.py import this single constant instead of
-# each hardcoding their own copy. Deliberately more conservative than the
-# academic 80 threshold cited in STATIC_ROWS below — that 80 is a general
-# reference value from the literature, not this dashboard's trading rule.
+# The backtest's default gold/silver-ratio buy/sell thresholds (immediate
+# trigger levels) and the main dashboard's chart reference lines/shading must
+# always agree, so both gold_dashboard/backtest.py and app.py import these
+# single constants instead of each hardcoding their own copy. Deliberately
+# more conservative than the academic 80 threshold cited in STATIC_ROWS below
+# — that 80 is a general reference value from the literature, not this
+# dashboard's trading rule.
 DEFAULT_GS_RATIO_BUY_THRESHOLD = 100.0
+DEFAULT_GS_RATIO_SELL_THRESHOLD = 60.0
 
 INDICATOR_META = {
     "real_rate": {
