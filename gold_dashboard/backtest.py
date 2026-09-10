@@ -14,6 +14,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 
+from . import config
 from . import metrics
 from . import signals
 from . import timeseries as ts
@@ -25,10 +26,12 @@ BACKTEST_YEARS = ts.YEARS
 BUFFER_DAYS = ts.BUFFER_DAYS  # extra calendar days of history fetched before the
 # analysis start, so the 60-day SMA already has a full window on day 1 of the backtest.
 
-BUY_GREEN_COUNT = 5
-BUY_RATIO = 90
+BUY_GREEN_COUNT = 6
+# Shared with the main dashboard's chart shading/reference lines (config.py)
+# so both can never drift apart.
+BUY_RATIO = config.DEFAULT_GS_RATIO_BUY_THRESHOLD
 SELL_GREEN_COUNT = 0
-SELL_RATIO = 40
+SELL_RATIO = config.DEFAULT_GS_RATIO_SELL_THRESHOLD
 
 
 def fetch_raw_data(as_of: date | None = None) -> pd.DataFrame:

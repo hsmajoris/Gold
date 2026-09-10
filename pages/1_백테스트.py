@@ -30,7 +30,7 @@ DEFAULTS = {
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
     "bt_buy_ratio": float(backtest.BUY_RATIO),
     "bt_sell_ratio": float(backtest.SELL_RATIO),
-    "bt_use_new_high_buy": False,
+    "bt_use_new_high_buy": True,
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
     "bt_min_holding_days": 0,

@@ -15,7 +15,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from gold_dashboard import backtest, config, signals, timeseries
+from gold_dashboard import config, signals, timeseries
 from gold_dashboard.timeutil import today_kst
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
@@ -146,7 +146,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         )
     else:
         signal_flag = signals.ratio_threshold_active(
-            chart_data["indicator"], backtest.BUY_RATIO, "ge"
+            chart_data["indicator"], config.DEFAULT_GS_RATIO_BUY_THRESHOLD, "ge"
         )
 
     shade_ranges = _boolean_series_to_ranges(signal_flag)
@@ -167,7 +167,10 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
     layers.append(left_chart)
     if chart_data["kind"] == "ratio":
         threshold_df = pd.DataFrame(
-            {"y": [80, 40], "label": ["기술적 임계값 80", "기술적 임계값 40"]}
+            {
+                "y": [80, config.DEFAULT_GS_RATIO_SELL_THRESHOLD],
+                "label": ["학술적 관행 임계값 80", f"매도신호 임계값 {config.DEFAULT_GS_RATIO_SELL_THRESHOLD:g}"],
+            }
         )
         layers.append(
             alt.Chart(threshold_df)
@@ -205,12 +208,13 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
 
     if chart_data["kind"] == "ratio":
         st.caption(
-            f"🔵 {label}(왼쪽 축) · 🟠 금 가격(오른쪽 축, $) · 회색 점선 = 기술적 임계값(80, 40) — "
-            "절대적 기준은 아님"
+            f"🔵 {label}(왼쪽 축) · 🟠 금 가격(오른쪽 축, $) · 회색 점선 = 기준선 "
+            f"(학술적 관행값 80, 유효성 검증 페이지의 매도신호 임계값 기본값 "
+            f"{config.DEFAULT_GS_RATIO_SELL_THRESHOLD:g}) — 절대적 기준은 아님"
         )
         st.caption(
             f"🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 "
-            f"(금/은비율 ≥ {backtest.BUY_RATIO:g}, 백테스트 매수 임계값의 기본값 기준)"
+            f"(금/은비율 ≥ {config.DEFAULT_GS_RATIO_BUY_THRESHOLD:g}, 백테스트 매수 임계값의 기본값 기준)"
         )
     else:
         st.caption(
