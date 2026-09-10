@@ -59,9 +59,10 @@ with st.expander("전략 규칙 보기"):
   조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
   신고가 갱신 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
   green_count 지연 주문이 있어도 먼저 체결됩니다
-- 고급 설정의 **최소 보유일수**를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건
-  (green_count와 금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라
-  최소 보유 기간을 두는 전략을 시뮬레이션할 때 사용
+- 고급 설정의 **최소 보유일수**(역일/달력일 기준, 주말·공휴일 관계없이 매수일로부터의 날짜
+  차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
+  금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
+  두는 전략을 시뮬레이션할 때 사용
 - 분석 기간: 아래에서 설정한 오늘 기준 최근 **{years}년** (3~10년 조정 가능, 이동평균 계산용으로
   그 이전 {buffer}캘린더일치 데이터를 추가로 사용)
         """.format(years=int(st.session_state["bt_years"]), buffer=backtest.BUFFER_DAYS)
@@ -160,21 +161,22 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
         )
         st.caption(f"≈ {exit_delay_days / 30:.1f}개월 후 매도")
         min_holding_days = st.number_input(
-            "매수 후 최소 보유일수 (일)",
+            "매수 후 최소 보유일수 (일, 역일 기준)",
             min_value=0, max_value=1825, step=1, key="bt_min_holding_days",
             help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count, 금/은비율 모두)을 "
-            "아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다.",
+            "아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다. 주말·공휴일과 "
+            "무관하게 매수일로부터의 달력일 차이(date2 - date1)로 계산됩니다.",
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
-st.markdown("##### 채권투자 가정 (미보유기간 대체 수익률)")
-bond_yield_pct = st.number_input(
-    "미보유기간 채권 수익률 (연, %)",
-    min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
-    help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율의 채권에 투자했다고 "
-    "가정합니다. 기본값은 미국 10년물 국채 금리 참고치이며, 원하는 값으로 바꾸면 아래 "
-    "'(B) 미보유기간 채권투자 가정' 지표가 바로 재계산됩니다.",
-)
+# The "기회수익률" input itself is rendered later, inside the ④ 신호전략
+# (미보유기간 기회수익률 포함) summary-metric group — but its value is needed
+# here, before that section, to run the simulation. Reading straight from
+# session_state (rather than calling st.number_input again) works because a
+# widget's session_state entry always reflects its latest value regardless of
+# where in the script it's actually instantiated this run, and a given key can
+# only be instantiated once per run.
+bond_yield_pct = float(st.session_state["bt_bond_yield_pct"])
 
 refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
 
@@ -219,14 +221,14 @@ st.caption(
 )
 
 # ---- 1. 요약 지표 (설정 바로 아래에 배치 — 값을 바꿔가며 바로 확인) ----
-# 3개 그룹(매매 개요 / Buy & Hold / 신호매매)으로 묶어서 표시 — 그룹에 억지로
-# 끼워 맞추기 어려운 MDD만 그룹 아래에 단독으로 남겨둠.
+# 4개 그룹으로 묶어서 표시: ① 매매 개요 / ② Buy & Hold / ③ 신호전략(보유기간만) /
+# ④ 신호전략(미보유기간 기회수익률 포함, 기회수익률 입력도 이 그룹 안에 위치).
 st.subheader("요약 지표")
 holding_fraction = (
     1.0 - m["non_holding_fraction"] if m["non_holding_fraction"] is not None else None
 )
 
-overview_col, bh_col, strategy_col = st.columns(3)
+overview_col, bh_col, strategy_held_col, strategy_hybrid_col = st.columns(4)
 with overview_col:
     st.markdown("###### ① 매매 개요")
     st.metric("매매횟수", f"{m['closed_trade_count']}회")
@@ -240,22 +242,37 @@ with bh_col:
     st.markdown(f"###### ② {BH_LABEL}")
     st.metric("누적수익률", f"{m['bh_total_return']:.1%}")
     st.metric("연환산수익률(CAGR)", f"{m['bh_cagr']:.1%}")
-with strategy_col:
-    st.markdown(f"###### ③ {STRATEGY_LABEL}")
-    st.metric("누적수익률", f"{m['strategy_total_return']:.1%}")
+with strategy_held_col:
+    st.markdown(f"###### ③ {STRATEGY_LABEL} (보유기간)")
     st.metric(
-        "연환산수익률(CAGR, 보유기간만)",
+        "누적수익률",
+        f"{m['strategy_total_return']:.1%}",
+        help="보유 기간에만 투자했다고 가정한 누적수익률(미보유 기간은 반영하지 않음).",
+    )
+    st.metric(
+        "연환산수익률(CAGR)",
         f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
         help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률(현금 보유 기간 제외).",
     )
+with strategy_hybrid_col:
+    st.markdown(f"###### ④ {STRATEGY_LABEL} (미보유기간 기회수익률 포함)")
     st.metric(
-        f"연환산수익률(CAGR, 미보유기간 채권매입 가정 연 {bond_yield_pct:g}%)",
-        f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
-        help="보유기간은 실제 금 수익률을, 미보유기간은 위 '채권투자 가정'에서 설정한 채권 "
-        "수익률을 적용해 이어 붙인 뒤, 분석 기간 전체를 기준으로 연환산한 수익률입니다.",
+        "누적수익률",
+        f"{m['hybrid_total_return']:.1%}" if m["hybrid_total_return"] is not None else "-",
+        help="보유 기간엔 실제 금 수익률을, 미보유 기간엔 아래 '기회수익률'을 적용해 이어 붙인 "
+        "전체 분석기간 기준 누적수익률입니다.",
     )
-
-st.metric("최대 낙폭 (MDD, 신호전략)", f"{m['max_drawdown']:.1%}")
+    st.metric(
+        "연환산수익률(CAGR)",
+        f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
+        help="위 누적수익률을 분석 기간 전체를 기준으로 연환산한 값입니다.",
+    )
+    bond_yield_pct = st.number_input(
+        "기회수익률 (연, %)",
+        min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
+        help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율로 운용했다고 "
+        "가정합니다(예: 채권 매입). 값을 바꾸면 이 그룹의 누적수익률·CAGR이 바로 재계산됩니다.",
+    )
 
 if m["has_open_position"]:
     st.info(
@@ -444,7 +461,7 @@ else:
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "
     "거래비용·세금·슬리피지는 반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 "
-    "있습니다. '(B) 미보유기간 채권투자 가정' 지표의 채권 수익률은 사용자가 입력한 단일 연이율을 "
-    "그대로 연복리 적용한 단순 가정치이며, 실제 채권 투자의 이자율 변동·재투자·신용위험은 "
-    "반영되어 있지 않습니다."
+    "있습니다. '④ 신호전략 (미보유기간 기회수익률 포함)' 그룹의 기회수익률은 사용자가 입력한 "
+    "단일 연이율을 그대로 연복리 적용한 단순 가정치이며, 실제 채권 등 투자자산의 이자율 변동· "
+    "재투자·신용위험은 반영되어 있지 않습니다."
 )

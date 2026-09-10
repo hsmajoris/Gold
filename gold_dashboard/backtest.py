@@ -216,6 +216,9 @@ def run_backtest(
             exit_reason_today = None
             # Minimum holding period: no sell trigger (immediate ratio or
             # delayed green_count) is even evaluated until this elapses.
+            # `.days` on a Timestamp difference is a fixed calendar-day count
+            # (date2 - date1), unaffected by weekends/holidays even though
+            # `dates` itself only contains trading days.
             if (dt - entry_date).days >= min_holding_days:
                 if r <= sell_ratio:
                     # Ratio sells are immediate: no delay, and this preempts any
