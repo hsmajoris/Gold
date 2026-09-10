@@ -1,6 +1,10 @@
-"""Shared 7-year (+buffer) time series fetchers, reused by both the backtest
+"""Shared time series fetchers, reused by both the backtest
 (gold_dashboard/backtest.py) and the main dashboard's per-indicator charts
-(app.py) so the fetch-window logic lives in exactly one place.
+(app.py) so the fetch-window logic lives in exactly one place. Each fetcher
+takes an explicit `years` argument (default: YEARS below) — the backtest page
+lets the user adjust this per its own independent session state, while the
+main dashboard always passes its own fixed value, so the two never affect
+each other.
 """
 
 from datetime import date, timedelta
@@ -23,11 +27,11 @@ _FRED_SERIES_IDS = {"real_rate": "DFII10", "wti": "DCOILWTICO"}
 _YFINANCE_TICKERS = {"dxy": DXY_TICKERS, "gold": "GC=F", "silver": "SI=F", "vix": "^VIX"}
 
 
-def fetch_raw_series(key: str, as_of: date | None = None) -> pd.Series:
+def fetch_raw_series(key: str, as_of: date | None = None, years: int = YEARS) -> pd.Series:
     """Fetch one raw series (real_rate/dxy/gold/silver/wti/vix) covering
-    YEARS + BUFFER_DAYS of history ending at `as_of` (default: today, KST)."""
+    `years` + BUFFER_DAYS of history ending at `as_of` (default: today, KST)."""
     end_date = as_of or today_kst()
-    fetch_start = end_date - timedelta(days=YEARS * 365 + BUFFER_DAYS)
+    fetch_start = end_date - timedelta(days=years * 365 + BUFFER_DAYS)
     yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
 
     if key in _FRED_SERIES_IDS:
@@ -38,17 +42,18 @@ def fetch_raw_series(key: str, as_of: date | None = None) -> pd.Series:
     raise ValueError(f"unknown series key: {key}")
 
 
-def fetch_backtest_frame(as_of: date | None = None) -> pd.DataFrame:
+def fetch_backtest_frame(as_of: date | None = None, years: int = YEARS) -> pd.DataFrame:
     """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
-    for the trading backtest. Different markets close on different days (rates
-    vs. commodities), so the four series are joined on the union of their
-    dates and gaps are forward-filled from the prior available value.
+    for the trading backtest, covering `years` of history. Different markets
+    close on different days (rates vs. commodities), so the four series are
+    joined on the union of their dates and gaps are forward-filled from the
+    prior available value.
     """
     end_date = as_of or today_kst()
-    real_rate = fetch_raw_series("real_rate", end_date)
-    dxy = fetch_raw_series("dxy", end_date)
-    gold = fetch_raw_series("gold", end_date)
-    silver = fetch_raw_series("silver", end_date)
+    real_rate = fetch_raw_series("real_rate", end_date, years=years)
+    dxy = fetch_raw_series("dxy", end_date, years=years)
+    gold = fetch_raw_series("gold", end_date, years=years)
+    silver = fetch_raw_series("silver", end_date, years=years)
 
     df = pd.concat(
         [
@@ -70,9 +75,9 @@ def fetch_backtest_frame(as_of: date | None = None) -> pd.DataFrame:
 _INDICATOR_SOURCE = {"real_rate": "real_rate", "dxy": "dxy", "wti": "wti", "vix": "vix"}
 
 
-def build_indicator_chart_data(key: str, as_of: date | None = None) -> dict:
+def build_indicator_chart_data(key: str, as_of: date | None = None, years: int = YEARS) -> dict:
     """Data for one indicator's history chart: its own daily series (trimmed to
-    the last YEARS), 5/30/60-day SMAs of it (skipped for gold_silver_ratio,
+    the last `years`), 5/30/60-day SMAs of it (skipped for gold_silver_ratio,
     which has no MA concept), and gold's own daily series for comparison.
 
     Each returned series keeps its own native trading-calendar dates (no
@@ -80,19 +85,19 @@ def build_indicator_chart_data(key: str, as_of: date | None = None) -> dict:
     chart layers, not walked day-by-day like the backtest.
     """
     end_date = as_of or today_kst()
-    start_date = end_date - timedelta(days=YEARS * 365)
+    start_date = end_date - timedelta(days=years * 365)
 
-    gold_full = fetch_raw_series("gold", end_date)
+    gold_full = fetch_raw_series("gold", end_date, years=years)
     gold_display = gold_full[gold_full.index >= pd.Timestamp(start_date)]
 
     if key == "gold_silver_ratio":
-        silver_full = fetch_raw_series("silver", end_date)
+        silver_full = fetch_raw_series("silver", end_date, years=years)
         combined = pd.concat([gold_full, silver_full], axis=1, keys=["gold", "silver"]).dropna()
         ratio_full = (combined["gold"] / combined["silver"]).rename("value")
         ratio_display = ratio_full[ratio_full.index >= pd.Timestamp(start_date)]
         return {"kind": "ratio", "indicator": ratio_display, "gold": gold_display, "smas": {}}
 
-    raw_full = fetch_raw_series(_INDICATOR_SOURCE[key], end_date)
+    raw_full = fetch_raw_series(_INDICATOR_SOURCE[key], end_date, years=years)
     smas_full = {window: metrics.compute_sma(raw_full, window) for window in config.MA_WINDOWS}
     indicator_display = raw_full[raw_full.index >= pd.Timestamp(start_date)]
     smas_display = {

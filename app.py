@@ -34,7 +34,10 @@ CHART_THRESHOLD_COLOR = "#8a8a86"
 # (identity is already carried by line color; the shade means the same thing everywhere).
 CHART_SIGNAL_SHADE_COLOR = "#e34948"
 CHART_SIGNAL_SHADE_OPACITY = 0.16
-CHART_YEARS = timeseries.YEARS
+# Fixed, not user-configurable here — deliberately independent of the 유효성
+# 검증 (backtest) page's own adjustable analysis period, so changing that
+# page's setting never affects these charts.
+CHART_YEARS = 10
 
 
 def _boolean_series_to_ranges(flag: pd.Series) -> list[tuple]:
@@ -70,9 +73,11 @@ def load_data(selected_date_iso: str, is_today: bool):
     return build(as_of=as_of)
 
 
-@st.cache_data(ttl=86400, show_spinner="7년치 시계열 데이터를 불러오는 중입니다...")
+@st.cache_data(ttl=86400, show_spinner=f"{CHART_YEARS}년치 시계열 데이터를 불러오는 중입니다...")
 def load_chart_data(indicator_key: str, as_of_iso: str) -> dict:
-    return timeseries.build_indicator_chart_data(indicator_key, as_of=date.fromisoformat(as_of_iso))
+    return timeseries.build_indicator_chart_data(
+        indicator_key, as_of=date.fromisoformat(as_of_iso), years=CHART_YEARS
+    )
 
 
 def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> None:
@@ -114,7 +119,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         alt.Chart(left_df)
         .mark_line(strokeWidth=2)
         .encode(
-            x=alt.X("date:T", title=None),
+            x=alt.X("date:T", axis=alt.Axis(title=None, format="%Y", tickCount="year")),
             y=alt.Y(
                 "value:Q",
                 title=indicator_series_name,
@@ -185,7 +190,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         alt.Chart(gold_df)
         .mark_line(strokeWidth=2)
         .encode(
-            x=alt.X("date:T", title=None),
+            x=alt.X("date:T", axis=alt.Axis(title=None, format="%Y", tickCount="year")),
             y=alt.Y(
                 "value:Q",
                 title=gold_series_name,

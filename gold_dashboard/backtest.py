@@ -22,7 +22,11 @@ from .timeutil import today_kst
 
 MA_WINDOWS = [60, 30, 5]
 
-BACKTEST_YEARS = ts.YEARS
+BACKTEST_YEARS = ts.YEARS  # default analysis period; the 유효성 검증 page lets the
+# user override this per-session (3-10 years, see MIN/MAX_BACKTEST_YEARS below)
+# without affecting the main dashboard's fixed-window charts.
+MIN_BACKTEST_YEARS = 3
+MAX_BACKTEST_YEARS = 10
 BUFFER_DAYS = ts.BUFFER_DAYS  # extra calendar days of history fetched before the
 # analysis start, so the 60-day SMA already has a full window on day 1 of the backtest.
 
@@ -34,11 +38,11 @@ SELL_GREEN_COUNT = 0
 SELL_RATIO = config.DEFAULT_GS_RATIO_SELL_THRESHOLD
 
 
-def fetch_raw_data(as_of: date | None = None) -> pd.DataFrame:
+def fetch_raw_data(as_of: date | None = None, years: int = BACKTEST_YEARS) -> pd.DataFrame:
     """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
-    covering BACKTEST_YEARS + BUFFER_DAYS of history ending at `as_of` (default
+    covering `years` + BUFFER_DAYS of history ending at `as_of` (default
     today, KST). Thin wrapper around the shared fetcher in timeseries.py."""
-    return ts.fetch_backtest_frame(as_of)
+    return ts.fetch_backtest_frame(as_of, years=years)
 
 
 def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
@@ -65,9 +69,11 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def trim_to_backtest_window(df: pd.DataFrame, as_of: date | None = None) -> pd.DataFrame:
+def trim_to_backtest_window(
+    df: pd.DataFrame, as_of: date | None = None, years: int = BACKTEST_YEARS
+) -> pd.DataFrame:
     end_date = as_of or today_kst()
-    start_date = end_date - timedelta(days=BACKTEST_YEARS * 365)
+    start_date = end_date - timedelta(days=years * 365)
     trimmed = df[df.index >= pd.Timestamp(start_date)]
     if trimmed.empty:
         raise RuntimeError("no data available in the requested backtest window")
@@ -341,14 +347,14 @@ def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.Da
     return pd.DataFrame(rows)
 
 
-def prepare_signals(as_of: date | None = None) -> pd.DataFrame:
+def prepare_signals(as_of: date | None = None, years: int = BACKTEST_YEARS) -> pd.DataFrame:
     """The network-bound half of the pipeline: fetch + compute signals + trim
     to the backtest window. Independent of the buy/sell delay settings, so
     callers can cache this and re-run `simulate()` cheaply when only the
     delay changes."""
-    raw = fetch_raw_data(as_of)
+    raw = fetch_raw_data(as_of, years=years)
     signals = compute_signals(raw)
-    return trim_to_backtest_window(signals, as_of)
+    return trim_to_backtest_window(signals, as_of, years=years)
 
 
 def simulate(
@@ -388,6 +394,7 @@ def simulate(
 
 def run(
     as_of: date | None = None,
+    years: int = BACKTEST_YEARS,
     entry_delay_days: int = 0,
     exit_delay_days: int = 0,
     use_new_high_buy: bool = False,
@@ -397,7 +404,7 @@ def run(
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
 ) -> dict:
-    signals = prepare_signals(as_of)
+    signals = prepare_signals(as_of, years=years)
     result = simulate(
         signals,
         entry_delay_days=entry_delay_days,
