@@ -219,39 +219,43 @@ st.caption(
 )
 
 # ---- 1. 요약 지표 (설정 바로 아래에 배치 — 값을 바꿔가며 바로 확인) ----
+# 3개 그룹(매매 개요 / Buy & Hold / 신호매매)으로 묶어서 표시 — 그룹에 억지로
+# 끼워 맞추기 어려운 MDD만 그룹 아래에 단독으로 남겨둠.
 st.subheader("요약 지표")
-col1, col2, col3 = st.columns(3)
-col1.metric("총 거래 횟수", f"{m['closed_trade_count']}회")
-col1.metric("승률", f"{m['win_rate']:.1%}" if m["win_rate"] is not None else "-")
-col2.metric(f"누적수익률 ({STRATEGY_LABEL})", f"{m['strategy_total_return']:.1%}")
-col2.metric(f"누적수익률 ({BH_LABEL})", f"{m['bh_total_return']:.1%}")
-col3.metric(
-    f"연환산수익률(CAGR) ({STRATEGY_LABEL}, 순수투자기간)",
-    f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
+holding_fraction = (
+    1.0 - m["non_holding_fraction"] if m["non_holding_fraction"] is not None else None
 )
-col3.metric(f"연환산수익률(CAGR) ({BH_LABEL}, 전체기간)", f"{m['bh_cagr']:.1%}")
-st.metric("최대 낙폭 (MDD, 신호전략)", f"{m['max_drawdown']:.1%}")
 
-st.markdown(f"##### {STRATEGY_LABEL} 연환산수익률 비교 — 보유기간만 vs. 미보유기간 채권투자 가정")
-hybrid_col_a, hybrid_col_b, hybrid_col_c = st.columns(3)
-hybrid_col_a.metric(
-    "(A) 보유기간만 연환산",
-    f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
-    help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률 — 위 '연환산수익률"
-    f"(CAGR) ({STRATEGY_LABEL}, 순수투자기간)'과 같은 값입니다.",
-)
-hybrid_col_b.metric(
-    f"(B) 미보유기간 채권투자 가정 (연 {bond_yield_pct:g}%)",
-    f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
-    help="보유기간은 실제 금 수익률을, 미보유기간은 위에서 설정한 채권 수익률을 적용해 이어 "
-    "붙인 뒤, 분석 기간 전체를 기준으로 연환산한 수익률입니다.",
-)
-hybrid_col_c.metric(
-    "미보유기간 비중",
-    f"{m['non_holding_fraction']:.1%}" if m["non_holding_fraction"] is not None else "-",
-    help="분석 기간 전체(캘린더일 기준) 중 신호전략이 금을 보유하지 않아 채권 수익률을 "
-    "대신 적용한 기간의 비중입니다.",
-)
+overview_col, bh_col, strategy_col = st.columns(3)
+with overview_col:
+    st.markdown("###### ① 매매 개요")
+    st.metric("매매횟수", f"{m['closed_trade_count']}회")
+    st.metric(
+        "보유기간",
+        f"{holding_fraction:.1%}" if holding_fraction is not None else "-",
+        help="분석 기간 전체(캘린더일 기준) 중 신호전략이 실제로 금을 보유하고 있던 기간의 비중.",
+    )
+    st.metric("승률", f"{m['win_rate']:.1%}" if m["win_rate"] is not None else "-")
+with bh_col:
+    st.markdown(f"###### ② {BH_LABEL}")
+    st.metric("누적수익률", f"{m['bh_total_return']:.1%}")
+    st.metric("연환산수익률(CAGR)", f"{m['bh_cagr']:.1%}")
+with strategy_col:
+    st.markdown(f"###### ③ {STRATEGY_LABEL}")
+    st.metric("누적수익률", f"{m['strategy_total_return']:.1%}")
+    st.metric(
+        "연환산수익률(CAGR, 보유기간만)",
+        f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
+        help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률(현금 보유 기간 제외).",
+    )
+    st.metric(
+        f"연환산수익률(CAGR, 미보유기간 채권매입 가정 연 {bond_yield_pct:g}%)",
+        f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
+        help="보유기간은 실제 금 수익률을, 미보유기간은 위 '채권투자 가정'에서 설정한 채권 "
+        "수익률을 적용해 이어 붙인 뒤, 분석 기간 전체를 기준으로 연환산한 수익률입니다.",
+    )
+
+st.metric("최대 낙폭 (MDD, 신호전략)", f"{m['max_drawdown']:.1%}")
 
 if m["has_open_position"]:
     st.info(
