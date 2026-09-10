@@ -5,6 +5,14 @@ INDICATOR_ORDER = ["real_rate", "dxy", "gold_silver_ratio", "wti", "vix"]
 
 MA_WINDOWS = [60, 30, 5]
 
+# The backtest's default gold/silver-ratio buy threshold (immediate-buy trigger)
+# and the main dashboard's chart-shading threshold must always agree, so both
+# gold_dashboard/backtest.py and app.py import this single constant instead of
+# each hardcoding their own copy. Deliberately more conservative than the
+# academic 80 threshold cited in STATIC_ROWS below — that 80 is a general
+# reference value from the literature, not this dashboard's trading rule.
+DEFAULT_GS_RATIO_BUY_THRESHOLD = 100.0
+
 INDICATOR_META = {
     "real_rate": {
         "label": "실질금리",
@@ -56,7 +64,11 @@ STATIC_ROWS = {
     "상관관계 방향": {
         "real_rate": "역상관 (기회비용 가설)",
         "dxy": "역상관 (구조적 음(-)의 상관)",
-        "gold_silver_ratio": "임계값(80) 초과 시 하락 반전 가능성 — 기술적 신호로, 통계적 인과관계는 아님",
+        "gold_silver_ratio": (
+            "임계값(80) 초과 시 하락 반전 가능성 — 기술적 신호로, 통계적 인과관계는 아님. "
+            f"참고: 본 대시보드의 매수신호 임계값({DEFAULT_GS_RATIO_BUY_THRESHOLD:g})은 위 "
+            "학술적 관행값(80)보다 보수적으로 설정된 값으로, 서로 다른 목적의 수치입니다."
+        ),
         "wti": "정상관 (단기 효과 중심)",
         "vix": "약한 정상관 — 조건부이며 최근 표본에서 효과 약화 추세",
     },

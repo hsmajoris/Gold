@@ -15,7 +15,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from gold_dashboard import backtest, config, signals, timeseries
+from gold_dashboard import config, signals, timeseries
 from gold_dashboard.timeutil import today_kst
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
@@ -146,7 +146,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         )
     else:
         signal_flag = signals.ratio_threshold_active(
-            chart_data["indicator"], backtest.BUY_RATIO, "ge"
+            chart_data["indicator"], config.DEFAULT_GS_RATIO_BUY_THRESHOLD, "ge"
         )
 
     shade_ranges = _boolean_series_to_ranges(signal_flag)
@@ -210,7 +210,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         )
         st.caption(
             f"🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 "
-            f"(금/은비율 ≥ {backtest.BUY_RATIO:g}, 백테스트 매수 임계값의 기본값 기준)"
+            f"(금/은비율 ≥ {config.DEFAULT_GS_RATIO_BUY_THRESHOLD:g}, 백테스트 매수 임계값의 기본값 기준)"
         )
     else:
         st.caption(
