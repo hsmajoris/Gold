@@ -36,6 +36,9 @@ BUY_GREEN_COUNT = 6
 BUY_RATIO = config.DEFAULT_GS_RATIO_BUY_THRESHOLD
 SELL_GREEN_COUNT = 0
 SELL_RATIO = config.DEFAULT_GS_RATIO_SELL_THRESHOLD
+# Not a day-trading strategy by design: default to holding at least a month
+# before any sell trigger is even evaluated (still user-adjustable).
+DEFAULT_MIN_HOLDING_DAYS = 30
 
 # Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.

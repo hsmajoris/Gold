@@ -34,7 +34,7 @@ DEFAULTS = {
     "bt_use_new_high_buy": True,
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
-    "bt_min_holding_days": 0,
+    "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
     "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
 }
 for _key, _default in DEFAULTS.items():
