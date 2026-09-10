@@ -8,14 +8,14 @@ For any other selected date, computes the table live as of that date
 """
 
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 
-from gold_dashboard import config, timeseries
+from gold_dashboard import backtest, config, signals, timeseries
 from gold_dashboard.timeutil import today_kst
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
@@ -30,7 +30,33 @@ CHART_INDICATOR_COLOR = "#256abf"
 CHART_SMA_COLORS = {5: "#5598e7", 30: "#86b6ef", 60: "#b7d3f6"}
 CHART_GOLD_COLOR = "#eb6834"
 CHART_THRESHOLD_COLOR = "#8a8a86"
+# One consistent shading treatment for "buy signal active" across every indicator
+# (identity is already carried by line color; the shade means the same thing everywhere).
+CHART_SIGNAL_SHADE_COLOR = "#e34948"
+CHART_SIGNAL_SHADE_OPACITY = 0.16
 CHART_YEARS = timeseries.YEARS
+
+
+def _boolean_series_to_ranges(flag: pd.Series) -> list[tuple]:
+    """Contiguous [start, end] date ranges where `flag` is True (inclusive of
+    both ends). Used to turn a per-day gold-friendly boolean series into
+    background shading bands (Altair's equivalent of plotly's add_vrect —
+    a rect with only x/x2 encoded spans the chart's full height)."""
+    if flag.empty:
+        return []
+    idx = flag.index
+    values = flag.to_numpy()
+    ranges = []
+    start = None
+    for i, is_true in enumerate(values):
+        if is_true and start is None:
+            start = idx[i]
+        elif not is_true and start is not None:
+            ranges.append((start, idx[i - 1]))
+            start = None
+    if start is not None:
+        ranges.append((start, idx[-1]))
+    return ranges
 
 st.set_page_config(page_title="금(Gold) 상관관계 대시보드", layout="wide")
 
@@ -110,7 +136,37 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         )
     )
 
-    layers = [left_chart]
+    # Buy-signal-active shading: for MA indicators, all 3 windows must simultaneously
+    # be gold-friendly (a stricter, single-indicator condition than any one MA row's
+    # highlight); for the ratio, the same >= threshold the backtest's ratio trigger
+    # uses by default. Both call gold_dashboard/signals.py — the same module
+    # build_table.py's highlighting and backtest.py's green_count call — so the
+    # shading can never silently diverge from the actual signal definitions.
+    if chart_data["kind"] == "ma":
+        signal_flag = signals.all_windows_gold_friendly_for(
+            indicator_key, chart_data["indicator"], chart_data["smas"]
+        )
+    else:
+        signal_flag = signals.ratio_threshold_active(
+            chart_data["indicator"], backtest.BUY_RATIO, "ge"
+        )
+
+    shade_ranges = _boolean_series_to_ranges(signal_flag)
+    layers = []
+    if shade_ranges:
+        shade_df = pd.DataFrame(
+            {
+                "start": [r[0] for r in shade_ranges],
+                "end": [r[1] + timedelta(days=1) for r in shade_ranges],
+            }
+        )
+        layers.append(
+            alt.Chart(shade_df)
+            .mark_rect(color=CHART_SIGNAL_SHADE_COLOR, opacity=CHART_SIGNAL_SHADE_OPACITY)
+            .encode(x="start:T", x2="end:T")
+        )
+
+    layers.append(left_chart)
     if chart_data["kind"] == "ratio":
         threshold_df = pd.DataFrame(
             {"y": [80, 40], "label": ["기술적 임계값 80", "기술적 임계값 40"]}
@@ -154,10 +210,20 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
             f"🔵 {label}(왼쪽 축) · 🟠 금 가격(오른쪽 축, $) · 회색 점선 = 기술적 임계값(80, 40) — "
             "절대적 기준은 아님"
         )
+        st.caption(
+            f"🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 "
+            f"(금/은비율 ≥ {backtest.BUY_RATIO:g}, 백테스트 매수 임계값의 기본값 기준)"
+        )
     else:
         st.caption(
             f"🔵 진한 파랑 = {label} 종가, 옅어질수록 5→30→60일 이동평균(왼쪽 축) · "
             "🟠 금 가격(오른쪽 축, $)"
+        )
+        st.caption(
+            "🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 (5·30·60일 이평선 3개 모두 동시에 "
+            "만족하는 날). 실제 매매 신호의 green_count는 이 조건을 실질금리·달러인덱스 두 지표에서 "
+            "합산하므로, 이 지표 하나만으로 3개를 모두 만족하지 못해도 다른 지표 쪽에서 green_count≥5가 "
+            "채워져 매수가 발생할 수 있습니다."
         )
 
 

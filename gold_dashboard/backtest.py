@@ -15,6 +15,7 @@ from datetime import date, timedelta
 import pandas as pd
 
 from . import metrics
+from . import signals
 from . import timeseries as ts
 from .timeutil import today_kst
 
@@ -45,12 +46,14 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     gf_cols = []
     for col in ("real_rate", "dxy"):
+        direction = signals.indicator_direction(col)
         for window in MA_WINDOWS:
             sma = metrics.compute_sma(df[col], window)
             gf_col = f"{col}_gf_{window}"
-            # Both are inverse-correlation indicators: below its own MA is gold-friendly
-            # (same rule as app.py's build_table highlighting).
-            df[gf_col] = (df[col] < sma).fillna(False)
+            # Delegates to the single shared comparison in signals.py — the same
+            # function app.py's build_table highlighting and chart shading use —
+            # so this can never silently drift from those.
+            df[gf_col] = signals.gold_friendly_vs_ma(df[col], sma, direction)
             gf_cols.append(gf_col)
     df["green_count"] = df[gf_cols].sum(axis=1).astype(int)
     df["gold_silver_ratio"] = df["gold"] / df["silver"]
