@@ -10,7 +10,10 @@ import streamlit as st
 from gold_dashboard import backtest
 from gold_dashboard.timeutil import today_kst
 
-st.set_page_config(page_title="백테스트 — 금(Gold) 상관관계 대시보드", layout="wide")
+# Page config (title/layout) is centralized in app.py's main(), since
+# st.navigation there replaces the classic pages/-folder auto-discovery this
+# file used to rely on for its own page config, and st.set_page_config can
+# only be called once per app run.
 
 # dataviz reference palette: strategy/benchmark use categorical slots 2-3 (orange/aqua)
 # so they stay visually distinct from the buy/sell markers below, which reuse the

@@ -12,13 +12,17 @@
 - `gold_dashboard/update_data.py` — `data/latest.json`을 생성하는 CLI 스크립트
 - `gold_dashboard/timeseries.py` — 7년치 시계열 fetch 공통 모듈 (백테스트와 메인 페이지 그래프가 함께 사용)
 - `gold_dashboard/backtest.py` — 신호 기반 매매 전략 백테스트 로직(데이터 정렬, 신호 계산, 매매 상태 머신, 성과 지표)
-- `app.py` — Streamlit 대시보드 화면
-- `pages/1_백테스트.py` — 백테스트 결과 페이지(사이드바의 "백테스트"에서 접근)
+- `app.py` — Streamlit 대시보드 화면. `st.navigation`/`st.Page`로 진입점을 구성해서, 사이드바에
+  보이는 페이지 이름(대시보드/유효성 검증)을 실제 파일명·URL 경로와 분리해뒀습니다 — 파일명과
+  기존에 공유된 URL(`/`, `/백테스트`)은 그대로 유지됩니다.
+- `pages/1_백테스트.py` — 백테스트 결과 페이지(사이드바에는 "유효성 검증"으로 표시, 파일명과
+  URL 경로(`/백테스트`)는 이전과 동일)
 - `.github/workflows/update_dashboard_data.yml` — 매일 07:00(KST)에 데이터를 자동 갱신하는 GitHub Actions 워크플로우
 
 ## 백테스트
 
-사이드바의 "백테스트" 페이지에서 실질금리·달러인덱스 이평선 돌파 신호(green_count, 대시보드의
+사이드바의 "유효성 검증" 페이지(파일명은 `pages/1_백테스트.py`, URL은 `/백테스트`로 이전과 동일)에서
+실질금리·달러인덱스 이평선 돌파 신호(green_count, 대시보드의
 "금값에 우호적인 방향" 판정과 동일한 로직)와 금/은비율 임계값을 결합한 매매 전략을 지난 7년
 (이동평균 계산용 버퍼 90일 추가) 동안 시뮬레이션하고, 동일 시작일의 Buy & Hold와 비교합니다.
 
