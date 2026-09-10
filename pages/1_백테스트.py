@@ -35,6 +35,7 @@ DEFAULTS = {
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
     "bt_min_holding_days": 0,
+    "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
 }
 for _key, _default in DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -166,6 +167,15 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
+st.markdown("##### 채권투자 가정 (미보유기간 대체 수익률)")
+bond_yield_pct = st.number_input(
+    "미보유기간 채권 수익률 (연, %)",
+    min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
+    help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율의 채권에 투자했다고 "
+    "가정합니다. 기본값은 미국 10년물 국채 금리 참고치이며, 원하는 값으로 바꾸면 아래 "
+    "'(B) 미보유기간 채권투자 가정' 지표가 바로 재계산됩니다.",
+)
+
 refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
 
 
@@ -189,6 +199,7 @@ try:
         buy_green_count=int(buy_green_count),
         sell_green_count=int(sell_green_count),
         min_holding_days=int(min_holding_days),
+        bond_annual_yield=float(bond_yield_pct) / 100.0,
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
@@ -220,6 +231,27 @@ col3.metric(
 )
 col3.metric(f"연환산수익률(CAGR) ({BH_LABEL}, 전체기간)", f"{m['bh_cagr']:.1%}")
 st.metric("최대 낙폭 (MDD, 신호전략)", f"{m['max_drawdown']:.1%}")
+
+st.markdown(f"##### {STRATEGY_LABEL} 연환산수익률 비교 — 보유기간만 vs. 미보유기간 채권투자 가정")
+hybrid_col_a, hybrid_col_b, hybrid_col_c = st.columns(3)
+hybrid_col_a.metric(
+    "(A) 보유기간만 연환산",
+    f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
+    help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률 — 위 '연환산수익률"
+    f"(CAGR) ({STRATEGY_LABEL}, 순수투자기간)'과 같은 값입니다.",
+)
+hybrid_col_b.metric(
+    f"(B) 미보유기간 채권투자 가정 (연 {bond_yield_pct:g}%)",
+    f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
+    help="보유기간은 실제 금 수익률을, 미보유기간은 위에서 설정한 채권 수익률을 적용해 이어 "
+    "붙인 뒤, 분석 기간 전체를 기준으로 연환산한 수익률입니다.",
+)
+hybrid_col_c.metric(
+    "미보유기간 비중",
+    f"{m['non_holding_fraction']:.1%}" if m["non_holding_fraction"] is not None else "-",
+    help="분석 기간 전체(캘린더일 기준) 중 신호전략이 금을 보유하지 않아 채권 수익률을 "
+    "대신 적용한 기간의 비중입니다.",
+)
 
 if m["has_open_position"]:
     st.info(
@@ -408,5 +440,7 @@ else:
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "
     "거래비용·세금·슬리피지는 반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 "
-    "있습니다."
+    "있습니다. '(B) 미보유기간 채권투자 가정' 지표의 채권 수익률은 사용자가 입력한 단일 연이율을 "
+    "그대로 연복리 적용한 단순 가정치이며, 실제 채권 투자의 이자율 변동·재투자·신용위험은 "
+    "반영되어 있지 않습니다."
 )
