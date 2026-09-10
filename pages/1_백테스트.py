@@ -26,6 +26,7 @@ STRATEGY_LABEL = "신호전략"
 BH_LABEL = "Buy & Hold"
 
 DEFAULTS = {
+    "bt_years": backtest.BACKTEST_YEARS,
     "bt_buy_green_count": backtest.BUY_GREEN_COUNT,
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
     "bt_buy_ratio": float(backtest.BUY_RATIO),
@@ -60,20 +61,36 @@ with st.expander("전략 규칙 보기"):
 - 고급 설정의 **최소 보유일수**를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건
   (green_count와 금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라
   최소 보유 기간을 두는 전략을 시뮬레이션할 때 사용
-- 분석 기간: 오늘 기준 최근 **{years}년** (이동평균 계산용으로 그 이전 {buffer}캘린더일치
-  데이터를 추가로 사용)
-        """.format(years=backtest.BACKTEST_YEARS, buffer=backtest.BUFFER_DAYS)
+- 분석 기간: 아래에서 설정한 오늘 기준 최근 **{years}년** (3~10년 조정 가능, 이동평균 계산용으로
+  그 이전 {buffer}캘린더일치 데이터를 추가로 사용)
+        """.format(years=int(st.session_state["bt_years"]), buffer=backtest.BUFFER_DAYS)
     )
 
 header_col, reset_col = st.columns([5, 1])
 with header_col:
-    st.subheader("매수·매도 조건")
+    st.subheader("분석 기간 · 매수·매도 조건")
 with reset_col:
     st.write("")
     if st.button("↺ 기본값으로 초기화", use_container_width=True):
         for _key, _default in DEFAULTS.items():
             st.session_state[_key] = _default
         st.rerun()
+
+# Independent of the main dashboard: this key (bt_years) is only ever read or
+# written on this page, and the main dashboard's per-indicator charts always
+# fetch a fixed CHART_YEARS window regardless of what's set here. Must be
+# instantiated after the reset button above (Streamlit forbids writing to a
+# widget's session_state key once that widget has been instantiated in the
+# same script run).
+years = st.number_input(
+    "분석 기간 (최근 N년)",
+    min_value=backtest.MIN_BACKTEST_YEARS,
+    max_value=backtest.MAX_BACKTEST_YEARS,
+    step=1,
+    key="bt_years",
+    help="이 페이지의 백테스트 결과(거래 내역·승률·CAGR·아래 그래프)에만 영향을 줍니다 — "
+    "메인 대시보드의 지표별 그래프는 이 값과 무관하게 항상 고정된 기간으로 표시됩니다.",
+)
 
 buy_card, sell_card = st.columns(2)
 with buy_card:
@@ -152,16 +169,16 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
 refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
 
 
-@st.cache_data(ttl=3600, show_spinner="7년치 데이터를 내려받는 중입니다...")
-def load_signals(as_of_iso: str) -> pd.DataFrame:
-    return backtest.prepare_signals(as_of=date.fromisoformat(as_of_iso))
+@st.cache_data(ttl=3600, show_spinner="데이터를 내려받는 중입니다...")
+def load_signals(as_of_iso: str, years: int) -> pd.DataFrame:
+    return backtest.prepare_signals(as_of=date.fromisoformat(as_of_iso), years=years)
 
 
 if refresh_clicked:
     st.cache_data.clear()
 
 try:
-    signals = load_signals(today_kst().isoformat())
+    signals = load_signals(today_kst().isoformat(), int(years))
     result = backtest.simulate(
         signals,
         entry_delay_days=int(entry_delay_days),
@@ -249,7 +266,7 @@ line_chart = (
     alt.Chart(cum_df)
     .mark_line(strokeWidth=2)
     .encode(
-        x=alt.X("date:T", title=None),
+        x=alt.X("date:T", axis=alt.Axis(title=None, format="%Y", tickCount="year")),
         y=alt.Y("return:Q", title="누적수익률", axis=alt.Axis(format="%")),
         color=alt.Color(
             "series:N",
