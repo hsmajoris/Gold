@@ -62,7 +62,7 @@ st.caption(
 # Deliberately NOT part of DEFAULTS above: it's a data-source choice, not a
 # backtest tuning parameter, so "기본값으로 초기화" leaves it untouched.
 _gold_basis_options = [config.GOLD_PRICE_BASIS_INTL, config.GOLD_PRICE_BASIS_KRX]
-st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_INTL)
+st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
 gold_price_basis = st.radio(
     "금 가격 기준",
     options=_gold_basis_options,
@@ -238,7 +238,7 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             min_value=1, max_value=365, step=1, key="bt_reentry_freq_limit_days",
             disabled=not (use_reentry_trigger and use_reentry_freq_limit),
             help="위 '단기 재진입 빈도 제한'이 켜져 있을 때만 작동합니다. ② 단기 재돌파 트리거로 "
-            "인한 매수를 이 일수(역일 기준) 내 최대 1회로 제한합니다(기본 60일).",
+            "인한 매수를 이 일수(역일 기준) 내 최대 1회로 제한합니다(기본 30일).",
         )
 
     with adv_sell_col:

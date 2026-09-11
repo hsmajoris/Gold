@@ -68,7 +68,7 @@ DEFAULT_LONG_TREND_BUFFER_PCT = 5.0
 LONG_TREND_SLOPE_LOOKBACK = 20
 # Default cap on how often the reentry trigger alone (not other buy triggers)
 # may fire — at most once per this many calendar days. User-togglable per run.
-DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 60
+DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 30
 
 # Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.
@@ -78,7 +78,7 @@ DEFAULT_BOND_ANNUAL_YIELD = 0.10
 def fetch_raw_data(
     as_of: date | None = None,
     years: int = BACKTEST_YEARS,
-    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
 ) -> pd.DataFrame:
     """Fetch real_rate/dxy/gold/gold_intl/silver as one date-aligned, forward-
     filled frame covering `years` + BUFFER_DAYS of history ending at `as_of`
@@ -530,7 +530,7 @@ def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.Da
 def prepare_signals(
     as_of: date | None = None,
     years: int = BACKTEST_YEARS,
-    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
 ) -> pd.DataFrame:
     """The network-bound half of the pipeline: fetch + compute signals + trim
     to the backtest window. Independent of the buy/sell delay settings, so
@@ -600,7 +600,7 @@ def run(
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
-    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
 ) -> dict:
     signals = prepare_signals(as_of, years=years, gold_price_basis=gold_price_basis)
     result = simulate(
