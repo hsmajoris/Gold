@@ -75,11 +75,18 @@ DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 60
 DEFAULT_BOND_ANNUAL_YIELD = 0.10
 
 
-def fetch_raw_data(as_of: date | None = None, years: int = BACKTEST_YEARS) -> pd.DataFrame:
-    """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
-    covering `years` + BUFFER_DAYS of history ending at `as_of` (default
-    today, KST). Thin wrapper around the shared fetcher in timeseries.py."""
-    return ts.fetch_backtest_frame(as_of, years=years, buffer_days=BUFFER_DAYS)
+def fetch_raw_data(
+    as_of: date | None = None,
+    years: int = BACKTEST_YEARS,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
+) -> pd.DataFrame:
+    """Fetch real_rate/dxy/gold/gold_intl/silver as one date-aligned, forward-
+    filled frame covering `years` + BUFFER_DAYS of history ending at `as_of`
+    (default today, KST). Thin wrapper around the shared fetcher in
+    timeseries.py. See fetch_backtest_frame for what `gold_price_basis` does."""
+    return ts.fetch_backtest_frame(
+        as_of, years=years, buffer_days=BUFFER_DAYS, gold_price_basis=gold_price_basis
+    )
 
 
 def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
@@ -109,7 +116,12 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
             df[gf_col] = signals.gold_friendly_vs_ma(df[col], sma, direction)
             gf_cols.append(gf_col)
     df["green_count"] = df[gf_cols].sum(axis=1).astype(int)
-    df["gold_silver_ratio"] = df["gold"] / df["silver"]
+    # Always computed from international USD/oz prices (gold_intl), never the
+    # basis-dependent "gold" column: a KRX KRW/g close divided by an SI=F
+    # USD/oz close would be a meaningless number, and this must match the main
+    # dashboard's own gold/silver ratio row, which is likewise unaffected by
+    # the gold_price_basis setting.
+    df["gold_silver_ratio"] = df["gold_intl"] / df["silver"]
 
     short_sma = metrics.compute_sma(df["gold"], SHORT_REENTRY_WINDOW)
     above_short = (df["gold"] > short_sma).fillna(False)
@@ -515,12 +527,16 @@ def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.Da
     return pd.DataFrame(rows)
 
 
-def prepare_signals(as_of: date | None = None, years: int = BACKTEST_YEARS) -> pd.DataFrame:
+def prepare_signals(
+    as_of: date | None = None,
+    years: int = BACKTEST_YEARS,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
+) -> pd.DataFrame:
     """The network-bound half of the pipeline: fetch + compute signals + trim
     to the backtest window. Independent of the buy/sell delay settings, so
     callers can cache this and re-run `simulate()` cheaply when only the
     delay changes."""
-    raw = fetch_raw_data(as_of, years=years)
+    raw = fetch_raw_data(as_of, years=years, gold_price_basis=gold_price_basis)
     signals = compute_signals(raw)
     return trim_to_backtest_window(signals, as_of, years=years)
 
@@ -584,8 +600,9 @@ def run(
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
 ) -> dict:
-    signals = prepare_signals(as_of, years=years)
+    signals = prepare_signals(as_of, years=years, gold_price_basis=gold_price_basis)
     result = simulate(
         signals,
         entry_delay_days=entry_delay_days,

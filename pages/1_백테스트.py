@@ -7,7 +7,8 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from gold_dashboard import backtest
+from gold_dashboard import backtest, config
+from gold_dashboard import timeseries
 from gold_dashboard.timeutil import today_kst
 
 # Page config (title/layout) is centralized in app.py's main(), since
@@ -47,6 +48,38 @@ st.title("신호 기반 매매 전략 백테스트")
 st.caption(
     "실질금리·달러인덱스의 이동평균 돌파 신호와 금/은비율 임계값을 결합한 매수·매도 규칙을, "
     "동일 시작일의 Buy & Hold와 비교합니다."
+)
+
+# Shared with the main dashboard page via config.GOLD_PRICE_BASIS_STATE_KEY —
+# but NOT via that key's own widget binding: st.navigation resets a widget's
+# session_state entry back to its default the instant that exact widget isn't
+# instantiated in a run (i.e. the moment you navigate to a different page), so
+# a `key=` shared across two pages' widgets does NOT survive navigation
+# between them (verified directly against this Streamlit version). The fix is
+# to keep the shared choice in that plain session_state entry (which does
+# survive navigation) and seed this page's own, page-local widget from it via
+# `index=`, writing the widget's result straight back after every rerun.
+# Deliberately NOT part of DEFAULTS above: it's a data-source choice, not a
+# backtest tuning parameter, so "기본값으로 초기화" leaves it untouched.
+_gold_basis_options = [config.GOLD_PRICE_BASIS_INTL, config.GOLD_PRICE_BASIS_KRX]
+st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_INTL)
+gold_price_basis = st.radio(
+    "금 가격 기준",
+    options=_gold_basis_options,
+    format_func=lambda v: config.GOLD_PRICE_BASIS_LABELS[v],
+    index=_gold_basis_options.index(st.session_state[config.GOLD_PRICE_BASIS_STATE_KEY]),
+    key="_gold_price_basis_widget_backtest",
+    horizontal=True,
+    help="이 페이지 전체(이동평균·장기추세 필터·매수매도 신호·백테스트·요약지표·그래프)가 이 "
+    "기준으로 다시 계산됩니다. 대시보드 페이지와 상태를 공유하므로 여기서 바꾸면 그쪽에도 "
+    "반영됩니다.",
+)
+st.session_state[config.GOLD_PRICE_BASIS_STATE_KEY] = gold_price_basis
+st.caption(
+    "② KRX 금현물은 환율을 곱해 환산한 값이 아니라, KRX 금현물시장(04020000, \"금 99.99_1kg\") "
+    "실제 국내 시세(KRW/g)를 그대로 사용합니다(출처: Naver 증권). 금/은비율은 이 선택과 무관하게 "
+    "항상 국제 금·은 시세(GC=F/SI=F, USD/oz) 기준으로 계산됩니다 — 대시보드 표의 금/은비율 행과 "
+    "동일합니다. ② 선택 시 최초 데이터 수집에 1분 내외 걸릴 수 있습니다(이후 캐시되어 즉시 표시)."
 )
 
 with st.expander("전략 규칙 보기"):
@@ -112,6 +145,16 @@ years = st.number_input(
     help="이 페이지의 백테스트 결과(거래 내역·승률·CAGR·아래 그래프)에만 영향을 줍니다 — "
     "메인 대시보드의 지표별 그래프는 이 값과 무관하게 항상 고정된 기간으로 표시됩니다.",
 )
+
+if gold_price_basis == config.GOLD_PRICE_BASIS_KRX and timeseries.gold_window_would_clamp_to_krx(
+    today_kst(), int(years), backtest.BUFFER_DAYS
+):
+    st.info(
+        f"KRX 금현물시장은 {config.KRX_GOLD_EARLIEST_DATE} 이후 데이터만 존재합니다. "
+        f"분석 시작일이 자동으로 {config.KRX_GOLD_EARLIEST_DATE}로 조정됩니다(이동평균 "
+        "계산용 사전 데이터가 짧아지는 만큼, 분석 기간 첫 구간의 200일선/장기추세 필터 "
+        "신뢰도가 낮을 수 있습니다)."
+    )
 
 buy_card, sell_card = st.columns(2)
 with buy_card:
@@ -229,15 +272,24 @@ refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 
 
 
 @st.cache_data(ttl=3600, show_spinner="데이터를 내려받는 중입니다...")
-def load_signals(as_of_iso: str, years: int) -> pd.DataFrame:
-    return backtest.prepare_signals(as_of=date.fromisoformat(as_of_iso), years=years)
+def load_signals(as_of_iso: str, years: int, gold_price_basis: str) -> pd.DataFrame:
+    return backtest.prepare_signals(
+        as_of=date.fromisoformat(as_of_iso), years=years, gold_price_basis=gold_price_basis
+    )
 
 
 if refresh_clicked:
     st.cache_data.clear()
 
+
+def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
+    if basis == config.GOLD_PRICE_BASIS_KRX:
+        return f"{value:,.0f}원"
+    return f"${value:,.2f}"
+
+
 try:
-    signals = load_signals(today_kst().isoformat(), int(years))
+    signals = load_signals(today_kst().isoformat(), int(years), gold_price_basis)
     result = backtest.simulate(
         signals,
         entry_delay_days=int(entry_delay_days),
@@ -407,6 +459,11 @@ for t in trades:
         )
 marker_df = pd.DataFrame(marker_rows)
 
+# Basis-aware price display: KRX (KRW/g) shows no decimals and no "$", intl
+# (USD/oz) keeps the original "$" formatting.
+_price_tooltip_format = "$,.2f" if gold_price_basis == config.GOLD_PRICE_BASIS_INTL else ",.0f"
+_price_tooltip_title = "체결가" if gold_price_basis == config.GOLD_PRICE_BASIS_INTL else "체결가 (원)"
+
 if not marker_df.empty:
     markers = (
         alt.Chart(marker_df)
@@ -423,7 +480,7 @@ if not marker_df.empty:
             tooltip=[
                 alt.Tooltip("date:T", title="날짜"),
                 alt.Tooltip("구분:N", title="구분"),
-                alt.Tooltip("가격:Q", title="체결가"),
+                alt.Tooltip("가격:Q", title=_price_tooltip_title, format=_price_tooltip_format),
                 alt.Tooltip("return:Q", title="당시 누적수익률", format=".1%"),
                 alt.Tooltip("사유:N", title="사유"),
             ],
@@ -489,10 +546,10 @@ if trades:
     trade_rows = [
         {
             "매수일": t["entry_date"].date(),
-            "매수가": round(t["entry_price"], 2),
+            "매수가": _format_gold_price(t["entry_price"]),
             "매수 사유": t["entry_reason"] or "-",
             "매도일": t["exit_date"].date() if t["exit_date"] is not None else "미청산(보유 중)",
-            "매도가": round(t["exit_price"], 2),
+            "매도가": _format_gold_price(t["exit_price"]),
             "매도 사유": t["exit_reason"] or ("미청산" if t["open"] else "-"),
             "보유일수": t["hold_days"],
             "구간수익률": f"{t['period_return']:.2%}" + (" (평가)" if t["open"] else ""),
@@ -536,10 +593,10 @@ def _trades_touching_year(trades_list: list[dict], year: int) -> list[dict]:
             rows.append(
                 {
                     "매수일": t["entry_date"].date(),
-                    "매수가": round(t["entry_price"], 2),
+                    "매수가": _format_gold_price(t["entry_price"]),
                     "매수 사유": t["entry_reason"] or "-",
                     "매도일": t["exit_date"].date() if t["exit_date"] is not None else "미청산(보유 중)",
-                    "매도가": round(t["exit_price"], 2),
+                    "매도가": _format_gold_price(t["exit_price"]),
                     "구간수익률": f"{t['period_return']:.2%}" + (" (평가)" if t["open"] else ""),
                 }
             )
@@ -625,6 +682,117 @@ with st.expander(
             "연환산수익률(CAGR)",
             f"{m_freq_off['strategy_cagr']:.1%}" if m_freq_off["strategy_cagr"] is not None else "-",
         )
+
+with st.expander("🔍 금 가격 기준 (① 국제 시세 vs ② KRX 금현물) 비교", expanded=False):
+    st.caption(
+        "현재 화면의 매수·매도 조건·고급 설정을 그대로 두고, 금 가격 기준만 ①/② 두 가지로 "
+        "각각 계산해 비교합니다. ② 쪽에서 KRX 데이터를 아직 캐시하지 못했다면 최초 계산에 "
+        "1분 내외 걸릴 수 있습니다."
+    )
+    if st.button("① vs ② 비교 계산하기"):
+        with st.spinner("두 기준으로 각각 계산 중입니다..."):
+            try:
+                signals_intl = load_signals(
+                    today_kst().isoformat(), int(years), config.GOLD_PRICE_BASIS_INTL
+                )
+                signals_krx = load_signals(
+                    today_kst().isoformat(), int(years), config.GOLD_PRICE_BASIS_KRX
+                )
+                result_intl = backtest.simulate(
+                    signals_intl,
+                    use_reentry_trigger=use_reentry_trigger,
+                    use_reentry_freq_limit=use_reentry_freq_limit,
+                    **_common_kwargs,
+                )
+                result_krx = backtest.simulate(
+                    signals_krx,
+                    use_reentry_trigger=use_reentry_trigger,
+                    use_reentry_freq_limit=use_reentry_freq_limit,
+                    **_common_kwargs,
+                )
+            except Exception as exc:
+                st.error(f"비교 계산에 실패했습니다: {exc}")
+                st.stop()
+
+        m_intl = result_intl["metrics"]
+        m_krx = result_krx["metrics"]
+        compare_df = pd.DataFrame(
+            {
+                "지표": [
+                    "매매횟수",
+                    "승률",
+                    "최대낙폭(MDD)",
+                    f"{BH_LABEL} 누적수익률",
+                    f"{BH_LABEL} CAGR",
+                    f"{STRATEGY_LABEL}(보유기간) 누적수익률",
+                    f"{STRATEGY_LABEL}(보유기간) CAGR",
+                    f"{STRATEGY_LABEL}(미보유기간 기회수익률 포함) 누적수익률",
+                    f"{STRATEGY_LABEL}(미보유기간 기회수익률 포함) CAGR",
+                ],
+                "① 국제 금 시세": [
+                    f"{m_intl['closed_trade_count']}회",
+                    f"{m_intl['win_rate']:.1%}" if m_intl["win_rate"] is not None else "-",
+                    f"{m_intl['max_drawdown']:.1%}",
+                    f"{m_intl['bh_total_return']:.1%}",
+                    f"{m_intl['bh_cagr']:.1%}" if m_intl["bh_cagr"] is not None else "-",
+                    f"{m_intl['strategy_total_return']:.1%}",
+                    f"{m_intl['strategy_cagr']:.1%}" if m_intl["strategy_cagr"] is not None else "-",
+                    f"{m_intl['hybrid_total_return']:.1%}" if m_intl["hybrid_total_return"] is not None else "-",
+                    f"{m_intl['hybrid_cagr']:.1%}" if m_intl["hybrid_cagr"] is not None else "-",
+                ],
+                "② KRX 금현물": [
+                    f"{m_krx['closed_trade_count']}회",
+                    f"{m_krx['win_rate']:.1%}" if m_krx["win_rate"] is not None else "-",
+                    f"{m_krx['max_drawdown']:.1%}",
+                    f"{m_krx['bh_total_return']:.1%}",
+                    f"{m_krx['bh_cagr']:.1%}" if m_krx["bh_cagr"] is not None else "-",
+                    f"{m_krx['strategy_total_return']:.1%}",
+                    f"{m_krx['strategy_cagr']:.1%}" if m_krx["strategy_cagr"] is not None else "-",
+                    f"{m_krx['hybrid_total_return']:.1%}" if m_krx["hybrid_total_return"] is not None else "-",
+                    f"{m_krx['hybrid_cagr']:.1%}" if m_krx["hybrid_cagr"] is not None else "-",
+                ],
+            }
+        )
+        st.dataframe(compare_df, use_container_width=True, hide_index=True)
+
+        # Signal-date differences: entry/exit dates that appear under one basis
+        # but not the other (same strategy rules, different price feed driving
+        # the MA/trend-filter signals — the ratio trigger's own dates never
+        # differ, since gold_silver_ratio is always international regardless
+        # of this setting).
+        entry_intl = {t["entry_date"] for t in result_intl["trades"]}
+        entry_krx = {t["entry_date"] for t in result_krx["trades"]}
+        exit_intl = {t["exit_date"] for t in result_intl["trades"] if t["exit_date"] is not None}
+        exit_krx = {t["exit_date"] for t in result_krx["trades"] if t["exit_date"] is not None}
+
+        entry_only_intl = sorted(entry_intl - entry_krx)
+        entry_only_krx = sorted(entry_krx - entry_intl)
+        exit_only_intl = sorted(exit_intl - exit_krx)
+        exit_only_krx = sorted(exit_krx - exit_intl)
+        diff_count = (
+            len(entry_only_intl) + len(entry_only_krx) + len(exit_only_intl) + len(exit_only_krx)
+        )
+
+        st.markdown(f"**매수·매도 신호 날짜 차이: {diff_count}건**")
+        if diff_count == 0:
+            st.caption("① / ② 두 기준에서 매수·매도가 발생한 날짜가 완전히 동일합니다.")
+        else:
+            diff_rows = (
+                [{"구분": "매수", "기준": "① 국제 금 시세에만 존재", "날짜": d.date()} for d in entry_only_intl]
+                + [{"구분": "매수", "기준": "② KRX 금현물에만 존재", "날짜": d.date()} for d in entry_only_krx]
+                + [{"구분": "매도", "기준": "① 국제 금 시세에만 존재", "날짜": d.date()} for d in exit_only_intl]
+                + [{"구분": "매도", "기준": "② KRX 금현물에만 존재", "날짜": d.date()} for d in exit_only_krx]
+            )
+            st.dataframe(
+                pd.DataFrame(diff_rows).sort_values(["구분", "날짜"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.caption(
+                "이동평균·장기추세 필터가 기준가격(국제 GC=F vs KRX 금현물)에 따라 다른 날 신호를 "
+                "낼 수 있어 발생하는 차이입니다. 금/은비율 임계값 매수·매도는 항상 국제 시세 "
+                "기준으로 고정되어 있어 이 차이에 나타나지 않습니다."
+            )
 
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "

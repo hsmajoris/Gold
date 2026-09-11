@@ -251,6 +251,36 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
 def render_dashboard() -> None:
     st.title("금(Gold) 상관관계 대시보드")
 
+    # Shared with the 유효성 검증 (backtest) page via config.GOLD_PRICE_BASIS_STATE_KEY
+    # — but NOT via that key's own widget binding: st.navigation resets a
+    # widget's session_state entry back to its default the moment that exact
+    # widget isn't instantiated in a run (i.e. the instant you navigate away
+    # from the page that renders it), so a `key=` shared across two different
+    # pages' widgets does NOT survive navigation between them (verified
+    # directly against this Streamlit version). The fix is to keep the shared
+    # choice in that plain session_state entry (which does survive navigation)
+    # and seed each page's own, page-local widget from it via `index=`,
+    # writing the widget's result straight back after every rerun.
+    _gold_basis_options = [config.GOLD_PRICE_BASIS_INTL, config.GOLD_PRICE_BASIS_KRX]
+    st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_INTL)
+    gold_price_basis = st.radio(
+        "금 가격 기준",
+        options=_gold_basis_options,
+        format_func=lambda v: config.GOLD_PRICE_BASIS_LABELS[v],
+        index=_gold_basis_options.index(st.session_state[config.GOLD_PRICE_BASIS_STATE_KEY]),
+        key="_gold_price_basis_widget_dashboard",
+        horizontal=True,
+        help="유효성 검증(백테스트) 페이지 전체가 이 기준으로 계산됩니다. 이 대시보드 페이지의 "
+        "표·그래프 자체는 이 설정과 무관하게 항상 국제 시세 기준입니다.",
+    )
+    st.session_state[config.GOLD_PRICE_BASIS_STATE_KEY] = gold_price_basis
+    if gold_price_basis == config.GOLD_PRICE_BASIS_KRX:
+        st.caption(
+            "ℹ️ 아래 표의 실질금리·달러인덱스·금/은비율·WTI·VIX는 국제 시세 기준 참고 지표이며 "
+            "KRX 금현물과 직접 대응되지 않습니다. 이 설정은 유효성 검증 페이지의 백테스트에만 "
+            "적용됩니다."
+        )
+
     today = today_kst()
     date_col, refresh_col = st.columns([4, 1])
     with date_col:

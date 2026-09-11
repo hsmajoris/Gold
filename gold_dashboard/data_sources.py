@@ -1,5 +1,6 @@
-"""Fetches raw daily price/rate series from free data sources (FRED CSV export
-and Yahoo Finance via yfinance)."""
+"""Fetches raw daily price/rate series from free data sources (FRED CSV export,
+Yahoo Finance via yfinance, and Naver's stock-data API for KRX's gold-spot
+market)."""
 
 import logging
 import os
@@ -14,7 +15,22 @@ from tenacity import (
     wait_exponential,
 )
 
+from . import config
+
 FRED_OBSERVATIONS_URL = "https://api.stlouisfed.org/fred/series/observations"
+# Naver's stock-data API mirrors KRX's own gold-spot market data verbatim — the
+# {ticker} path segment is literally KRX's own code (e.g. M04020000 for
+# 04020000, "금 99.99_1kg"), and this is a read-only JSON GET with no
+# authentication, unlike KRX's own data.krx.co.kr (which requires a logged-in
+# session for this kind of query — see fetch_krx_gold_krw_per_gram).
+NAVER_METALS_PRICES_URL = "https://api.stock.naver.com/marketindex/metals/{ticker}/prices"
+# Naver rejects any pageSize above this.
+NAVER_METALS_MAX_PAGE_SIZE = 60
+# Safety cap on pagination so a misbehaving endpoint (e.g. one that never
+# returns an empty page) can't loop forever. 2014-03-25 to today is currently
+# (2026) under 3,100 trading days at pageSize=60 — this leaves generous room
+# for years of future growth without ever being a realistic ceiling.
+NAVER_METALS_MAX_PAGES = 4000
 REQUEST_TIMEOUT = 60
 
 logger = logging.getLogger(__name__)
@@ -111,3 +127,55 @@ def fetch_gold_silver_ratio(start=None, end=None) -> pd.Series:
     silver = fetch_yfinance_close("SI=F", start=start, end=end)
     df = pd.concat([gold, silver], axis=1, keys=["gold", "silver"]).dropna()
     return (df["gold"] / df["silver"]).rename("gold_silver_ratio")
+
+
+@_retry_network_call
+def _download_krx_gold_page(page: int, page_size: int = NAVER_METALS_MAX_PAGE_SIZE) -> list:
+    resp = requests.get(
+        NAVER_METALS_PRICES_URL.format(ticker=config.KRX_GOLD_TICKER),
+        params={"page": page, "pageSize": page_size},
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Referer": f"https://stock.naver.com/marketindex/metals/{config.KRX_GOLD_TICKER}/price",
+        },
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def fetch_krx_gold_krw_per_gram() -> pd.Series:
+    """Fetch the full daily price history of KRX's gold-spot market (04020000,
+    "금 99.99_1kg", quoted in KRW per gram) via Naver's stock-data API, which
+    mirrors KRX's own official data under the same ticker (as M04020000) with
+    no login required — unlike data.krx.co.kr's own query endpoints, which
+    require an authenticated session for this kind of historical lookup.
+
+    Pages backwards from today in NAVER_METALS_MAX_PAGE_SIZE-row chunks until
+    an empty page is returned (i.e. all the way back to the market's
+    KRX_GOLD_EARLIEST_DATE launch). Each page fetch is retried up to 3 times
+    (the same 5-10s exponential backoff as every other network call in this
+    module) before giving up.
+    """
+    rows: list[dict] = []
+    page = 1
+    while page <= NAVER_METALS_MAX_PAGES:
+        try:
+            batch = _download_krx_gold_page(page)
+        except Exception as exc:
+            raise RuntimeError(
+                f"failed to fetch KRX gold price (page {page}) after 3 attempts: {exc!r}"
+            ) from exc
+        if not batch:
+            break
+        rows.extend(batch)
+        page += 1
+
+    if not rows:
+        raise RuntimeError("no KRX gold price data returned")
+
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["localTradedAt"]).dt.tz_localize(None).dt.normalize()
+    df["close"] = df["closePrice"].str.replace(",", "", regex=False).astype(float)
+    df = df.drop_duplicates(subset="date").set_index("date").sort_index()
+    return df["close"].rename("krx_gold_krw_per_g")
