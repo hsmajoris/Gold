@@ -32,6 +32,7 @@ DEFAULTS = {
     "bt_buy_ratio": float(backtest.BUY_RATIO),
     "bt_sell_ratio": float(backtest.SELL_RATIO),
     "bt_use_reentry_trigger": True,
+    "bt_long_trend_buffer_pct": backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
     "bt_use_reentry_freq_limit": True,
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
@@ -53,9 +54,10 @@ with st.expander("전략 규칙 보기"):
 - **매수** (미보유 상태일 때만): 아래 "매수 조건" 카드의 `green_count ≥ 임계값` — 고급 설정의
   매수 지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≥ 임계값` — 지연 없이 **당일 즉시 매수**.
   **또는** (고급 설정의 **단기 재진입 로직 사용**이 켜져 있을 때만) **재진입 조건**:
-  (① 장기추세 필터, 필요조건) 금 종가가 200일 이동평균 위에 있고, 동시에 (② 단기 재돌파
-  트리거) 금 종가가 20일 이동평균을 아래에서 위로 상향 돌파한 날 — 이것도 지연 없이 당일
-  즉시 매수. 아무 조건이나 먼저 만족하면 매수합니다
+  (① 장기추세 필터, 필요조건 — 아래 두 가지를 모두 만족해야 함) 금 종가가 200일 이동평균보다
+  "장기추세 필터 버퍼" %(기본 3%) 이상 높고, 동시에 200일 이동평균 자체가 20거래일 전보다
+  높아야(우상향) 하며, 그리고 (② 단기 재돌파 트리거) 금 종가가 20일 이동평균을 아래에서 위로
+  상향 돌파한 날 — 이것도 지연 없이 당일 즉시 매수. 아무 조건이나 먼저 만족하면 매수합니다
 - **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 고급 설정의 매도
   지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≤ 임계값` — 지연 없이 **당일 즉시 매도**
 - 지연이 설정된 green_count 신호는 그 시점 이후 첫 거래일 **종가**로 체결됩니다(지연 기간 중
@@ -163,6 +165,15 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             "(green_count·금/은비율만)으로 되돌아갑니다. green_count·금/은비율 매수 조건에는 "
             "영향을 주지 않습니다.",
         )
+        long_trend_buffer_pct = st.number_input(
+            "① 장기추세 필터 버퍼 (%)",
+            min_value=0.0, max_value=30.0, step=0.5, key="bt_long_trend_buffer_pct",
+            disabled=not use_reentry_trigger,
+            help="위 '단기 재진입 로직 사용'이 켜져 있을 때만 작동합니다. 종가가 200일 이동평균"
+            "보다 이 %만큼 이상 높아야 ① 장기추세 필터를 만족합니다(예: 3이면 200일선 대비 "
+            "+3% 이상). 200일 이동평균 자체가 20거래일 전보다 높아야(우상향) 한다는 조건은 "
+            "이 값과 무관하게 항상 함께 적용됩니다.",
+        )
         use_reentry_freq_limit = st.checkbox(
             f"단기 재진입 빈도 제한 ({backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일 내 1회)",
             key="bt_use_reentry_freq_limit",
@@ -219,6 +230,7 @@ try:
         exit_delay_days=int(exit_delay_days),
         use_reentry_trigger=use_reentry_trigger,
         use_reentry_freq_limit=use_reentry_freq_limit,
+        long_trend_buffer_pct=float(long_trend_buffer_pct),
         buy_ratio=float(buy_ratio),
         sell_ratio=float(sell_ratio),
         buy_green_count=int(buy_green_count),
@@ -489,6 +501,7 @@ st.subheader("검증: 재진입 로직 효과 비교")
 _common_kwargs = dict(
     entry_delay_days=int(entry_delay_days),
     exit_delay_days=int(exit_delay_days),
+    long_trend_buffer_pct=float(long_trend_buffer_pct),
     buy_ratio=float(buy_ratio),
     sell_ratio=float(sell_ratio),
     buy_green_count=int(buy_green_count),

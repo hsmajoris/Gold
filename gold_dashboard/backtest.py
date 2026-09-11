@@ -2,11 +2,15 @@
 threshold, compared against a same-period Buy & Hold benchmark.
 
 Buy (while flat): green_count >= BUY_GREEN_COUNT OR gold/silver ratio >= buy_ratio
-  OR the reentry trigger (gold close > LONG_TREND_WINDOW-day SMA, a necessary
-  long-term-trend condition, AND gold closes back above its
-  SHORT_REENTRY_WINDOW-day SMA today having been at/below it yesterday — see
-  compute_signals' reentry_trigger), optionally rate-limited to at most once
-  per REENTRY_FREQ_LIMIT_DAYS calendar days.
+  OR the reentry trigger — both of:
+    ① long-term trend filter (necessary condition): gold close is at least
+      long_trend_buffer_pct% above its LONG_TREND_WINDOW-day SMA, AND that SMA
+      itself is higher than it was LONG_TREND_SLOPE_LOOKBACK trading days ago
+      (the 200-day SMA must itself be trending up, not just be under price).
+    ② short-term re-breakout trigger: gold closes back above its
+      SHORT_REENTRY_WINDOW-day SMA today, having been at/below it yesterday.
+  See compute_reentry_trigger(). Optionally rate-limited to at most once per
+  REENTRY_FREQ_LIMIT_DAYS calendar days.
 Sell (while holding): green_count == SELL_GREEN_COUNT OR gold/silver ratio <= sell_ratio
 
 All fills happen at the signal day's own close. The green_count trigger can be
@@ -49,12 +53,19 @@ SELL_RATIO = config.DEFAULT_GS_RATIO_SELL_THRESHOLD
 DEFAULT_MIN_HOLDING_DAYS = 30
 
 # Reentry trigger (replaces the previous "fresh gold record high" trigger):
-# necessary condition is gold trading above its LONG_TREND_WINDOW-day SMA
-# (long-term uptrend filter); the trigger itself fires the day gold closes
-# back above its SHORT_REENTRY_WINDOW-day SMA, having been at/below it the
-# previous day (a short-term re-breakout). See compute_signals().
+# necessary condition is a long-term uptrend filter on gold's LONG_TREND_WINDOW
+# -day SMA (see compute_reentry_trigger: a % buffer above it, and the SMA
+# itself sloping up over LONG_TREND_SLOPE_LOOKBACK trading days); the trigger
+# itself fires the day gold closes back above its SHORT_REENTRY_WINDOW-day SMA,
+# having been at/below it the previous day (a short-term re-breakout).
 LONG_TREND_WINDOW = 200
 SHORT_REENTRY_WINDOW = 20
+# How far above its own 200-day SMA gold's close must be (as a %) for the
+# long-term trend filter to hold. User-adjustable per run.
+DEFAULT_LONG_TREND_BUFFER_PCT = 3.0
+# How many trading days back the 200-day SMA's slope is measured over (today's
+# SMA must exceed the SMA from this many trading days ago).
+LONG_TREND_SLOPE_LOOKBACK = 20
 # Default cap on how often the reentry trigger alone (not other buy triggers)
 # may fire — at most once per this many calendar days. User-togglable per run.
 DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 90
@@ -73,14 +84,17 @@ def fetch_raw_data(as_of: date | None = None, years: int = BACKTEST_YEARS) -> pd
 
 def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     """Adds SMA-based gold-friendly flags for real_rate/dxy, green_count (0-6),
-    the raw gold/silver ratio (no MA needed for the ratio itself), and the
-    reentry_trigger flag used by the "재진입" buy condition:
-    - gold_above_long_trend: gold close > its LONG_TREND_WINDOW-day SMA (the
-      long-term trend filter — a necessary condition, not itself a trigger).
+    the raw gold/silver ratio (no MA needed for the ratio itself), and the two
+    raw ingredients the "재진입" buy condition needs (see compute_reentry_trigger
+    for how they combine — kept separate here because that combination depends
+    on a user-adjustable buffer %, while these rolling-window computations
+    don't and would otherwise be needlessly redone on every parameter tweak):
+    - gold_sma_long: gold's own LONG_TREND_WINDOW-day SMA (raw value, not yet
+      compared to price — the long-term trend filter's buffer % and slope
+      check are applied downstream in compute_reentry_trigger).
     - gold_short_ma_crossover_up: gold closes above its SHORT_REENTRY_WINDOW-day
       SMA today, having been at/below it the previous day (a fresh short-term
       re-breakout, not merely "currently above").
-    - reentry_trigger: both of the above true on the same day.
     """
     df = df.copy()
     gf_cols = []
@@ -97,15 +111,38 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     df["green_count"] = df[gf_cols].sum(axis=1).astype(int)
     df["gold_silver_ratio"] = df["gold"] / df["silver"]
 
-    long_sma = metrics.compute_sma(df["gold"], LONG_TREND_WINDOW)
     short_sma = metrics.compute_sma(df["gold"], SHORT_REENTRY_WINDOW)
-    above_long = (df["gold"] > long_sma).fillna(False)
     above_short = (df["gold"] > short_sma).fillna(False)
-    crossed_up_short = above_short & ~above_short.shift(1).fillna(False)
-    df["gold_above_long_trend"] = above_long
-    df["gold_short_ma_crossover_up"] = crossed_up_short
-    df["reentry_trigger"] = above_long & crossed_up_short
+    df["gold_sma_long"] = metrics.compute_sma(df["gold"], LONG_TREND_WINDOW)
+    df["gold_short_ma_crossover_up"] = above_short & ~above_short.shift(1).fillna(False)
     return df
+
+
+def compute_reentry_trigger(
+    df: pd.DataFrame, long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT
+) -> pd.Series:
+    """The "재진입" buy trigger, built from compute_signals()'s gold_sma_long
+    and gold_short_ma_crossover_up columns. Split out from compute_signals()
+    because only this final comparison depends on long_trend_buffer_pct — the
+    rolling SMAs themselves don't, so callers can cheaply re-evaluate this for
+    a different buffer % without recomputing (or refetching) anything else.
+
+    ① long-term trend filter (necessary condition, both must hold):
+       - gold close is at least `long_trend_buffer_pct`% above its 200-day SMA
+         (not just barely above it).
+       - that SMA is itself higher than it was LONG_TREND_SLOPE_LOOKBACK
+         trading days ago (the 200-day SMA must be sloping up, i.e. gold is in
+         a genuine uptrend, not just a flat/declining SMA that price happens
+         to sit above).
+    ② short-term re-breakout: gold_short_ma_crossover_up (see compute_signals).
+
+    Fires only on days both ① and ② hold.
+    """
+    long_sma = df["gold_sma_long"]
+    above_buffer = (df["gold"] > long_sma * (1.0 + long_trend_buffer_pct / 100.0)).fillna(False)
+    long_sma_rising = (long_sma > long_sma.shift(LONG_TREND_SLOPE_LOOKBACK)).fillna(False)
+    gold_above_long_trend = above_buffer & long_sma_rising
+    return gold_above_long_trend & df["gold_short_ma_crossover_up"]
 
 
 def trim_to_backtest_window(
@@ -120,7 +157,12 @@ def trim_to_backtest_window(
 
 
 def _buy_reason(
-    gc: int, r: float, buy_ratio: float, buy_green_count: int, include_reentry: bool = False
+    gc: int,
+    r: float,
+    buy_ratio: float,
+    buy_green_count: int,
+    include_reentry: bool = False,
+    long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
 ) -> str:
     reasons = []
     if gc >= buy_green_count:
@@ -128,7 +170,7 @@ def _buy_reason(
     if r >= buy_ratio:
         reasons.append(f"금/은비율≥{buy_ratio:g}")
     if include_reentry:
-        reasons.append("재진입(200일선 위+20일선 상향돌파)")
+        reasons.append(f"재진입(200일선+{long_trend_buffer_pct:g}%·우상향, 20일선 상향돌파)")
     return ", ".join(reasons)
 
 
@@ -148,6 +190,7 @@ def run_backtest(
     use_reentry_trigger: bool = True,
     use_reentry_freq_limit: bool = True,
     reentry_freq_limit_days: int = DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
+    long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
     buy_green_count: int = BUY_GREEN_COUNT,
@@ -166,10 +209,10 @@ def run_backtest(
       between (a plain timer). While an order is pending, new green_count
       signals on the same side are ignored (only one pending order per side).
     - **gold/silver ratio** (buy: `>= buy_ratio`, sell: `<= sell_ratio`) and the
-      **reentry trigger** (see compute_signals' reentry_trigger: gold above its
-      long-term SMA AND a fresh short-term SMA re-breakout today) are both
-      *immediate*: they always fill the same day, ignoring the delay settings,
-      and preempt any green_count order still pending.
+      **reentry trigger** (see compute_reentry_trigger: gold sufficiently above
+      a rising long-term SMA AND a fresh short-term SMA re-breakout today) are
+      both *immediate*: they always fill the same day, ignoring the delay
+      settings, and preempt any green_count order still pending.
 
     `use_reentry_trigger`: master switch for the reentry trigger, mainly meant
     for A/B comparisons (e.g. the 유효성 검증 page's "재진입 로직 적용 전/후"
@@ -209,7 +252,7 @@ def run_backtest(
     gold = signals["gold"]
     green_count = signals["green_count"]
     ratio = signals["gold_silver_ratio"]
-    reentry_trigger = signals["reentry_trigger"]
+    reentry_trigger = compute_reentry_trigger(signals, long_trend_buffer_pct)
 
     holding = False
     entry_date = None
@@ -252,6 +295,7 @@ def run_backtest(
                     buy_ratio,
                     buy_green_count,
                     include_reentry=reentry_ready,
+                    long_trend_buffer_pct=long_trend_buffer_pct,
                 )
                 pending_buy_date = None
                 pending_buy_reason = None
@@ -488,6 +532,7 @@ def simulate(
     use_reentry_trigger: bool = True,
     use_reentry_freq_limit: bool = True,
     reentry_freq_limit_days: int = DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
+    long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
     buy_green_count: int = BUY_GREEN_COUNT,
@@ -504,6 +549,7 @@ def simulate(
         use_reentry_trigger=use_reentry_trigger,
         use_reentry_freq_limit=use_reentry_freq_limit,
         reentry_freq_limit_days=reentry_freq_limit_days,
+        long_trend_buffer_pct=long_trend_buffer_pct,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
         buy_green_count=buy_green_count,
@@ -531,6 +577,7 @@ def run(
     use_reentry_trigger: bool = True,
     use_reentry_freq_limit: bool = True,
     reentry_freq_limit_days: int = DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
+    long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
     buy_green_count: int = BUY_GREEN_COUNT,
@@ -546,6 +593,7 @@ def run(
         use_reentry_trigger=use_reentry_trigger,
         use_reentry_freq_limit=use_reentry_freq_limit,
         reentry_freq_limit_days=reentry_freq_limit_days,
+        long_trend_buffer_pct=long_trend_buffer_pct,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
         buy_green_count=buy_green_count,
