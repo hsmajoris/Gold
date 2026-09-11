@@ -15,6 +15,15 @@ MA_WINDOWS = [60, 30, 5]
 DEFAULT_GS_RATIO_BUY_THRESHOLD = 100.0
 DEFAULT_GS_RATIO_SELL_THRESHOLD = 60.0
 
+# Indicators that actually feed a real buy/sell trigger (the real_rate+dxy
+# green_count condition). WTI and VIX are reference-only — never used in any
+# buy/sell trigger — so anything that highlights "this signal currently favors
+# gold" (main table row highlighting in build_table.py, main dashboard chart
+# shading in app.py) must never mark them, regardless of their own MA-crossing
+# state. gold_silver_ratio is handled separately (its own fixed threshold,
+# unrelated to any moving average) rather than being in this set.
+GREEN_COUNT_SIGNAL_INDICATORS = {"real_rate", "dxy"}
+
 INDICATOR_META = {
     "real_rate": {
         "label": "실질금리",

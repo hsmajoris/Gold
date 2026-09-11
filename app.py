@@ -39,13 +39,6 @@ CHART_SIGNAL_SHADE_OPACITY = 0.16
 # page's setting never affects these charts.
 CHART_YEARS = 10
 
-# Indicators that actually feed the backtest's real_rate+dxy green_count buy
-# signal. WTI and VIX are reference-only (not used in any buy/sell trigger),
-# so their charts must never show the "buy signal active" shading — only
-# these two, and the gold/silver ratio (its own threshold-based trigger,
-# handled separately below), get a shaded band at all.
-GREEN_COUNT_SIGNAL_INDICATORS = {"real_rate", "dxy"}
-
 
 def _boolean_series_to_ranges(flag: pd.Series) -> list[tuple]:
     """Contiguous [start, end] date ranges where `flag` is True (inclusive of
@@ -162,7 +155,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
             signals.all_windows_gold_friendly_for(
                 indicator_key, chart_data["indicator"], chart_data["smas"]
             )
-            if indicator_key in GREEN_COUNT_SIGNAL_INDICATORS
+            if indicator_key in config.GREEN_COUNT_SIGNAL_INDICATORS
             else None
         )
     else:
@@ -242,7 +235,7 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
             f"🔵 진한 파랑 = {label} 종가, 옅어질수록 5→30→60일 이동평균(왼쪽 축) · "
             "🟠 금 가격(오른쪽 축, $)"
         )
-        if indicator_key in GREEN_COUNT_SIGNAL_INDICATORS:
+        if indicator_key in config.GREEN_COUNT_SIGNAL_INDICATORS:
             st.caption(
                 "🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 (5·30·60일 이평선 3개 모두 동시에 "
                 "만족하는 날). 실제 매매 신호의 green_count는 이 조건을 실질금리·달러인덱스 두 지표에서 "
@@ -300,9 +293,12 @@ def render_dashboard() -> None:
         )
         st.caption("ℹ️ 과거 기준일은 매일 자동 갱신되는 캐시가 아니라 그때그때 실시간으로 계산됩니다.")
     st.caption(
-        "🟢 옅은 녹색 배경 = 그 신호가 현재 금값에 우호적인 방향인 셀입니다. "
-        "정방향 지표(WTI·VIX)는 종가가 이평선 위일 때, 역방향 지표(실질금리·달러인덱스)는 "
-        "종가가 이평선 아래일 때 초록색으로 표시되며, 금/은비율은 이평선 상향 돌파 여부를 그대로 표시합니다. "
+        "🟢 옅은 녹색 배경 = 실제 매수·매도 신호에 쓰이는 지표에서, 그 신호가 현재 금값에 "
+        "우호적인 방향인 셀입니다. 역방향 지표(실질금리·달러인덱스)는 종가가 이평선 아래일 때 "
+        "초록색으로 표시되며(green_count에 사용), 금/은비율은 이평선과 무관하게 종가가 "
+        f"{config.DEFAULT_GS_RATIO_BUY_THRESHOLD:g} 이상일 때만 세 이평선 행 모두 초록색으로 "
+        "표시됩니다(백테스트의 매수 임계값과 동일). WTI·VIX는 참고용 지표라 실제 매수·매도 "
+        "신호에 쓰이지 않으므로 이평선을 돌파해도 녹색으로 표시되지 않습니다. "
         "셀에 보이는 '상향 돌파/이평선 아래' 문구는 하이라이트 색과 무관한, 종가와 이평선의 기술적 위치입니다. "
         "각 셀 하단의 작은 글씨는 그 상향 돌파가 며칠째 지속 중인지를 나타내는 보조 정보입니다."
     )

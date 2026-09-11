@@ -62,13 +62,13 @@ LONG_TREND_WINDOW = 200
 SHORT_REENTRY_WINDOW = 20
 # How far above its own 200-day SMA gold's close must be (as a %) for the
 # long-term trend filter to hold. User-adjustable per run.
-DEFAULT_LONG_TREND_BUFFER_PCT = 3.0
+DEFAULT_LONG_TREND_BUFFER_PCT = 5.0
 # How many trading days back the 200-day SMA's slope is measured over (today's
 # SMA must exceed the SMA from this many trading days ago).
 LONG_TREND_SLOPE_LOOKBACK = 20
 # Default cap on how often the reentry trigger alone (not other buy triggers)
 # may fire — at most once per this many calendar days. User-togglable per run.
-DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 90
+DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 60
 
 # Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.
