@@ -4,6 +4,7 @@ strategy vs. a same-period Buy & Hold benchmark."""
 from datetime import date
 
 import altair as alt
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -23,6 +24,14 @@ STRATEGY_COLOR = "#eb6834"
 BH_COLOR = "#1baf7a"
 BUY_COLOR = "#2a78d6"
 SELL_COLOR = "#e34948"
+# Third line (신호전략 + 기대수익률 포함) gets its own categorical slot (violet)
+# distinct from both STRATEGY_COLOR and BH_COLOR — never red/pink, since a
+# lighter tint of this is used for the non-holding stretch and red/pink would
+# read as "loss" there. NONHOLDING is that lighter tint (mixed toward white),
+# used only for the dashed non-holding segments of the hybrid line.
+STRATEGY_HYBRID_COLOR = "#7b5ea8"
+STRATEGY_HYBRID_NONHOLDING_COLOR = "#c9bfe0"
+NONHOLDING_BAND_COLOR = "#9aa0a6"  # neutral gray background shading, not red/pink
 STRATEGY_LABEL = "신호전략"
 BH_LABEL = "Buy & Hold"
 
@@ -32,7 +41,7 @@ DEFAULTS = {
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
     "bt_buy_ratio": float(backtest.BUY_RATIO),
     "bt_sell_ratio": float(backtest.SELL_RATIO),
-    "bt_use_reentry_trigger": True,
+    "bt_use_reentry_trigger": False,
     "bt_long_trend_buffer_pct": backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
     "bt_use_reentry_freq_limit": True,
     "bt_reentry_freq_limit_days": backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
@@ -102,8 +111,8 @@ with st.expander("전략 규칙 보기"):
   조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
   재진입 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
   green_count 지연 주문이 있어도 먼저 체결됩니다
-- 고급 설정의 **단기 재진입 로직 사용** (기본값 ON)을 끄면, 재진입 조건(①②) 자체를 전혀
-  적용하지 않고 이 로직 도입 이전의 기준(green_count·금/은비율만)으로 되돌아갑니다. 켜져
+- 고급 설정의 **단기 재진입 로직 사용** (기본값 OFF)을 켜야 재진입 조건(①②)이 적용됩니다 —
+  꺼져 있으면(기본값) 이 로직 도입 이전의 기준(green_count·금/은비율만)으로 동작합니다. 켜져
   있을 때만 그 아래 **단기 재진입 빈도 제한** (기본값 ON, 이 상위 설정이 꺼져 있으면 비활성화)이
   작동합니다 — 켜두면 재진입 조건 중 ② 단기 재돌파 트리거로 인한 매수만 최근 "단기 재진입
   빈도 제한 일수"(기본 {freq_limit_days}일, 역일 기준) 내 최대 1회로 제한되고(① 장기추세
@@ -306,8 +315,8 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             "적용됩니다(기본값 0.15%).",
         )
 
-# The "기회수익률" input itself is rendered later, inside the ④ 신호전략
-# (미보유기간 기회수익률 포함) summary-metric group — but its value is needed
+# The "기대수익률" input itself is rendered later, inside the ④ 신호전략
+# (미보유기간 기대수익률 포함) summary-metric group — but its value is needed
 # here, before that section, to run the simulation. Reading straight from
 # session_state (rather than calling st.number_input again) works because a
 # widget's session_state entry always reflects its latest value regardless of
@@ -369,6 +378,8 @@ except Exception as exc:
 m = result["metrics"]
 equity = result["equity_curve"]
 bh_equity = result["bh_equity_curve"]
+holding_curve = result["holding_curve"]
+hybrid_equity = result["hybrid_equity_curve"]
 yearly = result["yearly_returns"]
 trades = result["trades"]
 
@@ -381,7 +392,7 @@ st.caption(
 
 # ---- 1. 요약 지표 (설정 바로 아래에 배치 — 값을 바꿔가며 바로 확인) ----
 # 4개 그룹으로 묶어서 표시: ① 매매 개요 / ② Buy & Hold / ③ 신호전략(보유기간만) /
-# ④ 신호전략(미보유기간 기회수익률 포함, 기회수익률 입력도 이 그룹 안에 위치).
+# ④ 신호전략(미보유기간 기대수익률 포함, 기대수익률 입력도 이 그룹 안에 위치).
 st.subheader("요약 지표")
 holding_fraction = (
     1.0 - m["non_holding_fraction"] if m["non_holding_fraction"] is not None else None
@@ -414,11 +425,11 @@ with strategy_held_col:
         help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률(현금 보유 기간 제외).",
     )
 with strategy_hybrid_col:
-    st.markdown(f"###### ④ {STRATEGY_LABEL} (미보유기간 기회수익률 포함)")
+    st.markdown(f"###### ④ {STRATEGY_LABEL} (미보유기간 기대수익률 포함)")
     st.metric(
         "누적수익률",
         f"{m['hybrid_total_return']:.1%}" if m["hybrid_total_return"] is not None else "-",
-        help="보유 기간엔 실제 금 수익률을, 미보유 기간엔 아래 '기회수익률'을 적용해 이어 붙인 "
+        help="보유 기간엔 실제 금 수익률을, 미보유 기간엔 아래 '기대수익률'을 적용해 이어 붙인 "
         "전체 분석기간 기준 누적수익률입니다.",
     )
     st.metric(
@@ -427,7 +438,7 @@ with strategy_hybrid_col:
         help="위 누적수익률을 분석 기간 전체를 기준으로 연환산한 값입니다.",
     )
     bond_yield_pct = st.number_input(
-        "기회수익률 (연, %)",
+        "기대수익률 (연, %)",
         min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
         help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율로 운용했다고 "
         "가정합니다(예: 채권 매입). 값을 바꾸면 이 그룹의 누적수익률·CAGR이 바로 재계산됩니다.",
@@ -466,13 +477,49 @@ st.altair_chart(cagr_chart, use_container_width=True)
 
 # ---- 3. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
 st.subheader("누적수익률")
+STRAT_HELD_LABEL = f"{STRATEGY_LABEL}(보유기간만)"
+STRAT_HYBRID_LABEL = f"{STRATEGY_LABEL}(기대수익률 포함)"
+
 cum_df = pd.DataFrame(
     {
         "date": equity.index,
-        STRATEGY_LABEL: equity.values - 1.0,
+        STRAT_HELD_LABEL: equity.values - 1.0,
         BH_LABEL: bh_equity.reindex(equity.index).values - 1.0,
     }
 ).melt("date", var_name="series", value_name="return")
+
+# ④(기대수익률 포함) curve's holding-segment points feed into the SAME
+# melted frame/color scale as BH·보유기간만, so all three share exactly one
+# legend. Its non-holding-segment points are a separate, unencoded-color
+# layer below (dashed + lighter tint) so they don't add a 4th legend entry.
+hybrid_returns = hybrid_equity.reindex(equity.index).to_numpy() - 1.0
+holding_bool = holding_curve.reindex(equity.index).fillna(False).to_numpy()
+n_points = len(hybrid_returns)
+# Segment j spans (point j, point j+1) and is a "holding" segment iff
+# holding_bool[j] — matching compute_hybrid_cagr's own convention (a step is
+# classified by the state going INTO it). A point belongs to the holding
+# sub-line if either segment touching it is a holding segment (so the two
+# sub-lines share their shared boundary point and visually connect there).
+point_in_holding = np.zeros(n_points, dtype=bool)
+point_in_nonholding = np.zeros(n_points, dtype=bool)
+if n_points > 1:
+    seg_holding = holding_bool[:-1]
+    point_in_holding[:-1] |= seg_holding
+    point_in_holding[1:] |= seg_holding
+    point_in_nonholding[:-1] |= ~seg_holding
+    point_in_nonholding[1:] |= ~seg_holding
+else:
+    point_in_holding[:] = holding_bool
+    point_in_nonholding[:] = ~holding_bool
+
+hybrid_holding_df = pd.DataFrame(
+    {
+        "date": equity.index,
+        "series": STRAT_HYBRID_LABEL,
+        "return": np.where(point_in_holding, hybrid_returns, np.nan),
+    }
+)
+cum_df = pd.concat([cum_df, hybrid_holding_df], ignore_index=True)
 
 line_chart = (
     alt.Chart(cum_df)
@@ -483,7 +530,10 @@ line_chart = (
         color=alt.Color(
             "series:N",
             title=None,
-            scale=alt.Scale(domain=[STRATEGY_LABEL, BH_LABEL], range=[STRATEGY_COLOR, BH_COLOR]),
+            scale=alt.Scale(
+                domain=[STRAT_HELD_LABEL, BH_LABEL, STRAT_HYBRID_LABEL],
+                range=[STRATEGY_COLOR, BH_COLOR, STRATEGY_HYBRID_COLOR],
+            ),
         ),
         tooltip=[
             alt.Tooltip("date:T", title="날짜"),
@@ -492,6 +542,56 @@ line_chart = (
         ],
     )
 )
+
+# 미보유 구간: 옅은 톤 + 점선, 위 색상 스케일과 무관한 리터럴 색상이라 범례에
+# 별도 항목을 만들지 않음(같은 STRAT_HYBRID_LABEL 시리즈의 연장선일 뿐).
+hybrid_nonholding_df = pd.DataFrame(
+    {
+        "date": equity.index,
+        "return": np.where(point_in_nonholding, hybrid_returns, np.nan),
+        "안내": f"기대수익률 연 {bond_yield_pct:g}% 가정 적용 구간",
+    }
+)
+hybrid_nonholding_line = (
+    alt.Chart(hybrid_nonholding_df)
+    .mark_line(strokeWidth=2, strokeDash=[6, 4], color=STRATEGY_HYBRID_NONHOLDING_COLOR)
+    .encode(
+        x="date:T",
+        y="return:Q",
+        tooltip=[
+            alt.Tooltip("date:T", title="날짜"),
+            alt.Tooltip("return:Q", title="누적수익률(기대수익률 적용)", format=".1%"),
+            alt.Tooltip("안내:N", title=None),
+        ],
+    )
+)
+
+# 미보유 구간 배경 음영(회색) — 연속 미보유 구간을 하나의 띠로 묶어서 표시.
+non_holding_bands = None
+if n_points > 1:
+    seg_df = pd.DataFrame(
+        {"start": equity.index[:-1], "end": equity.index[1:], "holding": holding_bool[:-1]}
+    )
+    seg_df["run_id"] = (seg_df["holding"] != seg_df["holding"].shift()).cumsum()
+    runs = seg_df.groupby("run_id").agg(
+        start=("start", "first"), end=("end", "last"), holding=("holding", "first")
+    )
+    bands_df = runs.loc[~runs["holding"], ["start", "end"]].copy()
+    if not bands_df.empty:
+        bands_df["안내"] = f"기대수익률 연 {bond_yield_pct:g}% 가정 적용 구간"
+        non_holding_bands = (
+            alt.Chart(bands_df)
+            .mark_rect(color=NONHOLDING_BAND_COLOR, opacity=0.14)
+            .encode(
+                x="start:T",
+                x2="end:T",
+                tooltip=[
+                    alt.Tooltip("start:T", title="시작"),
+                    alt.Tooltip("end:T", title="종료"),
+                    alt.Tooltip("안내:N", title=None),
+                ],
+            )
+        )
 
 marker_rows = []
 for t in trades:
@@ -543,12 +643,19 @@ if not marker_df.empty:
             ],
         )
     )
-    combined_chart = alt.layer(line_chart, markers).resolve_scale(color="independent", shape="independent")
+    chart_layers = [line_chart, hybrid_nonholding_line, markers]
 else:
-    combined_chart = line_chart
+    chart_layers = [line_chart, hybrid_nonholding_line]
+if non_holding_bands is not None:
+    chart_layers = [non_holding_bands] + chart_layers
+combined_chart = alt.layer(*chart_layers).resolve_scale(color="independent", shape="independent")
 
 st.altair_chart(combined_chart.properties(height=380).interactive(), use_container_width=True)
-st.caption("▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고)")
+st.caption(
+    "▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고) · "
+    f"{STRAT_HYBRID_LABEL}의 점선·회색 음영 구간 = 미보유(현금) 기간에 기대수익률을 "
+    "가정 적용한 부분"
+)
 
 # ---- 4. 연도별 연환산수익률 막대그래프 ----
 st.subheader("연도별 연환산수익률")
@@ -625,7 +732,7 @@ else:
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "
     "거래비용·세금·슬리피지는 반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 "
-    "있습니다. '④ 신호전략 (미보유기간 기회수익률 포함)' 그룹의 기회수익률은 사용자가 입력한 "
+    "있습니다. '④ 신호전략 (미보유기간 기대수익률 포함)' 그룹의 기대수익률은 사용자가 입력한 "
     "단일 연이율을 그대로 연복리 적용한 단순 가정치이며, 실제 채권 등 투자자산의 이자율 변동· "
     "재투자·신용위험은 반영되어 있지 않습니다."
 )

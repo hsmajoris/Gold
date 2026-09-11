@@ -698,9 +698,16 @@ def compute_hybrid_cagr(
     exit day earns the full gold return (held all day, sold at today's
     close). Using the current day's flag instead would double-count the
     entry day's price move that the strategy never actually captured.
+
+    The returned "hybrid_equity_curve" (same index as holding_curve, starting
+    at 1.0 on the first date) is the day-by-day equity behind hybrid_cagr/
+    hybrid_total_return — built by the same loop, so a chart plotting it is
+    guaranteed to agree with those two scalars exactly (no separate
+    recomputation to drift out of sync).
     """
     dates = holding_curve.index
     hybrid_equity = 1.0
+    equity_values = [1.0]
     non_holding_days = 0
     total_days = 0
     for i in range(1, len(dates)):
@@ -714,10 +721,12 @@ def compute_hybrid_cagr(
             factor = (1.0 + bond_annual_yield) ** (elapsed_days / 365.25)
             non_holding_days += elapsed_days
         hybrid_equity *= factor
+        equity_values.append(hybrid_equity)
 
     hybrid_total_return = hybrid_equity - 1.0
     hybrid_cagr = hybrid_equity ** (365.25 / total_days) - 1.0 if total_days > 0 else None
     non_holding_fraction = non_holding_days / total_days if total_days > 0 else None
+    hybrid_equity_curve = pd.Series(equity_values, index=dates, name="hybrid_equity")
 
     return {
         "bond_annual_yield": bond_annual_yield,
@@ -725,6 +734,7 @@ def compute_hybrid_cagr(
         "hybrid_cagr": hybrid_cagr,
         "non_holding_days": non_holding_days,
         "non_holding_fraction": non_holding_fraction,
+        "hybrid_equity_curve": hybrid_equity_curve,
     }
 
 
@@ -821,17 +831,18 @@ def simulate(
         gold_holding_fee_annual_pct=gold_holding_fee_annual_pct,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
-    metrics_out.update(
-        compute_hybrid_cagr(
-            holding_curve, signals["gold"], bond_annual_yield, gold_holding_fee_annual_pct
-        )
+    hybrid = compute_hybrid_cagr(
+        holding_curve, signals["gold"], bond_annual_yield, gold_holding_fee_annual_pct
     )
+    hybrid_equity_curve = hybrid.pop("hybrid_equity_curve")
+    metrics_out.update(hybrid)
     yearly = yearly_returns(equity_curve, bh_equity_curve)
     return {
         "trades": trades,
         "equity_curve": equity_curve,
         "bh_equity_curve": bh_equity_curve,
         "holding_curve": holding_curve,
+        "hybrid_equity_curve": hybrid_equity_curve,
         "metrics": metrics_out,
         "yearly_returns": yearly,
         "sell_noise_log": sell_noise_log,
