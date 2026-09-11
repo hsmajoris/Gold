@@ -41,11 +41,13 @@ from .timeutil import today_kst
 # (config.py) so both can never drift apart — see compute_signals below.
 MA_WINDOWS = config.MA_WINDOWS
 
-BACKTEST_YEARS = ts.YEARS  # default analysis period; the 유효성 검증 page lets the
-# user override this per-session (3-10 years, see MIN/MAX_BACKTEST_YEARS below)
-# without affecting the main dashboard's fixed-window charts.
 MIN_BACKTEST_YEARS = 3
 MAX_BACKTEST_YEARS = 10
+# Default analysis period a fresh session starts on; the 유효성 검증 page lets
+# the user override this per-session (3-10 years) without affecting the main
+# dashboard's own fixed-window charts (app.py's CHART_YEARS, unrelated to
+# this). Deliberately independent of timeseries.YEARS.
+BACKTEST_YEARS = MAX_BACKTEST_YEARS
 # Extra calendar days of history fetched before the analysis start. Sized for
 # the reentry trigger's LONG_TREND_WINDOW-day (calendar) SMA plus the
 # LONG_TREND_SLOPE_LOOKBACK_DAYS the slope check additionally looks back
@@ -61,9 +63,11 @@ BUY_GREEN_COUNT = 6
 BUY_RATIO = config.DEFAULT_GS_RATIO_BUY_THRESHOLD
 SELL_GREEN_COUNT = 0
 SELL_RATIO = config.DEFAULT_GS_RATIO_SELL_THRESHOLD
-# Not a day-trading strategy by design: default to holding at least a month
-# before any sell trigger is even evaluated (still user-adjustable).
-DEFAULT_MIN_HOLDING_DAYS = 30
+# No minimum holding period by default: a qualifying sell (green_count,
+# ratio, or the sell-noise filter's own D0+N resolution) can fire the day
+# after entry. User-adjustable — raise this to simulate a longer-horizon
+# strategy that ignores sell triggers for a while after buying.
+DEFAULT_MIN_HOLDING_DAYS = 0
 
 # Reentry trigger (replaces the previous "fresh gold record high" trigger):
 # necessary condition is a long-term uptrend filter on gold's LONG_TREND_WINDOW
