@@ -477,21 +477,20 @@ st.altair_chart(cagr_chart, use_container_width=True)
 
 # ---- 3. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
 st.subheader("누적수익률")
-STRAT_HELD_LABEL = f"{STRATEGY_LABEL}(보유기간만)"
 STRAT_HYBRID_LABEL = f"{STRATEGY_LABEL}(기대수익률 포함)"
 
+# 신호전략(보유기간만)은 이 차트에서 제외 — Buy & Hold와 신호전략(기대수익률 포함) 둘만 표시.
 cum_df = pd.DataFrame(
     {
         "date": equity.index,
-        STRAT_HELD_LABEL: equity.values - 1.0,
         BH_LABEL: bh_equity.reindex(equity.index).values - 1.0,
     }
 ).melt("date", var_name="series", value_name="return")
 
 # ④(기대수익률 포함) curve's holding-segment points feed into the SAME
-# melted frame/color scale as BH·보유기간만, so all three share exactly one
-# legend. Its non-holding-segment points are a separate, unencoded-color
-# layer below (dashed + lighter tint) so they don't add a 4th legend entry.
+# melted frame/color scale as BH, so both share exactly one legend. Its
+# non-holding-segment points are a separate, unencoded-color layer below
+# (dashed + lighter tint) so they don't add a 3rd legend entry.
 hybrid_returns = hybrid_equity.reindex(equity.index).to_numpy() - 1.0
 holding_bool = holding_curve.reindex(equity.index).fillna(False).to_numpy()
 n_points = len(hybrid_returns)
@@ -531,8 +530,8 @@ line_chart = (
             "series:N",
             title=None,
             scale=alt.Scale(
-                domain=[STRAT_HELD_LABEL, BH_LABEL, STRAT_HYBRID_LABEL],
-                range=[STRATEGY_COLOR, BH_COLOR, STRATEGY_HYBRID_COLOR],
+                domain=[BH_LABEL, STRAT_HYBRID_LABEL],
+                range=[BH_COLOR, STRATEGY_HYBRID_COLOR],
             ),
         ),
         tooltip=[
@@ -599,7 +598,7 @@ for t in trades:
         {
             "date": t["entry_date"],
             "구분": "매수",
-            "return": float(equity.loc[t["entry_date"]]) - 1.0,
+            "return": float(hybrid_equity.loc[t["entry_date"]]) - 1.0,
             "가격": round(t["entry_price"], 2),
             "사유": t["entry_reason"] or "-",
         }
@@ -609,7 +608,7 @@ for t in trades:
             {
                 "date": t["exit_date"],
                 "구분": "매도",
-                "return": float(equity.loc[t["exit_date"]]) - 1.0,
+                "return": float(hybrid_equity.loc[t["exit_date"]]) - 1.0,
                 "가격": round(t["exit_price"], 2),
                 "사유": t["exit_reason"] or "-",
             }
