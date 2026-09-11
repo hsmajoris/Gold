@@ -124,10 +124,18 @@ DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT = 5.0
 # `d0_close * (1 - band(t))`. If no day in 1..SELL_NOISE_BAND_MAX_TRADING_DAYS
 # reaches its own band, the episode is released unsold (D0 is discarded, as
 # if that first candidate never happened).
+#
+# The band is never even checked for the first SELL_NOISE_BAND_MIN_CHECK_DAY-1
+# trading days: over a handful of days, plain random-walk noise has a
+# non-trivial chance of producing a drop that looks significant purely by
+# chance, so days 1..(MIN_CHECK_DAY-1) hold unconditionally no matter how far
+# price has moved, and only day MIN_CHECK_DAY through MAX_TRADING_DAYS are
+# actually evaluated against their band.
 DEFAULT_SELL_NOISE_USE_DAILY_BAND = True
 SELL_NOISE_BAND_SIGMA_MULTIPLIER = 2.0
 SELL_NOISE_BAND_MONTHLY_VOL_PCT = 4.9  # gold's ~30-year historical monthly volatility
 SELL_NOISE_BAND_TRADING_DAYS_PER_MONTH = 21
+SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS = 8  # first day the band is actually checked
 SELL_NOISE_BAND_MAX_TRADING_DAYS = 21  # observation window cap (~3 weeks)
 
 # Exit confirmation, method ② (legacy, used when the checkbox above is OFF)
@@ -379,14 +387,18 @@ def run_backtest(
     change or restart D0. Confirmation happens one of two ways:
 
     - **Method ① — daily band, `use_daily_band_confirmation=True` (default)**:
-      every trading day t = 1..SELL_NOISE_BAND_MAX_TRADING_DAYS after D0, that
-      day's close is compared against a confirmation band that widens with
-      `sqrt(t)` — see `sell_noise_band_pct()` for the exact derivation. The
-      first day the close is at or below `d0_close * (1 - sell_noise_band_pct(t))`,
-      the position sells that day. If no day through the window's end reaches
-      its own band, the episode is released unsold and D0 is discarded, as
-      if that first candidate never happened — the next qualifying signal
-      starts a brand new episode.
+      days t = 1..`SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS - 1` after D0 are
+      never checked at all (too short a window for a drop to mean anything
+      beyond random-walk noise) — the position just holds regardless of price.
+      From t = `SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS` through
+      `SELL_NOISE_BAND_MAX_TRADING_DAYS`, every trading day's close is compared
+      against a confirmation band that widens with `sqrt(t)` — see
+      `sell_noise_band_pct()` for the exact derivation. The first day the
+      close is at or below `d0_close * (1 - sell_noise_band_pct(t))`, the
+      position sells that day. If no day through the window's end reaches its
+      own band, the episode is released unsold and D0 is discarded, as if
+      that first candidate never happened — the next qualifying signal starts
+      a brand new episode.
     - **Method ② — fixed D0+7, `use_daily_band_confirmation=False`**: a
       single checkpoint at D0+`SELL_NOISE_FILTER_WINDOW_DAYS` calendar days
       (the first trading day on or after that date). Sells there only if
@@ -545,11 +557,18 @@ def run_backtest(
                 if sell_noise_state["use_daily_band"]:
                     # Method ①: every trading day since D0 gets its own,
                     # progressively wider confirmation band (see
-                    # sell_noise_band_pct's derivation above).
+                    # sell_noise_band_pct's derivation above), but the first
+                    # SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS-1 days are never
+                    # even checked (too short a window for a drop to mean
+                    # anything beyond random-walk noise).
                     elapsed_trading_days = sell_noise_state["elapsed_trading_days"] + 1
                     sell_noise_state["elapsed_trading_days"] = elapsed_trading_days
-                    band_pct = sell_noise_band_pct(elapsed_trading_days)
-                    price_dropped = price <= d0_price * (1.0 - band_pct)
+                    if elapsed_trading_days >= SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS:
+                        band_pct = sell_noise_band_pct(elapsed_trading_days)
+                        price_dropped = price <= d0_price * (1.0 - band_pct)
+                    else:
+                        band_pct = None
+                        price_dropped = False
                     if price_dropped:
                         resolved = True
                         sold = True
