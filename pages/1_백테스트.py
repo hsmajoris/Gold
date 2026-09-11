@@ -50,6 +50,7 @@ DEFAULTS = {
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
     "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
     "bt_use_sell_noise_filter": True,
+    "bt_use_daily_band_confirmation": backtest.DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     "bt_sell_noise_filter_drop_pct": backtest.DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
     "bt_krx_holding_fee_pct": backtest.DEFAULT_KRX_HOLDING_FEE_ANNUAL_PCT,
 }
@@ -125,13 +126,21 @@ with st.expander("전략 규칙 보기"):
 - 고급 설정의 **상승추세 중 매도신호 노이즈 필터** (기본값 ON, 매수 쪽 재진입 로직과는 완전히
   별개)는 매도신호가 실제로 체결되기 직전(green_count 지연 주문의 체결일, 또는 금/은비율
   즉시 매도일)에 개입합니다. 그날(D0) 종가가 365일(역일) 이동평균보다 5% 이상 높을 때만 작동하며
-  (미만이면 이 필터 없이 항상 그대로 즉시 매도) — 매도 실행 여부는 **오직** D0+7일(역일 기준)
-  시점의 종가를 D0 종가와 비교한 결과만으로 결정됩니다: D0 종가보다 "매도 확인 하락률"
-  (기본 5%) 이상 낮으면 그날 매도, 그만큼 낮지 않으면(살짝만 빠지거나 오히려 오른 경우 포함)
-  관찰모드를 해제하고 D0의 신호는 없었던 것으로 처리합니다(다음 매도신호부터 처음부터 다시
-  시작 — 대세 상승장 중 작은 되돌림 때문에 일찍 매도되는 것을 방지). D0~D0+7일 사이에 추가로
-  뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않으며, 몇 번 더 떴는지·다음날 재발생(2연속)
-  여부·7일 내 3회 이상 여부는 참고용 기록으로만 남습니다
+  (미만이면 이 필터 없이 항상 그대로 즉시 매도), 작동하면 D0의 매도신호는 무시하고 관찰을
+  시작합니다. 관찰 중 추가로 뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않으며 참고용
+  기록으로만 남습니다. 매도 실행 여부를 확인하는 방식은 **매도 확인 - 매일 갱신 2시그마 밴드**
+  설정에 따라 둘 중 하나입니다:
+  - **켜짐(기본값)**: D0 이후 1~21거래일(약 3주) 동안 매일, 그날까지 경과한 거래일수의 제곱근에
+    비례해 넓어지는 확인 밴드를 계산합니다 — `그날의 밴드(%) = 2 × 일간표준편차 × √(경과
+    거래일수)`, 일간표준편차는 30년 금 가격 기준 월간 변동성(4.9%)을 √21(한 달 거래일수)로
+    나눠 환산(예: 1거래일차 -2.14%, 5거래일차 -4.78%, 10거래일차 -6.76%, 14거래일차 -8.00%,
+    21거래일차 -9.80%). 종가가 D0 종가 대비 그날의 밴드만큼(또는 그 이상) 하락한 **첫날** 즉시
+    매도합니다. 21거래일 동안 한 번도 도달하지 못하면 관찰을 종료하고 D0의 신호는 없었던 것으로
+    처리합니다(다음 매도신호부터 처음부터 다시 시작 — 대세 상승장 중 완만한 조정 때문에 일찍
+    매도되는 것을 방지하되, 하락 속도가 빠를수록 더 일찍 확인되도록 설계).
+  - **꺼짐**: D0+7일(역일 기준) 고정 시점의 종가만을 D0 종가와 비교합니다 — "매도 확인
+    하락률"(기본 5%) 이상 낮으면 그날 매도, 그만큼 낮지 않으면 관찰모드를 해제하고 D0의 신호는
+    없었던 것으로 처리합니다
 - 고급 설정의 **KRX 금현물 보유 수수료 (연, %)** (기본값 0.15%, ② KRX 금현물 선택 시에만
   적용)는 보유 중인 기간의 경과 일수에 비례해 연복리로 수익률에서 차감되며, Buy & Hold와
   신호전략 보유 기간 모두 동일하게 적용됩니다(① 국제 금 시세에는 적용되지 않음)
@@ -289,21 +298,33 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             help="매도신호가 발생한 날(D0) 종가가 365일 이동평균보다 "
             f"{backtest.DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT:g}% 이상 높을 때만 작동합니다(그 미만이면 "
             "이 필터와 무관하게 항상 즉시 매도). 켜두면: D0의 매도신호는 무시하고 보유를 유지하며, "
-            f"D0+{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일(역일 기준) 시점의 종가를 D0 종가와 비교해 — "
-            "아래 '매도 확인 하락률' 이상 떨어졌으면 그날 매도를 실행하고, 그만큼 떨어지지 않았으면 "
-            "관찰모드를 해제하고 D0의 신호는 없었던 것으로 처리합니다(이후 새 매도신호부터 다시 "
-            f"시작). 이 D0~D0+{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일 사이에 추가로 뜨는 매도신호는 "
-            "매도 여부에 전혀 영향을 주지 않고 참고 기록으로만 남습니다. 끄면 매도 신호가 뜨는 즉시 "
-            "항상 매도합니다(이 로직 도입 이전과 동일).",
+            "아래 '매도 확인 - 매일 갱신 2시그마 밴드' 설정에 따라 매일 확대되는 밴드(기본) 또는 "
+            f"D0+{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일(역일 기준) 고정 시점(끄면) 방식으로 매도 "
+            "여부를 확인합니다. 관찰 기간 중 추가로 뜨는 매도신호는 매도 여부에 전혀 영향을 주지 "
+            "않고 참고 기록으로만 남습니다. 끄면 매도 신호가 뜨는 즉시 항상 매도합니다(이 로직 "
+            "도입 이전과 동일).",
+        )
+        use_daily_band_confirmation = st.checkbox(
+            "매도 확인 - 매일 갱신 2시그마 밴드",
+            key="bt_use_daily_band_confirmation",
+            disabled=not use_sell_noise_filter,
+            help="켜두면(기본값): 관찰 시작(D0) 후 1~21거래일(3주) 동안 매일, 그날까지 경과한 "
+            "거래일수의 제곱근에 비례해 넓어지는 확인 밴드(√t 법칙, 2시그마 — 예: 1일차 -2.14%, "
+            "5일차 -4.78%, 10일차 -6.76%, 14일차 -8.00%, 21일차 -9.80%)를 계산해, D0 종가 대비 "
+            "그날의 밴드만큼(또는 그 이상) 하락한 첫날 즉시 매도합니다. 21거래일 동안 한 번도 "
+            "밴드에 도달하지 못하면 관찰을 종료하고 D0의 신호는 없었던 것으로 처리합니다. "
+            "끄면: 아래 '매도 확인 하락률'을 사용하는 기존 방식(D0+7일 고정 시점 확인)으로 "
+            "동작합니다.",
         )
         sell_noise_filter_drop_pct = st.number_input(
-            "매도 확인 하락률 (%, D0 대비 D0+7일)",
+            "매도 확인 하락률 (%, D0 대비 D0+7일 — 위 2시그마 밴드가 꺼져 있을 때만 사용)",
             min_value=0.0, max_value=50.0, step=0.5, key="bt_sell_noise_filter_drop_pct",
-            disabled=not use_sell_noise_filter,
-            help="위 '상승추세 중 매도신호 노이즈 필터'가 켜져 있을 때만 작동합니다. D0+7일 종가가 "
-            "D0 종가보다 이 %만큼(또는 그 이상) 낮아야만 매도를 실행합니다(예: 5이면 5% 이상 "
-            "하락해야 매도, 살짝만 빠진 경우는 대세 상승장으로 보고 관찰모드를 해제해 계속 "
-            "보유). 0으로 두면 이전처럼 '조금이라도 낮으면 매도'와 동일해집니다.",
+            disabled=not use_sell_noise_filter or use_daily_band_confirmation,
+            help="위 '매도 확인 - 매일 갱신 2시그마 밴드'가 꺼져 있을 때만 작동하는 고정 방식 "
+            "설정입니다. D0+7일 종가가 D0 종가보다 이 %만큼(또는 그 이상) 낮아야만 매도를 "
+            "실행합니다(예: 5이면 5% 이상 하락해야 매도, 살짝만 빠진 경우는 대세 상승장으로 보고 "
+            "관찰모드를 해제해 계속 보유). 0으로 두면 이전처럼 '조금이라도 낮으면 매도'와 "
+            "동일해집니다.",
         )
         krx_holding_fee_pct = st.number_input(
             "KRX 금현물 보유 수수료 (연, %)",
@@ -368,6 +389,7 @@ try:
         min_holding_days=int(min_holding_days),
         bond_annual_yield=float(bond_yield_pct) / 100.0,
         use_sell_noise_filter=use_sell_noise_filter,
+        use_daily_band_confirmation=use_daily_band_confirmation,
         sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
         gold_holding_fee_annual_pct=effective_holding_fee_pct,
     )
@@ -452,30 +474,7 @@ if m["has_open_position"]:
 if m["strategy_cagr"] is None:
     st.caption("ℹ️ 신호전략이 이 기간 동안 한 번도 매수 신호를 내지 않아 CAGR을 계산할 수 없습니다.")
 
-# ---- 2. 연환산수익률(CAGR) 비교 차트 ----
-st.subheader("연환산수익률(CAGR) 비교")
-cagr_labels = [f"{STRATEGY_LABEL} (순수투자기간)", f"{BH_LABEL} (전체기간)"]
-cagr_df = pd.DataFrame(
-    {"series": cagr_labels, "cagr": [m["strategy_cagr"] or 0.0, m["bh_cagr"] or 0.0]}
-)
-cagr_chart = (
-    alt.Chart(cagr_df)
-    .mark_bar(size=70)
-    .encode(
-        x=alt.X("series:N", title=None, sort=None),
-        y=alt.Y("cagr:Q", title="CAGR", axis=alt.Axis(format="%")),
-        color=alt.Color(
-            "series:N",
-            legend=None,
-            scale=alt.Scale(domain=cagr_labels, range=[STRATEGY_COLOR, BH_COLOR]),
-        ),
-        tooltip=[alt.Tooltip("series:N", title="전략"), alt.Tooltip("cagr:Q", title="CAGR", format=".2%")],
-    )
-    .properties(height=280)
-)
-st.altair_chart(cagr_chart, use_container_width=True)
-
-# ---- 3. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
+# ---- 2. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
 st.subheader("누적수익률")
 STRAT_HYBRID_LABEL = f"{STRATEGY_LABEL}(기대수익률 포함)"
 
@@ -656,7 +655,7 @@ st.caption(
     "가정 적용한 부분"
 )
 
-# ---- 4. 연도별 연환산수익률 막대그래프 ----
+# ---- 3. 연도별 연환산수익률 막대그래프 ----
 st.subheader("연도별 연환산수익률")
 yearly_long = yearly.melt(
     id_vars=["year", "days_span"],
@@ -703,7 +702,7 @@ st.caption(
     "수익률 확인 가능). 신호전략이 그 해 내내 현금(미보유) 상태였다면 0%로 표시됩니다."
 )
 
-# ---- 5. 거래 내역 표 ----
+# ---- 4. 거래 내역 표 ----
 st.subheader("거래 내역")
 if trades:
     trade_rows = [
