@@ -34,6 +34,7 @@ DEFAULTS = {
     "bt_use_reentry_trigger": True,
     "bt_long_trend_buffer_pct": backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
     "bt_use_reentry_freq_limit": True,
+    "bt_reentry_freq_limit_days": backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
@@ -68,10 +69,10 @@ with st.expander("전략 규칙 보기"):
 - 고급 설정의 **단기 재진입 로직 사용** (기본값 ON)을 끄면, 재진입 조건(①②) 자체를 전혀
   적용하지 않고 이 로직 도입 이전의 기준(green_count·금/은비율만)으로 되돌아갑니다. 켜져
   있을 때만 그 아래 **단기 재진입 빈도 제한** (기본값 ON, 이 상위 설정이 꺼져 있으면 비활성화)이
-  작동합니다 — 켜두면 재진입 조건 중 ② 단기 재돌파 트리거로 인한 매수만 최근 90일(역일 기준)
-  내 최대 1회로 제한되고(① 장기추세 필터는 이 제한과 무관하게 항상 필요조건), 꺼두면 ①②
-  조건만으로 제한 없이 자유롭게 재진입합니다. 이 제한은 green_count·금/은비율 매수 조건에는
-  영향을 주지 않습니다
+  작동합니다 — 켜두면 재진입 조건 중 ② 단기 재돌파 트리거로 인한 매수만 최근 "단기 재진입
+  빈도 제한 일수"(기본 {freq_limit_days}일, 역일 기준) 내 최대 1회로 제한되고(① 장기추세
+  필터는 이 제한과 무관하게 항상 필요조건), 꺼두면 ①② 조건만으로 제한 없이 자유롭게
+  재진입합니다. 이 제한은 green_count·금/은비율 매수 조건에는 영향을 주지 않습니다
 - 고급 설정의 **최소 보유일수**(역일/달력일 기준, 주말·공휴일 관계없이 매수일로부터의 날짜
   차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
   금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
@@ -82,6 +83,7 @@ with st.expander("전략 규칙 보기"):
             years=int(st.session_state["bt_years"]),
             buffer=backtest.BUFFER_DAYS,
             buffer_pct=float(st.session_state["bt_long_trend_buffer_pct"]),
+            freq_limit_days=int(st.session_state["bt_reentry_freq_limit_days"]),
         )
     )
 
@@ -180,13 +182,20 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             "이 값과 무관하게 항상 함께 적용됩니다.",
         )
         use_reentry_freq_limit = st.checkbox(
-            f"단기 재진입 빈도 제한 ({backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일 내 1회)",
+            f"단기 재진입 빈도 제한 ({int(st.session_state['bt_reentry_freq_limit_days'])}일 내 1회)",
             key="bt_use_reentry_freq_limit",
             disabled=not use_reentry_trigger,
             help="위 '단기 재진입 로직 사용'이 켜져 있을 때만 작동합니다. 켜면 ② 단기 재돌파 "
-            f"트리거로 인한 매수는 최근 {backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일(역일 기준) "
-            "내 최대 1회로 제한됩니다 — ① 장기추세 필터는 이 제한과 무관하게 항상 필요조건으로 "
-            "적용됩니다. 끄면 제한 없이 조건을 만족할 때마다 재진입합니다.",
+            "트리거로 인한 매수는 최근 아래 일수(역일 기준) 내 최대 1회로 제한됩니다 — "
+            "① 장기추세 필터는 이 제한과 무관하게 항상 필요조건으로 적용됩니다. 끄면 제한 없이 "
+            "조건을 만족할 때마다 재진입합니다.",
+        )
+        reentry_freq_limit_days = st.number_input(
+            "단기 재진입 빈도 제한 일수 (일)",
+            min_value=1, max_value=365, step=1, key="bt_reentry_freq_limit_days",
+            disabled=not (use_reentry_trigger and use_reentry_freq_limit),
+            help="위 '단기 재진입 빈도 제한'이 켜져 있을 때만 작동합니다. ② 단기 재돌파 트리거로 "
+            "인한 매수를 이 일수(역일 기준) 내 최대 1회로 제한합니다(기본 60일).",
         )
 
     with adv_sell_col:
@@ -235,6 +244,7 @@ try:
         exit_delay_days=int(exit_delay_days),
         use_reentry_trigger=use_reentry_trigger,
         use_reentry_freq_limit=use_reentry_freq_limit,
+        reentry_freq_limit_days=int(reentry_freq_limit_days),
         long_trend_buffer_pct=float(long_trend_buffer_pct),
         buy_ratio=float(buy_ratio),
         sell_ratio=float(sell_ratio),
@@ -506,6 +516,7 @@ st.subheader("검증: 재진입 로직 효과 비교")
 _common_kwargs = dict(
     entry_delay_days=int(entry_delay_days),
     exit_delay_days=int(exit_delay_days),
+    reentry_freq_limit_days=int(reentry_freq_limit_days),
     long_trend_buffer_pct=float(long_trend_buffer_pct),
     buy_ratio=float(buy_ratio),
     sell_ratio=float(sell_ratio),
@@ -583,7 +594,7 @@ with st.expander("🔍 2025년 구간 — 재진입 로직 적용 전/후 비교
             st.caption("2025년 구간에는 두 시나리오 모두 매수/매도가 발생하지 않았습니다.")
 
 with st.expander(
-    f"🔍 단기 재진입 빈도 제한 ({backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일 내 1회) ON vs OFF 비교",
+    f"🔍 단기 재진입 빈도 제한 ({int(reentry_freq_limit_days)}일 내 1회) ON vs OFF 비교",
     expanded=True,
 ):
     st.caption("전체 분석 기간 기준 비교이며, 위 '단기 재진입 빈도 제한' 체크박스와 무관하게 항상 두 경우를 모두 계산합니다.")

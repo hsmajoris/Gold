@@ -68,7 +68,7 @@ DEFAULT_LONG_TREND_BUFFER_PCT = 5.0
 LONG_TREND_SLOPE_LOOKBACK = 20
 # Default cap on how often the reentry trigger alone (not other buy triggers)
 # may fire — at most once per this many calendar days. User-togglable per run.
-DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 90
+DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 60
 
 # Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.
