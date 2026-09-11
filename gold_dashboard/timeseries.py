@@ -47,20 +47,78 @@ def fetch_raw_series(
     raise ValueError(f"unknown series key: {key}")
 
 
+def gold_fetch_start(as_of: date | None, years: int, buffer_days: int) -> date:
+    """The (unclamped) start date a gold price fetch would use for this
+    years/buffer_days window — shared by fetch_gold_price_series (which clamps
+    it to KRX_GOLD_EARLIEST_DATE under the "krx" basis) and the UI (which uses
+    the same, unclamped, computation to decide whether to show a heads-up that
+    clamping will happen)."""
+    end_date = as_of or today_kst()
+    return end_date - timedelta(days=years * 365 + buffer_days)
+
+
+def gold_window_would_clamp_to_krx(as_of: date | None, years: int, buffer_days: int) -> bool:
+    """True if fetch_gold_price_series(..., basis=KRX) would have to clamp this
+    window's start date forward to KRX_GOLD_EARLIEST_DATE (i.e. the requested
+    window reaches further back than KRX's gold-spot market has ever traded)."""
+    return gold_fetch_start(as_of, years, buffer_days) < config.KRX_GOLD_EARLIEST_DATE
+
+
+def fetch_gold_price_series(
+    as_of: date | None = None,
+    years: int = YEARS,
+    buffer_days: int = BUFFER_DAYS,
+    basis: str = config.GOLD_PRICE_BASIS_INTL,
+) -> pd.Series:
+    """Fetch the gold price series used for signals/MAs/P&L under the given
+    basis: GC=F (USD/oz) for "intl" (unchanged from before this option
+    existed), or KRX's actual domestic gold-spot market (04020000, KRW/g) for
+    "krx" — a real quote, not a currency conversion. The "krx" window is
+    silently clamped forward to KRX_GOLD_EARLIEST_DATE if it would otherwise
+    start before the market existed (see gold_window_would_clamp_to_krx, which
+    the UI calls with the same arguments to warn the user before this happens)."""
+    if basis == config.GOLD_PRICE_BASIS_KRX:
+        end_date = as_of or today_kst()
+        fetch_start = max(gold_fetch_start(end_date, years, buffer_days), config.KRX_GOLD_EARLIEST_DATE)
+        full = ds.fetch_krx_gold_krw_per_gram()
+        series = full[(full.index >= pd.Timestamp(fetch_start)) & (full.index <= pd.Timestamp(end_date))]
+        if series.empty:
+            raise RuntimeError("선택한 분석 기간에 해당하는 KRX 금현물 데이터가 없습니다.")
+        return series
+    return fetch_raw_series("gold", as_of, years=years, buffer_days=buffer_days)
+
+
 def fetch_backtest_frame(
-    as_of: date | None = None, years: int = YEARS, buffer_days: int = BUFFER_DAYS
+    as_of: date | None = None,
+    years: int = YEARS,
+    buffer_days: int = BUFFER_DAYS,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
 ) -> pd.DataFrame:
-    """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
-    for the trading backtest, covering `years` of history (+ `buffer_days`
-    ahead of it, to warm up rolling-window signals before the display start —
-    see fetch_raw_series). Different markets close on different days (rates
-    vs. commodities), so the four series are joined on the union of their
-    dates and gaps are forward-filled from the prior available value.
+    """Fetch real_rate/dxy/gold/gold_intl/silver as one date-aligned, forward-
+    filled frame for the trading backtest, covering `years` of history (+
+    `buffer_days` ahead of it, to warm up rolling-window signals before the
+    display start — see fetch_raw_series). Different markets close on
+    different days (rates vs. commodities vs. KRX), so the series are joined
+    on the union of their dates and gaps are forward-filled from the prior
+    available value.
+
+    `gold_price_basis` selects what the "gold" column (used for every MA/trend
+    filter/trigger/P&L computation) actually is — see fetch_gold_price_series.
+    "gold_intl" is always GC=F regardless of that choice: the gold/silver
+    ratio trigger is deliberately computed only from international USD/oz
+    prices (matching the main dashboard's own gold/silver ratio row, which is
+    never affected by this setting either), since a KRW/g-over-USD/oz ratio
+    would be meaningless.
     """
     end_date = as_of or today_kst()
     real_rate = fetch_raw_series("real_rate", end_date, years=years, buffer_days=buffer_days)
     dxy = fetch_raw_series("dxy", end_date, years=years, buffer_days=buffer_days)
-    gold = fetch_raw_series("gold", end_date, years=years, buffer_days=buffer_days)
+    gold = fetch_gold_price_series(end_date, years=years, buffer_days=buffer_days, basis=gold_price_basis)
+    gold_intl = (
+        gold
+        if gold_price_basis == config.GOLD_PRICE_BASIS_INTL
+        else fetch_raw_series("gold", end_date, years=years, buffer_days=buffer_days)
+    )
     silver = fetch_raw_series("silver", end_date, years=years, buffer_days=buffer_days)
 
     df = pd.concat(
@@ -68,6 +126,7 @@ def fetch_backtest_frame(
             real_rate.rename("real_rate"),
             dxy.rename("dxy"),
             gold.rename("gold"),
+            gold_intl.rename("gold_intl"),
             silver.rename("silver"),
         ],
         axis=1,
@@ -75,7 +134,7 @@ def fetch_backtest_frame(
     ).sort_index()
     df = df[df.index <= pd.Timestamp(end_date)]
     df = df.ffill()
-    df = df.dropna()  # drop the leading stretch before all four series have started
+    df = df.dropna()  # drop the leading stretch before all five series have started
     return df
 
 

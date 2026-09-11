@@ -1,6 +1,8 @@
 """Static configuration for the gold correlation dashboard: indicator metadata,
 fixed reference text (structure/meaning/correlation direction), and footnotes."""
 
+from datetime import date
+
 INDICATOR_ORDER = ["real_rate", "dxy", "gold_silver_ratio", "wti", "vix"]
 
 MA_WINDOWS = [60, 30, 5]
@@ -23,6 +25,29 @@ DEFAULT_GS_RATIO_SELL_THRESHOLD = 60.0
 # state. gold_silver_ratio is handled separately (its own fixed threshold,
 # unrelated to any moving average) rather than being in this set.
 GREEN_COUNT_SIGNAL_INDICATORS = {"real_rate", "dxy"}
+
+# Which price series the backtest ("유효성 검증") page's entire pipeline uses for
+# gold itself — a single shared session_state key so the choice is one piece of
+# state no matter which page renders the control. "intl" (default) is GC=F, the
+# same series the app has always used. "krx" swaps in KRX's actual domestic
+# gold-spot market (04020000, "금 99.99_1kg", quoted in KRW/gram) fetched from
+# Naver's aggregation API — an apples-to-apples real quote, not a USD price
+# multiplied by an exchange rate. The gold/silver ratio trigger and the main
+# dashboard's own table/charts are deliberately NOT affected by this choice —
+# see gold_dashboard/data_sources.py and gold_dashboard/timeseries.py.
+GOLD_PRICE_BASIS_INTL = "intl"
+GOLD_PRICE_BASIS_KRX = "krx"
+GOLD_PRICE_BASIS_STATE_KEY = "gold_price_basis"
+GOLD_PRICE_BASIS_LABELS = {
+    GOLD_PRICE_BASIS_INTL: "① 국제 금 시세 (USD/oz, GC=F)",
+    GOLD_PRICE_BASIS_KRX: "② KRX 금현물 (KRW/g, 실제 국내 시세)",
+}
+
+# KRX's gold-spot market (04020000) opened on this date — no earlier data exists
+# at the source, so any analysis window under GOLD_PRICE_BASIS_KRX is clamped to
+# not start before it (see timeseries.gold_window_would_clamp_to_krx).
+KRX_GOLD_TICKER = "M04020000"
+KRX_GOLD_EARLIEST_DATE = date(2014, 3, 24)
 
 INDICATOR_META = {
     "real_rate": {
