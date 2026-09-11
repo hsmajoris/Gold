@@ -248,8 +248,92 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
             )
 
 
+_KEY_TAKEAWAYS_PERIODS = [
+    # (기간, 실질금리 R² %, 달러인덱스 R² %, 우세 팩터)
+    ("2005~2006", 75, 64, "둘 다 강함"),
+    ("2007~2008", 79, 51, "둘 다 강함"),
+    ("2009~2010", 35, 53, "달러"),
+    ("2011~2012", 60, 8, "실질금리"),
+    ("2013~2014", 60, 49, "둘 다 강함"),
+    ("2015~2016", 58, 0, "실질금리"),
+    ("2017~2018", 3, 75, "달러"),
+    ("2019~2020", 82, 5, "실질금리"),
+    ("2021~2022", 10, 24, "⚠️ 둘 다 약함"),
+    ("2023~2024", 5, 59, "달러"),
+    ("2025~2026", 11, 66, "달러"),
+]
+
+
+def _render_key_takeaways() -> None:
+    """Fixed "핵심 요약" callout pinned above the correlation table, plus a
+    collapsed-by-default expander with the period-by-period R² backing it up.
+    Static content (not derived from data/latest.json) — see World Gold
+    Council / Erb & Harvey / RBC Wealth Management sourcing in the caption."""
+    st.markdown(
+        """
+<div style="background-color:#fff8e1;border-left:6px solid #f5a623;
+border-radius:8px;padding:16px 20px;margin-bottom:4px">
+<div style="font-size:17px;font-weight:600;margin-bottom:8px">💡 핵심 요약</div>
+<p style="margin:0 0 10px 0;line-height:1.6">
+실질금리는 정책 개입기(QE·팬데믹)에, 달러인덱스는 위기 연쇄기·최근 구간에 강하게 작동합니다.
+2005년 이후 11개 구간 중 10개 구간에서 최소 한 팩터는 강한 상관성을 보였습니다 —
+둘을 같이 보면 대부분의 시기를 커버할 수 있습니다.
+</p>
+<p style="margin:0 0 12px 0;line-height:1.6">
+다만 최근에는 각국 중앙은행의 금 수요에 의해 실질금리 및 달러인덱스의 상관성이 유효하지 않음을
+보임 — 2021년 이후 실질금리는 계속 약하게 나타나고 있습니다. 이는 중국·폴란드·인도·터키 등
+신흥국 중앙은행(미국 연준 아님)이 주도하는 매입으로, 2022년 러시아 외환보유고 동결을 계기로
+촉발된 탈달러화(de-dollarization) 흐름과 맞물려 있습니다.
+</p>
+<div style="background-color:#fdecea;border-left:4px solid #d32f2f;
+border-radius:6px;padding:10px 14px;font-weight:600;color:#611a15;line-height:1.6">
+⚠️ 본 대시보드는 역사적 상관성이 확인된 실시간 수치를 기반으로 하기 때문에, 각국 중앙은행의
+매입 정도는 반영하지 못하는 한계가 있습니다. 이는 별도 확인이 꼭 필요합니다.
+<span style="font-weight:400">(중앙은행 매입은 분기 단위로만 발표되어 실시간 반영 불가)</span>
+</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+    with st.expander("📊 구간별 상관성 근거 보기", expanded=False):
+
+        def header_cell(text: str) -> str:
+            return (
+                f'<th style="padding:8px 12px;border:1px solid #ddd;background:#f5f5f5;'
+                f'text-align:left;white-space:nowrap">{text}</th>'
+            )
+
+        def r2_cell(value: int) -> str:
+            text = f"{value}%"
+            if value >= 50:
+                text = f"<strong>{text}</strong>"
+            return f'<td style="padding:8px 12px;border:1px solid #ddd">{text}</td>'
+
+        def factor_cell(text: str) -> str:
+            return f'<td style="padding:8px 12px;border:1px solid #ddd">{text}</td>'
+
+        header_row = (
+            header_cell("구간") + header_cell("실질금리 R²") + header_cell("달러인덱스 R²") + header_cell("우세 팩터")
+        )
+        rows_html = [f"<tr>{header_row}</tr>"]
+        for period, real_rate_r2, dxy_r2, factor in _KEY_TAKEAWAYS_PERIODS:
+            rows_html.append(
+                f"<tr>{header_cell(period)}{r2_cell(real_rate_r2)}{r2_cell(dxy_r2)}{factor_cell(factor)}</tr>"
+            )
+        table_html = (
+            '<table style="border-collapse:collapse;width:100%;font-size:14px">' + "".join(rows_html) + "</table>"
+        )
+        st.markdown(table_html, unsafe_allow_html=True)
+        st.caption(
+            "2년 단위 기준 · 출처: Erb&Harvey(2013,2024), RBC Wealth Management(2025), "
+            "World Gold Council · 원자료: FRED(REAINTRATREARAT10Y, TWEXBGSMTH)"
+        )
+
+
 def render_dashboard() -> None:
     st.title("금(Gold) 상관관계 대시보드")
+    _render_key_takeaways()
 
     # Shared with the 유효성 검증 (backtest) page via config.GOLD_PRICE_BASIS_STATE_KEY
     # — but NOT via that key's own widget binding: st.navigation resets a
