@@ -27,11 +27,16 @@ _FRED_SERIES_IDS = {"real_rate": "DFII10", "wti": "DCOILWTICO"}
 _YFINANCE_TICKERS = {"dxy": DXY_TICKERS, "gold": "GC=F", "silver": "SI=F", "vix": "^VIX"}
 
 
-def fetch_raw_series(key: str, as_of: date | None = None, years: int = YEARS) -> pd.Series:
+def fetch_raw_series(
+    key: str, as_of: date | None = None, years: int = YEARS, buffer_days: int = BUFFER_DAYS
+) -> pd.Series:
     """Fetch one raw series (real_rate/dxy/gold/silver/wti/vix) covering
-    `years` + BUFFER_DAYS of history ending at `as_of` (default: today, KST)."""
+    `years` + `buffer_days` of history ending at `as_of` (default: today, KST).
+    `buffer_days` defaults to BUFFER_DAYS (enough to warm up a 60-day SMA) but
+    callers needing a longer rolling window (e.g. the backtest's 200-day
+    long-term trend filter) can pass a bigger value."""
     end_date = as_of or today_kst()
-    fetch_start = end_date - timedelta(days=years * 365 + BUFFER_DAYS)
+    fetch_start = end_date - timedelta(days=years * 365 + buffer_days)
     yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
 
     if key in _FRED_SERIES_IDS:
@@ -42,18 +47,21 @@ def fetch_raw_series(key: str, as_of: date | None = None, years: int = YEARS) ->
     raise ValueError(f"unknown series key: {key}")
 
 
-def fetch_backtest_frame(as_of: date | None = None, years: int = YEARS) -> pd.DataFrame:
+def fetch_backtest_frame(
+    as_of: date | None = None, years: int = YEARS, buffer_days: int = BUFFER_DAYS
+) -> pd.DataFrame:
     """Fetch real_rate/dxy/gold/silver as one date-aligned, forward-filled frame
-    for the trading backtest, covering `years` of history. Different markets
-    close on different days (rates vs. commodities), so the four series are
-    joined on the union of their dates and gaps are forward-filled from the
-    prior available value.
+    for the trading backtest, covering `years` of history (+ `buffer_days`
+    ahead of it, to warm up rolling-window signals before the display start —
+    see fetch_raw_series). Different markets close on different days (rates
+    vs. commodities), so the four series are joined on the union of their
+    dates and gaps are forward-filled from the prior available value.
     """
     end_date = as_of or today_kst()
-    real_rate = fetch_raw_series("real_rate", end_date, years=years)
-    dxy = fetch_raw_series("dxy", end_date, years=years)
-    gold = fetch_raw_series("gold", end_date, years=years)
-    silver = fetch_raw_series("silver", end_date, years=years)
+    real_rate = fetch_raw_series("real_rate", end_date, years=years, buffer_days=buffer_days)
+    dxy = fetch_raw_series("dxy", end_date, years=years, buffer_days=buffer_days)
+    gold = fetch_raw_series("gold", end_date, years=years, buffer_days=buffer_days)
+    silver = fetch_raw_series("silver", end_date, years=years, buffer_days=buffer_days)
 
     df = pd.concat(
         [
