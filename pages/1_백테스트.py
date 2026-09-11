@@ -31,7 +31,7 @@ DEFAULTS = {
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
     "bt_buy_ratio": float(backtest.BUY_RATIO),
     "bt_sell_ratio": float(backtest.SELL_RATIO),
-    "bt_use_new_high_buy": True,
+    "bt_use_reentry_freq_limit": True,
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
@@ -51,14 +51,20 @@ with st.expander("전략 규칙 보기"):
         """
 - **매수** (미보유 상태일 때만): 아래 "매수 조건" 카드의 `green_count ≥ 임계값` — 고급 설정의
   매수 지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≥ 임계값` — 지연 없이 **당일 즉시 매수**.
-  **또는** (고급 설정에서 켠 경우) **금 신고가 갱신** — 이것도 지연 없이 당일 즉시 매수. 셋 중
-  아무 조건이나 먼저 만족하면 매수합니다
+  **또는** **재진입 조건**: (① 장기추세 필터, 필요조건) 금 종가가 200일 이동평균 위에 있고,
+  동시에 (② 단기 재돌파 트리거) 금 종가가 20일 이동평균을 아래에서 위로 상향 돌파한 날 —
+  이것도 지연 없이 당일 즉시 매수. 셋 중 아무 조건이나 먼저 만족하면 매수합니다
 - **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 고급 설정의 매도
   지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≤ 임계값` — 지연 없이 **당일 즉시 매도**
 - 지연이 설정된 green_count 신호는 그 시점 이후 첫 거래일 **종가**로 체결됩니다(지연 기간 중
   조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
-  신고가 갱신 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
+  재진입 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
   green_count 지연 주문이 있어도 먼저 체결됩니다
+- 고급 설정의 **단기 재진입 빈도 제한** (기본값 ON)을 켜두면, 재진입 조건 중 ② 단기 재돌파
+  트리거로 인한 매수는 최근 90일(역일 기준) 내 최대 1회로 제한됩니다 — 직전에 이 트리거로
+  매수한 지 90일이 안 지났으면 ①②를 모두 만족해도 매수하지 않습니다. 이 제한은 단기 재돌파
+  트리거에만 적용되며 green_count·금/은비율 매수 조건에는 영향을 주지 않습니다. 꺼두면 ①②
+  조건만으로 제한 없이 자유롭게 재진입합니다
 - 고급 설정의 **최소 보유일수**(역일/달력일 기준, 주말·공휴일 관계없이 매수일로부터의 날짜
   차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
   금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
@@ -130,9 +136,9 @@ if sell_ratio >= buy_ratio:
         "거의 바로 청산될 수 있습니다."
     )
 
-with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · 신고가 갱신 — 기본값 그대로 둬도 무방)"):
+with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · 단기 재진입 빈도 제한 — 기본값 그대로 둬도 무방)"):
     st.caption(
-        "금/은비율 임계값과 신고가 갱신 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다. "
+        "금/은비율 임계값과 재진입 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다. "
         "아래 지연일수는 green_count 신호에만 적용됩니다."
     )
     adv_buy_col, adv_sell_col = st.columns(2)
@@ -142,15 +148,19 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             "매수 지연일수 (일, green_count 신호에만 적용)",
             min_value=0, max_value=180, step=1, key="bt_entry_delay_days",
             help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매수'를 시뮬레이션합니다. "
-            "금/은비율·신고가 갱신 매수에는 적용되지 않습니다.",
+            "금/은비율·재진입 매수에는 적용되지 않습니다.",
         )
         st.caption(f"≈ {entry_delay_days / 30:.1f}개월 후 매수")
-        use_new_high_buy = st.checkbox(
-            "신고가 갱신 시 매수 조건 추가",
-            key="bt_use_new_high_buy",
-            help="켜면 금(GC=F) 종가가 분석 기간 내 최고가를 새로 경신하는 날 그 즉시 매수합니다 "
-            "(지연 미적용, 위 두 매수 조건과는 OR로 결합).",
+        use_reentry_freq_limit = st.checkbox(
+            f"단기 재진입 빈도 제한 ({backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일 내 1회)",
+            key="bt_use_reentry_freq_limit",
+            help="켜면 재진입 조건의 ② 단기 재돌파 트리거(20일 이동평균 상향 돌파)로 인한 매수는 "
+            f"최근 {backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일(역일 기준) 내 최대 1회로 "
+            "제한됩니다 — ① 장기추세 필터(200일 이동평균 위)는 이 제한과 무관하게 항상 "
+            "필요조건으로 적용됩니다. green_count·금/은비율 매수 조건에는 영향을 주지 않습니다. "
+            "끄면 제한 없이 조건을 만족할 때마다 재진입합니다.",
         )
+
     with adv_sell_col:
         st.markdown("**매도 관련**")
         exit_delay_days = st.number_input(
@@ -195,7 +205,7 @@ try:
         signals,
         entry_delay_days=int(entry_delay_days),
         exit_delay_days=int(exit_delay_days),
-        use_new_high_buy=use_new_high_buy,
+        use_reentry_freq_limit=use_reentry_freq_limit,
         buy_ratio=float(buy_ratio),
         sell_ratio=float(sell_ratio),
         buy_green_count=int(buy_green_count),
@@ -453,10 +463,126 @@ if trades:
     st.caption(
         "매수 사유/매도 사유는 신호가 처음 발생한 날 기준입니다. green_count 매수/매도는 "
         "지연일수만큼 지난 뒤 체결되어 매수·매도일이 신호 발생일과 다를 수 있지만, 금/은비율·"
-        "신고가 갱신 매수는 항상 체결일 = 신호 발생일입니다."
+        "재진입 매수는 항상 체결일 = 신호 발생일입니다."
     )
 else:
     st.caption("이 기간 동안 매수 신호가 발생하지 않아 거래 내역이 없습니다.")
+
+# ---- 6. 검증: 재진입 로직 효과 비교 ----
+# Extra simulate() calls here reuse the already-fetched/cached `signals` frame
+# (no additional network fetch) and vary only the reentry-related flags, so
+# they're cheap even though the page also runs the main scenario above.
+st.subheader("검증: 재진입 로직 효과 비교")
+_common_kwargs = dict(
+    entry_delay_days=int(entry_delay_days),
+    exit_delay_days=int(exit_delay_days),
+    buy_ratio=float(buy_ratio),
+    sell_ratio=float(sell_ratio),
+    buy_green_count=int(buy_green_count),
+    sell_green_count=int(sell_green_count),
+    min_holding_days=int(min_holding_days),
+    bond_annual_yield=float(bond_yield_pct) / 100.0,
+)
+
+
+def _trades_touching_year(trades_list: list[dict], year: int) -> list[dict]:
+    rows = []
+    for t in trades_list:
+        entry_in_year = t["entry_date"].year == year
+        exit_in_year = t["exit_date"] is not None and t["exit_date"].year == year
+        if entry_in_year or exit_in_year:
+            rows.append(
+                {
+                    "매수일": t["entry_date"].date(),
+                    "매수가": round(t["entry_price"], 2),
+                    "매수 사유": t["entry_reason"] or "-",
+                    "매도일": t["exit_date"].date() if t["exit_date"] is not None else "미청산(보유 중)",
+                    "매도가": round(t["exit_price"], 2),
+                    "구간수익률": f"{t['period_return']:.2%}" + (" (평가)" if t["open"] else ""),
+                }
+            )
+    return rows
+
+
+with st.expander("🔍 2025년 구간 — 재진입 로직 적용 전/후 비교", expanded=True):
+    st.caption(
+        "'적용 전'은 green_count·금/은비율 조건만 사용한, 재진입 조건(장기추세 필터+단기 "
+        "재돌파) 도입 이전 동작을 재현한 가상 시나리오입니다. 나머지 설정(위 매수·매도 조건, "
+        "지연일수, 최소 보유일수 등)은 두 시나리오 모두 현재 화면과 동일합니다."
+    )
+    result_reentry_off = backtest.simulate(
+        signals, use_reentry_trigger=False, use_reentry_freq_limit=use_reentry_freq_limit,
+        **_common_kwargs,
+    )
+    yearly_on_2025 = result["yearly_returns"].loc[lambda d: d["year"] == 2025]
+    yearly_off_2025 = result_reentry_off["yearly_returns"].loc[lambda d: d["year"] == 2025]
+    if yearly_on_2025.empty or yearly_off_2025.empty:
+        st.caption("현재 분석 기간에 2025년이 포함되어 있지 않아 비교할 수 없습니다.")
+    else:
+        before_col, after_col = st.columns(2)
+        with before_col:
+            st.markdown("**적용 전** (재진입 조건 없음)")
+            st.metric("2025년 실제 수익률", f"{yearly_off_2025['strategy_return'].iloc[0]:.1%}")
+            st.metric(
+                "2025년 연환산수익률",
+                f"{yearly_off_2025['strategy_return_annualized'].iloc[0]:.1%}",
+            )
+        with after_col:
+            st.markdown("**적용 후** (현재 설정)")
+            st.metric("2025년 실제 수익률", f"{yearly_on_2025['strategy_return'].iloc[0]:.1%}")
+            st.metric(
+                "2025년 연환산수익률",
+                f"{yearly_on_2025['strategy_return_annualized'].iloc[0]:.1%}",
+            )
+
+        before_rows = _trades_touching_year(result_reentry_off["trades"], 2025)
+        after_rows = _trades_touching_year(result["trades"], 2025)
+        for row in before_rows:
+            row["시나리오"] = "적용 전"
+        for row in after_rows:
+            row["시나리오"] = "적용 후"
+        combined_rows = before_rows + after_rows
+        if combined_rows:
+            combined_df = pd.DataFrame(combined_rows)
+            combined_df = combined_df[["시나리오"] + [c for c in combined_df.columns if c != "시나리오"]]
+            combined_df = combined_df.sort_values(["매수일", "시나리오"])
+            st.dataframe(combined_df, use_container_width=True, hide_index=True)
+            st.caption("2025년에 매수일 또는 매도일이 걸친 거래만 표시합니다 (매매 타이밍 비교용).")
+        else:
+            st.caption("2025년 구간에는 두 시나리오 모두 매수/매도가 발생하지 않았습니다.")
+
+with st.expander(
+    f"🔍 단기 재진입 빈도 제한 ({backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS}일 내 1회) ON vs OFF 비교",
+    expanded=True,
+):
+    st.caption("전체 분석 기간 기준 비교이며, 위 '단기 재진입 빈도 제한' 체크박스와 무관하게 항상 두 경우를 모두 계산합니다.")
+    result_freq_on = backtest.simulate(
+        signals, use_reentry_trigger=True, use_reentry_freq_limit=True, **_common_kwargs
+    )
+    result_freq_off = backtest.simulate(
+        signals, use_reentry_trigger=True, use_reentry_freq_limit=False, **_common_kwargs
+    )
+    m_freq_on = result_freq_on["metrics"]
+    m_freq_off = result_freq_off["metrics"]
+    freq_on_col, freq_off_col = st.columns(2)
+    with freq_on_col:
+        st.markdown("**빈도 제한 ON**")
+        st.metric("매매횟수", f"{m_freq_on['closed_trade_count']}회")
+        st.metric("승률", f"{m_freq_on['win_rate']:.1%}" if m_freq_on["win_rate"] is not None else "-")
+        st.metric("누적수익률", f"{m_freq_on['strategy_total_return']:.1%}")
+        st.metric(
+            "연환산수익률(CAGR)",
+            f"{m_freq_on['strategy_cagr']:.1%}" if m_freq_on["strategy_cagr"] is not None else "-",
+        )
+    with freq_off_col:
+        st.markdown("**빈도 제한 OFF**")
+        st.metric("매매횟수", f"{m_freq_off['closed_trade_count']}회")
+        st.metric("승률", f"{m_freq_off['win_rate']:.1%}" if m_freq_off["win_rate"] is not None else "-")
+        st.metric("누적수익률", f"{m_freq_off['strategy_total_return']:.1%}")
+        st.metric(
+            "연환산수익률(CAGR)",
+            f"{m_freq_off['strategy_cagr']:.1%}" if m_freq_off["strategy_cagr"] is not None else "-",
+        )
 
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "
