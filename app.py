@@ -262,7 +262,7 @@ def render_dashboard() -> None:
     # and seed each page's own, page-local widget from it via `index=`,
     # writing the widget's result straight back after every rerun.
     _gold_basis_options = [config.GOLD_PRICE_BASIS_INTL, config.GOLD_PRICE_BASIS_KRX]
-    st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_INTL)
+    st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
     gold_price_basis = st.radio(
         "금 가격 기준",
         options=_gold_basis_options,

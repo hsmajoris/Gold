@@ -68,7 +68,7 @@ def fetch_gold_price_series(
     as_of: date | None = None,
     years: int = YEARS,
     buffer_days: int = BUFFER_DAYS,
-    basis: str = config.GOLD_PRICE_BASIS_INTL,
+    basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
 ) -> pd.Series:
     """Fetch the gold price series used for signals/MAs/P&L under the given
     basis: GC=F (USD/oz) for "intl" (unchanged from before this option
@@ -92,7 +92,7 @@ def fetch_backtest_frame(
     as_of: date | None = None,
     years: int = YEARS,
     buffer_days: int = BUFFER_DAYS,
-    gold_price_basis: str = config.GOLD_PRICE_BASIS_INTL,
+    gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
 ) -> pd.DataFrame:
     """Fetch real_rate/dxy/gold/gold_intl/silver as one date-aligned, forward-
     filled frame for the trading backtest, covering `years` of history (+

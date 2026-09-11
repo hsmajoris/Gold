@@ -42,6 +42,9 @@ GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_INTL: "① 국제 금 시세 (USD/oz, GC=F)",
     GOLD_PRICE_BASIS_KRX: "② KRX 금현물 (KRW/g, 실제 국내 시세)",
 }
+# What a fresh session (and any caller that doesn't specify gold_price_basis
+# explicitly) starts on.
+GOLD_PRICE_BASIS_DEFAULT = GOLD_PRICE_BASIS_KRX
 
 # KRX's gold-spot market (04020000) opened on this date — no earlier data exists
 # at the source, so any analysis window under GOLD_PRICE_BASIS_KRX is clamped to
