@@ -41,6 +41,7 @@ DEFAULTS = {
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
     "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
     "bt_use_sell_noise_filter": True,
+    "bt_sell_noise_filter_drop_pct": backtest.DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
     "bt_krx_holding_fee_pct": backtest.DEFAULT_KRX_HOLDING_FEE_ANNUAL_PCT,
 }
 for _key, _default in DEFAULTS.items():
@@ -116,10 +117,12 @@ with st.expander("전략 규칙 보기"):
   별개)는 매도신호가 실제로 체결되기 직전(green_count 지연 주문의 체결일, 또는 금/은비율
   즉시 매도일)에 개입합니다. 그날(D0) 종가가 200일 이동평균보다 5% 이상 높을 때만 작동하며
   (미만이면 이 필터 없이 항상 그대로 즉시 매도) — 매도 실행 여부는 **오직** D0+7일(역일 기준)
-  시점의 종가를 D0 종가와 비교한 결과만으로 결정됩니다: 낮으면 그날 매도, 낮지 않으면 관찰모드를
-  해제하고 D0의 신호는 없었던 것으로 처리합니다(다음 매도신호부터 처음부터 다시 시작). D0~D0+7일
-  사이에 추가로 뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않으며, 몇 번 더 떴는지·다음날
-  재발생(2연속) 여부·7일 내 3회 이상 여부는 참고용 기록으로만 남습니다
+  시점의 종가를 D0 종가와 비교한 결과만으로 결정됩니다: D0 종가보다 "매도 확인 하락률"
+  (기본 5%) 이상 낮으면 그날 매도, 그만큼 낮지 않으면(살짝만 빠지거나 오히려 오른 경우 포함)
+  관찰모드를 해제하고 D0의 신호는 없었던 것으로 처리합니다(다음 매도신호부터 처음부터 다시
+  시작 — 대세 상승장 중 작은 되돌림 때문에 일찍 매도되는 것을 방지). D0~D0+7일 사이에 추가로
+  뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않으며, 몇 번 더 떴는지·다음날 재발생(2연속)
+  여부·7일 내 3회 이상 여부는 참고용 기록으로만 남습니다
 - 고급 설정의 **KRX 금현물 보유 수수료 (연, %)** (기본값 0.15%, ② KRX 금현물 선택 시에만
   적용)는 보유 중인 기간의 경과 일수에 비례해 연복리로 수익률에서 차감되며, Buy & Hold와
   신호전략 보유 기간 모두 동일하게 적용됩니다(① 국제 금 시세에는 적용되지 않음)
@@ -278,10 +281,20 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             f"{backtest.DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT:g}% 이상 높을 때만 작동합니다(그 미만이면 "
             "이 필터와 무관하게 항상 즉시 매도). 켜두면: D0의 매도신호는 무시하고 보유를 유지하며, "
             f"D0+{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일(역일 기준) 시점의 종가를 D0 종가와 비교해 — "
-            "낮으면 그날 매도를 실행하고, 낮지 않으면 관찰모드를 해제하고 D0의 신호는 없었던 것으로 "
-            f"처리합니다(이후 새 매도신호부터 다시 시작). 이 D0~D0+{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일 "
-            "사이에 추가로 뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않고 참고 기록으로만 "
-            "남습니다. 끄면 매도 신호가 뜨는 즉시 항상 매도합니다(이 로직 도입 이전과 동일).",
+            "아래 '매도 확인 하락률' 이상 떨어졌으면 그날 매도를 실행하고, 그만큼 떨어지지 않았으면 "
+            "관찰모드를 해제하고 D0의 신호는 없었던 것으로 처리합니다(이후 새 매도신호부터 다시 "
+            f"시작). 이 D0~D0+{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일 사이에 추가로 뜨는 매도신호는 "
+            "매도 여부에 전혀 영향을 주지 않고 참고 기록으로만 남습니다. 끄면 매도 신호가 뜨는 즉시 "
+            "항상 매도합니다(이 로직 도입 이전과 동일).",
+        )
+        sell_noise_filter_drop_pct = st.number_input(
+            "매도 확인 하락률 (%, D0 대비 D0+7일)",
+            min_value=0.0, max_value=50.0, step=0.5, key="bt_sell_noise_filter_drop_pct",
+            disabled=not use_sell_noise_filter,
+            help="위 '상승추세 중 매도신호 노이즈 필터'가 켜져 있을 때만 작동합니다. D0+7일 종가가 "
+            "D0 종가보다 이 %만큼(또는 그 이상) 낮아야만 매도를 실행합니다(예: 5이면 5% 이상 "
+            "하락해야 매도, 살짝만 빠진 경우는 대세 상승장으로 보고 관찰모드를 해제해 계속 "
+            "보유). 0으로 두면 이전처럼 '조금이라도 낮으면 매도'와 동일해집니다.",
         )
         krx_holding_fee_pct = st.number_input(
             "KRX 금현물 보유 수수료 (연, %)",
@@ -346,6 +359,7 @@ try:
         min_holding_days=int(min_holding_days),
         bond_annual_yield=float(bond_yield_pct) / 100.0,
         use_sell_noise_filter=use_sell_noise_filter,
+        sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
         gold_holding_fee_annual_pct=effective_holding_fee_pct,
     )
 except Exception as exc:
@@ -625,6 +639,7 @@ _common_kwargs = dict(
     min_holding_days=int(min_holding_days),
     bond_annual_yield=float(bond_yield_pct) / 100.0,
     use_sell_noise_filter=use_sell_noise_filter,
+    sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
     gold_holding_fee_annual_pct=effective_holding_fee_pct,
 )
 
@@ -850,8 +865,8 @@ with st.expander("🔍 금 가격 기준 (① 국제 시세 vs ② KRX 금현물
 
 _common_kwargs_no_noise = {k: v for k, v in _common_kwargs.items() if k != "use_sell_noise_filter"}
 _SELL_NOISE_OUTCOME_LABELS_KO = {
-    "sold_on_drop": "D0+7일 종가 하락 → 매도",
-    "released_no_drop": "D0+7일 종가 하락 없음 → 관찰모드 해제",
+    "sold_on_drop": "D0+7일 하락률 기준 충족 → 매도",
+    "released_no_drop": "D0+7일 하락률 기준 미달 → 관찰모드 해제",
     "unresolved_at_window_end": "분석 기간 종료 시점까지 미해결",
 }
 
@@ -910,12 +925,12 @@ with st.expander("🔍 상승추세 중 매도신호 노이즈 필터 ON vs OFF 
     released = [e for e in noise_log if e["outcome"] in ("released_no_drop", "unresolved_at_window_end")]
     st.markdown(
         f"**관찰모드가 발동된 사례: 총 {len(noise_log)}건** "
-        f"(가격 하락으로 매도됨 {len(eventually_sold)}건 · 하락 없어 해제됨 {len(released)}건)"
+        f"(하락률 기준 충족으로 매도됨 {len(eventually_sold)}건 · 기준 미달로 해제됨 {len(released)}건)"
     )
     st.caption(
+        f"매도 실행 기준: D0+7일 종가가 D0 종가보다 {sell_noise_filter_drop_pct:g}% 이상 낮아야 매도. "
         "'참고 기록'은 D0~D0+7일 사이 매도신호가 몇 번 더 떴는지, 다음날 재발생(2연속) 여부, "
-        "7일 내 3회 이상 여부를 보여주는 정보성 지표입니다 — 아래 매도 실행 여부(D0+7일 종가가 "
-        "D0 종가보다 낮았는지)와는 무관합니다."
+        "7일 내 3회 이상 여부를 보여주는 정보성 지표일 뿐, 이 매도 실행 기준과는 무관합니다."
     )
     if eventually_sold:
         sold_rows = [
@@ -923,6 +938,7 @@ with st.expander("🔍 상승추세 중 매도신호 노이즈 필터 ON vs OFF 
                 "D0(최초 발생일)": e["d0_date"].date(),
                 "D0 종가": _format_gold_price(e["d0_price"]),
                 "D0+7일 종가": _format_gold_price(e["check_price"]),
+                "하락률": f"{(e['check_price'] / e['d0_price'] - 1.0):.1%}",
                 "매도일": e["sold_date"].date(),
                 "참고: 발생 횟수": e["occurrence_count"],
                 "참고: 2연속(다음날)": "예" if e["two_in_a_row"] else "아니오",
@@ -930,7 +946,7 @@ with st.expander("🔍 상승추세 중 매도신호 노이즈 필터 ON vs OFF 
             }
             for e in eventually_sold
         ]
-        st.markdown("**가격 하락으로 매도된 사례 (예시)**")
+        st.markdown("**하락률 기준을 충족해 매도된 사례 (예시)**")
         st.dataframe(pd.DataFrame(sold_rows).head(10), use_container_width=True, hide_index=True)
     if released:
         released_rows = [
@@ -938,6 +954,9 @@ with st.expander("🔍 상승추세 중 매도신호 노이즈 필터 ON vs OFF 
                 "D0(최초 발생일)": e["d0_date"].date(),
                 "D0 종가": _format_gold_price(e["d0_price"]),
                 "D0+7일 종가": _format_gold_price(e["check_price"]) if e["check_price"] is not None else "-",
+                "하락률": (
+                    f"{(e['check_price'] / e['d0_price'] - 1.0):.1%}" if e["check_price"] is not None else "-"
+                ),
                 "결과": _SELL_NOISE_OUTCOME_LABELS_KO[e["outcome"]],
                 "참고: 발생 횟수": e["occurrence_count"],
                 "참고: 2연속(다음날)": "예" if e["two_in_a_row"] else "아니오",
@@ -945,7 +964,7 @@ with st.expander("🔍 상승추세 중 매도신호 노이즈 필터 ON vs OFF 
             }
             for e in released
         ]
-        st.markdown("**하락하지 않아 관찰모드가 해제된 사례 (예시)**")
+        st.markdown("**하락률 기준 미달로 관찰모드가 해제된 사례 (예시)**")
         st.dataframe(pd.DataFrame(released_rows).head(10), use_container_width=True, hide_index=True)
     if not noise_log:
         st.caption("이 분석 기간에는 200일선 +5% 이상 구간에서 발생한 매도신호가 없어, 이 필터가 실제로 개입한 사례가 없습니다.")

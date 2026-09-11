@@ -74,10 +74,17 @@ DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 30
 # possible sign the sell signal is a blip in an ongoing uptrend rather than a
 # genuine reversal), a qualifying sell signal is ignored and a 7-calendar-day
 # "wait and see" period starts instead of executing it immediately. See
-# run_backtest's docstring for the exact mechanism — the buffer % is the only
-# user-adjustable knob; the 7-day window itself is not.
+# run_backtest's docstring for the exact mechanism.
+# Entry gate: how far above the 200-day SMA gold's close must be (on the day
+# a sell signal fires) for the filter to engage at all instead of selling
+# immediately.
 DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT = 5.0
 SELL_NOISE_FILTER_WINDOW_DAYS = 7
+# Exit confirmation: the D0+7 close must be at least this % BELOW D0's close
+# for the episode to actually sell — a small dip no longer counts, only a
+# genuine pullback does (a bare, unconditional drop was too easily satisfied
+# in a strong uptrend, cutting winners short on noise).
+DEFAULT_SELL_NOISE_FILTER_DROP_PCT = 5.0
 # Reference-only thresholds for the "관찰모드 중 참고 기록" stats attached to
 # each episode (see run_backtest) — these never affect whether or when a sale
 # actually executes, only what gets reported about the episode afterward.
@@ -237,8 +244,8 @@ def _sell_reason(gc: int, r: float, sell_ratio: float, sell_green_count: int) ->
 # Short Korean labels for sell_noise_log display — see run_backtest's
 # docstring for what each outcome means.
 _SELL_NOISE_OUTCOME_LABELS = {
-    "sold_on_drop": "D0+7일 종가 하락 → 매도",
-    "released_no_drop": "D0+7일 종가 하락 없음 → 관찰모드 해제",
+    "sold_on_drop": "D0+7일 종가 하락폭 기준 충족 → 매도",
+    "released_no_drop": "D0+7일 종가 하락폭 기준 미달 → 관찰모드 해제",
     "unresolved_at_window_end": "분석 기간 종료 시점까지 미해결",
 }
 
@@ -258,6 +265,7 @@ def run_backtest(
     min_holding_days: int = 0,
     use_sell_noise_filter: bool = True,
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
+    sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
     gold_holding_fee_annual_pct: float = 0.0,
 ) -> tuple[list[dict], pd.Series, pd.Series, pd.Series, list[dict]]:
     """Walks the signal frame day by day applying the buy/sell rules.
@@ -317,11 +325,13 @@ def run_backtest(
       2. The ONLY thing that decides whether the position is actually sold
          is a pure price comparison on D0+7 (the first trading day on or
          after that calendar date, since D0+7 itself may fall on a
-         weekend/holiday): if that day's close is lower than D0's close,
-         sell on D0+7 — the drop is treated as confirming the reversal was
-         real. If it is not lower (flat or higher), the episode is released
-         with no sale, as if D0 never happened; the next qualifying signal
-         starts a brand new episode from (1).
+         weekend/holiday): if that day's close is at least
+         `sell_noise_filter_drop_pct`% below D0's close (i.e.
+         `close <= d0_close * (1 - drop_pct / 100)`), sell on D0+7 — a real
+         pullback, not just noise, is treated as confirming the reversal was
+         genuine. A smaller dip (or no dip, or a rise) doesn't clear that bar,
+         so the episode is released with no sale, as if D0 never happened;
+         the next qualifying signal starts a brand new episode from (1).
       3. Any further qualifying sell signal that fires during the 7-day
          window (D0 through D0+7 inclusive) has ZERO effect on whether or
          when the position is sold — the D0+7 price comparison in (2) is the
@@ -479,7 +489,7 @@ def run_backtest(
                         (d - d0_date).days == SELL_NOISE_FILTER_TWO_IN_A_ROW_DAYS for d in occurrence_dates
                     )
                     three_or_more = occurrence_count >= SELL_NOISE_FILTER_REFERENCE_OCCURRENCE_THRESHOLD
-                    price_dropped = price < d0_price
+                    price_dropped = price <= d0_price * (1.0 - sell_noise_filter_drop_pct / 100.0)
                     outcome = "sold_on_drop" if price_dropped else "released_no_drop"
                     sell_noise_log.append(
                         {
@@ -496,9 +506,11 @@ def run_backtest(
                     )
                     if price_dropped:
                         base_reason = _sell_reason(gc, r, sell_ratio, sell_green_count) or "관찰모드 종료"
+                        drop_actual_pct = (price / d0_price - 1.0) * 100.0
                         exit_reason_today = (
                             f"{base_reason} (노이즈필터: D0={d0_date.date()} 종가 {d0_price:g} 대비 "
-                            f"D0+7일 종가 {price:g} 하락 → 매도)"
+                            f"D0+7일 종가 {price:g}, {drop_actual_pct:.1f}% 하락[{sell_noise_filter_drop_pct:g}%"
+                            "↓ 조건 충족] → 매도)"
                         )
                     sell_noise_state = None
             elif exit_reason_today is not None:
@@ -760,6 +772,7 @@ def simulate(
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
     use_sell_noise_filter: bool = True,
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
+    sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
     gold_holding_fee_annual_pct: float = 0.0,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
@@ -779,6 +792,7 @@ def simulate(
         min_holding_days=min_holding_days,
         use_sell_noise_filter=use_sell_noise_filter,
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
+        sell_noise_filter_drop_pct=sell_noise_filter_drop_pct,
         gold_holding_fee_annual_pct=gold_holding_fee_annual_pct,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
@@ -817,6 +831,7 @@ def run(
     gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
     use_sell_noise_filter: bool = True,
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
+    sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
     gold_holding_fee_annual_pct: float = 0.0,
 ) -> dict:
     signals = prepare_signals(as_of, years=years, gold_price_basis=gold_price_basis)
@@ -836,6 +851,7 @@ def run(
         bond_annual_yield=bond_annual_yield,
         use_sell_noise_filter=use_sell_noise_filter,
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
+        sell_noise_filter_drop_pct=sell_noise_filter_drop_pct,
         gold_holding_fee_annual_pct=gold_holding_fee_annual_pct,
     )
     result["signals"] = signals
