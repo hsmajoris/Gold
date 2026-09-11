@@ -40,6 +40,7 @@ DEFAULTS = {
     "bt_exit_delay_days": 0,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
     "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
+    "bt_use_sell_noise_filter": True,
 }
 for _key, _default in DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -110,6 +111,13 @@ with st.expander("전략 규칙 보기"):
   차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
   금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
   두는 전략을 시뮬레이션할 때 사용
+- 고급 설정의 **상승추세 중 매도신호 노이즈 필터** (기본값 ON, 매수 쪽 재진입 로직과는 별개)는
+  매도신호가 실제로 체결되기 직전(green_count 지연 주문의 체결일, 또는 금/은비율 즉시 매도일)에
+  개입합니다. 그날 종가가 200일 이동평균보다 5% 이상 높을 때만 작동하며(미만이면 이 필터
+  없이 항상 그대로 즉시 매도) — ① 조건을 만족하는 첫 매도신호는 무시하고 보유를 유지하며,
+  ② 바로 다음 날 다시 뜨거나 ③ 7일 내 누적 3회 이상 뜨면 그 즉시 매도합니다. ④ 7일이 지난
+  뒤 다시 뜨면 조건과 무관하게 무조건 매도하고, ⑤ 7일 동안 그 사이 한 번도 다시 뜨지 않았다면
+  무시했던 첫 신호는 없었던 것으로 보고 다음 매도신호부터 처음부터 다시 시작합니다
 - 분석 기간: 아래에서 설정한 오늘 기준 최근 **{years}년** (3~10년 조정 가능, 이동평균 계산용으로
   그 이전 {buffer}캘린더일치 데이터를 추가로 사용)
         """.format(
@@ -258,6 +266,19 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             "무관하게 매수일로부터의 달력일 차이(date2 - date1)로 계산됩니다.",
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
+        use_sell_noise_filter = st.checkbox(
+            "상승추세 중 매도신호 노이즈 필터 (200일선 +5% 이상)",
+            key="bt_use_sell_noise_filter",
+            help="매도신호가 발생한 날 종가가 200일 이동평균보다 "
+            f"{backtest.DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT:g}% 이상 높을 때만 작동합니다(그 미만이면 "
+            "이 필터와 무관하게 항상 즉시 매도). 켜두면: 조건을 만족하는 첫 매도신호는 무시하고 "
+            f"보유를 유지하며(관찰 시작), 바로 다음 날 다시 뜨거나 {backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일 "
+            f"내 누적 {backtest.SELL_NOISE_FILTER_MAX_OCCURRENCES}회 이상 발생하면 즉시 매도합니다. "
+            f"{backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일이 지난 후 다시 뜨면 조건과 무관하게 무조건 "
+            f"매도합니다. {backtest.SELL_NOISE_FILTER_WINDOW_DAYS}일 동안 그 사이 신호가 다시 뜨지 않았다면 "
+            "무시됐던 최초 신호는 없었던 것으로 처리하고 다시 처음부터 시작합니다. 끄면 매도 신호가 "
+            "뜨는 즉시 항상 매도합니다(이 로직 도입 이전과 동일).",
+        )
 
 # The "기회수익률" input itself is rendered later, inside the ④ 신호전략
 # (미보유기간 기회수익률 포함) summary-metric group — but its value is needed
@@ -304,6 +325,7 @@ try:
         sell_green_count=int(sell_green_count),
         min_holding_days=int(min_holding_days),
         bond_annual_yield=float(bond_yield_pct) / 100.0,
+        use_sell_noise_filter=use_sell_noise_filter,
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
@@ -581,6 +603,7 @@ _common_kwargs = dict(
     sell_green_count=int(sell_green_count),
     min_holding_days=int(min_holding_days),
     bond_annual_yield=float(bond_yield_pct) / 100.0,
+    use_sell_noise_filter=use_sell_noise_filter,
 )
 
 
@@ -793,6 +816,97 @@ with st.expander("🔍 금 가격 기준 (① 국제 시세 vs ② KRX 금현물
                 "낼 수 있어 발생하는 차이입니다. 금/은비율 임계값 매수·매도는 항상 국제 시세 "
                 "기준으로 고정되어 있어 이 차이에 나타나지 않습니다."
             )
+
+_common_kwargs_no_noise = {k: v for k, v in _common_kwargs.items() if k != "use_sell_noise_filter"}
+_SELL_NOISE_OUTCOME_LABELS_KO = {
+    "sold_next_day": "다음날 재발생 → 매도",
+    "sold_in_window": "7일 내 3회 누적 → 매도",
+    "sold_after_window": "7일 경과 후 재발생 → 매도",
+    "released": "재발생 없음 → 관찰모드 해제",
+    "unresolved_at_window_end": "분석 기간 종료 시점까지 미해결",
+}
+
+with st.expander("🔍 상승추세 중 매도신호 노이즈 필터 ON vs OFF 비교", expanded=False):
+    st.caption(
+        "'OFF'는 이 필터가 도입되기 전과 동일한 동작(매도신호 발생 즉시 매도)이며, 현재 화면의 "
+        "다른 설정(매수·매도 조건, 지연일수, 고급 설정 등)은 두 시나리오 모두 동일합니다."
+    )
+    result_noise_off = backtest.simulate(signals, use_sell_noise_filter=False, **_common_kwargs_no_noise)
+    result_noise_on = backtest.simulate(signals, use_sell_noise_filter=True, **_common_kwargs_no_noise)
+    m_off = result_noise_off["metrics"]
+    m_on = result_noise_on["metrics"]
+
+    noise_compare_df = pd.DataFrame(
+        {
+            "지표": [
+                "매매횟수",
+                "승률",
+                "최대낙폭(MDD)",
+                f"{BH_LABEL} 누적수익률",
+                f"{BH_LABEL} CAGR",
+                f"{STRATEGY_LABEL}(보유기간) 누적수익률",
+                f"{STRATEGY_LABEL}(보유기간) CAGR",
+                f"{STRATEGY_LABEL}(미보유기간 기회수익률 포함) 누적수익률",
+                f"{STRATEGY_LABEL}(미보유기간 기회수익률 포함) CAGR",
+            ],
+            "OFF (baseline)": [
+                f"{m_off['closed_trade_count']}회",
+                f"{m_off['win_rate']:.1%}" if m_off["win_rate"] is not None else "-",
+                f"{m_off['max_drawdown']:.1%}",
+                f"{m_off['bh_total_return']:.1%}",
+                f"{m_off['bh_cagr']:.1%}" if m_off["bh_cagr"] is not None else "-",
+                f"{m_off['strategy_total_return']:.1%}",
+                f"{m_off['strategy_cagr']:.1%}" if m_off["strategy_cagr"] is not None else "-",
+                f"{m_off['hybrid_total_return']:.1%}" if m_off["hybrid_total_return"] is not None else "-",
+                f"{m_off['hybrid_cagr']:.1%}" if m_off["hybrid_cagr"] is not None else "-",
+            ],
+            "ON": [
+                f"{m_on['closed_trade_count']}회",
+                f"{m_on['win_rate']:.1%}" if m_on["win_rate"] is not None else "-",
+                f"{m_on['max_drawdown']:.1%}",
+                f"{m_on['bh_total_return']:.1%}",
+                f"{m_on['bh_cagr']:.1%}" if m_on["bh_cagr"] is not None else "-",
+                f"{m_on['strategy_total_return']:.1%}",
+                f"{m_on['strategy_cagr']:.1%}" if m_on["strategy_cagr"] is not None else "-",
+                f"{m_on['hybrid_total_return']:.1%}" if m_on["hybrid_total_return"] is not None else "-",
+                f"{m_on['hybrid_cagr']:.1%}" if m_on["hybrid_cagr"] is not None else "-",
+            ],
+        }
+    )
+    st.dataframe(noise_compare_df, use_container_width=True, hide_index=True)
+
+    noise_log = result_noise_on["sell_noise_log"]
+    eventually_sold = [e for e in noise_log if e["outcome"] in ("sold_next_day", "sold_in_window", "sold_after_window")]
+    released = [e for e in noise_log if e["outcome"] in ("released", "unresolved_at_window_end")]
+    st.markdown(
+        f"**노이즈 필터로 매도가 무시된 사례: 총 {len(noise_log)}건** "
+        f"(나중에 결국 매도됨 {len(eventually_sold)}건 · 끝까지 무시되고 관찰모드 해제됨 {len(released)}건)"
+    )
+    if eventually_sold:
+        sold_rows = [
+            {
+                "최초 발생일": e["first_signal_date"].date(),
+                "발생 횟수": len(e["occurrences"]),
+                "결과": _SELL_NOISE_OUTCOME_LABELS_KO[e["outcome"]],
+                "실제 매도일": e["sold_date"].date(),
+            }
+            for e in eventually_sold
+        ]
+        st.markdown("**나중에 결국 매도된 사례 (예시)**")
+        st.dataframe(pd.DataFrame(sold_rows).head(10), use_container_width=True, hide_index=True)
+    if released:
+        released_rows = [
+            {
+                "최초 발생일": e["first_signal_date"].date(),
+                "발생 횟수": len(e["occurrences"]),
+                "결과": _SELL_NOISE_OUTCOME_LABELS_KO[e["outcome"]],
+            }
+            for e in released
+        ]
+        st.markdown("**끝까지 무시되고 관찰모드가 해제된 사례 (예시)**")
+        st.dataframe(pd.DataFrame(released_rows).head(10), use_container_width=True, hide_index=True)
+    if not noise_log:
+        st.caption("이 분석 기간에는 200일선 +5% 이상 구간에서 발생한 매도신호가 없어, 이 필터가 실제로 개입한 사례가 없습니다.")
 
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "

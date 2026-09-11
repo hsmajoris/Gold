@@ -70,6 +70,17 @@ LONG_TREND_SLOPE_LOOKBACK = 20
 # may fire — at most once per this many calendar days. User-togglable per run.
 DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 30
 
+# Sell-signal noise filter: while gold is well above a rising 200-day SMA
+# (same buffer concept as the buy-side reentry filter, but independent of it
+# and not user-adjustable — see run_backtest's use_sell_noise_filter), an
+# isolated sell signal is more likely noise than a genuine trend reversal, so
+# the first occurrence is ignored and only acted on if it recurs in a pattern
+# suggesting the reversal is real. See run_backtest's docstring for the exact
+# state machine.
+DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT = 5.0
+SELL_NOISE_FILTER_WINDOW_DAYS = 7
+SELL_NOISE_FILTER_MAX_OCCURRENCES = 3
+
 # Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.
 DEFAULT_BOND_ANNUAL_YIELD = 0.10
@@ -204,6 +215,15 @@ def _sell_reason(gc: int, r: float, sell_ratio: float, sell_green_count: int) ->
     return ", ".join(reasons)
 
 
+# Short Korean labels for sell_noise_log/trade-reason display — see
+# run_backtest's docstring for what each outcome means.
+_SELL_NOISE_OUTCOME_LABELS = {
+    "sold_next_day": "다음날 재발생",
+    "sold_in_window": "7일 내 3회 누적",
+    "sold_after_window": "7일 경과 후 재발생",
+}
+
+
 def run_backtest(
     signals: pd.DataFrame,
     entry_delay_days: int = 0,
@@ -217,7 +237,9 @@ def run_backtest(
     buy_green_count: int = BUY_GREEN_COUNT,
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
-) -> tuple[list[dict], pd.Series, pd.Series, pd.Series]:
+    use_sell_noise_filter: bool = True,
+    sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
+) -> tuple[list[dict], pd.Series, pd.Series, pd.Series, list[dict]]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
     Two kinds of triggers, with different timing:
@@ -261,18 +283,58 @@ def run_backtest(
     the signal fired — for a delayed green_count order this is the day it was
     scheduled, not necessarily still true by execution day.
 
-    Returns (trades, equity_curve, bh_equity_curve, holding_curve). Both equity
-    curves start at 1.0 on the first date. The strategy curve is flat (1.0x,
-    i.e. 0% return) while in cash and compounds only through held periods; the
-    Buy & Hold curve is always invested from that same first date.
-    holding_curve is a same-index boolean Series (True = holding gold that
-    day), used by compute_hybrid_cagr() to build the "미보유기간 채권투자
-    가정" hybrid equity curve.
+    Sell-signal noise filter (`use_sell_noise_filter`, on by default,
+    independent of the buy-side reentry filter): applies only to a sell
+    signal (whichever kind — immediate ratio or a delayed green_count order
+    reaching its execution day) that fires on a day gold's close is more than
+    `sell_noise_filter_buffer_pct`% above its 200-day SMA (`gold_sma_long`) —
+    i.e. still in a clear uptrend, where an isolated sell signal is more
+    likely noise than a genuine reversal. Below that buffer, every sell
+    signal executes immediately exactly as if this filter didn't exist. Above
+    it, a small state machine per "episode" decides whether to act:
+      1. The first such signal in a fresh episode is ignored (position stays
+         open) and starts an "observation window" — the very inputs used
+         (green_count/ratio) don't retroactively change what already
+         happened, so this is purely a timing gate, not a different trigger.
+      2. If another qualifying sell signal fires on the very next calendar
+         day (first_date + 1), sell immediately — a sharp reversal right
+         after the first signal is treated as real.
+      3. Otherwise, any occurrence (the first plus every later one) within
+         `SELL_NOISE_FILTER_WINDOW_DAYS` calendar days of the first is
+         tallied; once the count reaches `SELL_NOISE_FILTER_MAX_OCCURRENCES`,
+         sell immediately on that occurrence.
+      4. A qualifying sell signal that fires more than
+         `SELL_NOISE_FILTER_WINDOW_DAYS` days after the first one sells
+         immediately unconditionally, regardless of how many occurrences came
+         before — this only matters if the episode wasn't already resolved
+         by (2)/(3) or released by (5), i.e. exactly one occurrence in
+         between that itself matched none of the early-exit rules.
+      5. If more than `SELL_NOISE_FILTER_WINDOW_DAYS` days pass since the
+         first occurrence with the window's rules never satisfied (i.e. no
+         further qualifying signal at all during that window), the episode
+         is released with no sale — as if the ignored first signal never
+         happened. The next qualifying sell signal starts a brand new episode.
+    Every completed episode (sold via (2)/(3)/(4), or released via (5), or
+    still unresolved when the backtest window ends) is recorded in the
+    returned `sell_noise_log`.
+
+    Returns (trades, equity_curve, bh_equity_curve, holding_curve,
+    sell_noise_log). Both equity curves start at 1.0 on the first date. The
+    strategy curve is flat (1.0x, i.e. 0% return) while in cash and compounds
+    only through held periods; the Buy & Hold curve is always invested from
+    that same first date. holding_curve is a same-index boolean Series (True
+    = holding gold that day), used by compute_hybrid_cagr() to build the
+    "미보유기간 채권투자 가정" hybrid equity curve. sell_noise_log is a list of
+    dicts, one per completed/released noise-filter episode: {first_signal_date,
+    occurrences (all dates a qualifying signal fired in that episode),
+    outcome ("sold_next_day" | "sold_in_window" | "sold_after_window" |
+    "released" | "unresolved_at_window_end"), sold_date (None unless sold)}.
     """
     dates = signals.index
     gold = signals["gold"]
     green_count = signals["green_count"]
     ratio = signals["gold_silver_ratio"]
+    gold_sma_long = signals["gold_sma_long"]
     reentry_trigger = compute_reentry_trigger(signals, long_trend_buffer_pct)
 
     holding = False
@@ -286,6 +348,8 @@ def run_backtest(
     pending_sell_date = None
     pending_sell_reason = None
     last_reentry_fire_date = None  # rolling cooldown clock for the reentry trigger only
+    sell_noise_state = None  # {"first_date", "occurrences"} while an episode is open, else None
+    sell_noise_log: list[dict] = []
     trades: list[dict] = []
     equity_values = []
     holding_values = []
@@ -338,6 +402,7 @@ def run_backtest(
                 entry_price = price
                 entry_reason = entry_reason_today
                 equity_at_entry = running_equity
+                sell_noise_state = None  # defensive: a fresh position starts with no open episode
         else:
             exit_reason_today = None
             # Minimum holding period: no sell trigger (immediate ratio or
@@ -361,6 +426,68 @@ def run_backtest(
                         exit_reason_today = pending_sell_reason
                         pending_sell_date = None
                         pending_sell_reason = None
+
+            # Sell-signal noise filter: only intercepts a sell that's actually
+            # about to execute today, and only while gold is well above its
+            # rising 200-day SMA (see run_backtest's docstring for the full
+            # state machine). Below the buffer (or the filter is off, or the
+            # SMA isn't warmed up yet), exit_reason_today passes through
+            # untouched — identical to pre-filter behavior.
+            if exit_reason_today is not None:
+                sma_long_today = gold_sma_long.loc[dt]
+                in_uptrend_zone = (
+                    use_sell_noise_filter
+                    and not pd.isna(sma_long_today)
+                    and price > sma_long_today * (1.0 + sell_noise_filter_buffer_pct / 100.0)
+                )
+                if in_uptrend_zone:
+                    if sell_noise_state is None:
+                        # Rule 1: first occurrence of a fresh episode — ignore, keep holding.
+                        sell_noise_state = {"first_date": dt, "occurrences": [dt]}
+                        exit_reason_today = None
+                    else:
+                        days_since_first = (dt - sell_noise_state["first_date"]).days
+                        sell_noise_state["occurrences"].append(dt)
+                        if days_since_first > SELL_NOISE_FILTER_WINDOW_DAYS:
+                            outcome = "sold_after_window"  # Rule 4: unconditional
+                        elif days_since_first == 1:
+                            outcome = "sold_next_day"  # Rule 2
+                        elif len(sell_noise_state["occurrences"]) >= SELL_NOISE_FILTER_MAX_OCCURRENCES:
+                            outcome = "sold_in_window"  # Rule 3
+                        else:
+                            outcome = None  # absorbed — still observing, no sale yet
+
+                        if outcome is not None:
+                            sell_noise_log.append(
+                                {
+                                    "first_signal_date": sell_noise_state["first_date"],
+                                    "occurrences": list(sell_noise_state["occurrences"]),
+                                    "outcome": outcome,
+                                    "sold_date": dt,
+                                }
+                            )
+                            exit_reason_today = (
+                                f"{exit_reason_today} (노이즈필터: "
+                                f"{sell_noise_state['first_date'].date()} 최초 신호, "
+                                f"{_SELL_NOISE_OUTCOME_LABELS[outcome]})"
+                            )
+                            sell_noise_state = None
+                        else:
+                            exit_reason_today = None
+            elif sell_noise_state is not None:
+                # Rule 5: no qualifying signal today — release a stale episode
+                # once its observation window has fully elapsed with nothing
+                # else having happened in it.
+                if (dt - sell_noise_state["first_date"]).days > SELL_NOISE_FILTER_WINDOW_DAYS:
+                    sell_noise_log.append(
+                        {
+                            "first_signal_date": sell_noise_state["first_date"],
+                            "occurrences": list(sell_noise_state["occurrences"]),
+                            "outcome": "released",
+                            "sold_date": None,
+                        }
+                    )
+                    sell_noise_state = None
 
             if exit_reason_today is not None:
                 exit_price = price
@@ -404,10 +531,24 @@ def run_backtest(
             }
         )
 
+    if sell_noise_state is not None:
+        # The backtest window ended mid-episode (ignored/absorbed occurrences
+        # that never got a chance to resolve via rule 2/3/4/5). Recorded as
+        # its own outcome so sell_noise_log always accounts for every episode
+        # that was opened.
+        sell_noise_log.append(
+            {
+                "first_signal_date": sell_noise_state["first_date"],
+                "occurrences": list(sell_noise_state["occurrences"]),
+                "outcome": "unresolved_at_window_end",
+                "sold_date": None,
+            }
+        )
+
     equity_curve = pd.Series(equity_values, index=dates, name="strategy_equity")
     bh_equity_curve = (gold / gold.iloc[0]).rename("bh_equity")
     holding_curve = pd.Series(holding_values, index=dates, name="holding")
-    return trades, equity_curve, bh_equity_curve, holding_curve
+    return trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log
 
 
 def compute_metrics(trades: list[dict], equity_curve: pd.Series, bh_equity_curve: pd.Series) -> dict:
@@ -564,10 +705,12 @@ def simulate(
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
+    use_sell_noise_filter: bool = True,
+    sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
     prepared signals and derive trades/equity curves/metrics/yearly returns."""
-    trades, equity_curve, bh_equity_curve, holding_curve = run_backtest(
+    trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log = run_backtest(
         signals,
         entry_delay_days=entry_delay_days,
         exit_delay_days=exit_delay_days,
@@ -580,6 +723,8 @@ def simulate(
         buy_green_count=buy_green_count,
         sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
+        use_sell_noise_filter=use_sell_noise_filter,
+        sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
     metrics_out.update(compute_hybrid_cagr(holding_curve, signals["gold"], bond_annual_yield))
@@ -591,6 +736,7 @@ def simulate(
         "holding_curve": holding_curve,
         "metrics": metrics_out,
         "yearly_returns": yearly,
+        "sell_noise_log": sell_noise_log,
     }
 
 
@@ -610,6 +756,8 @@ def run(
     min_holding_days: int = 0,
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
     gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
+    use_sell_noise_filter: bool = True,
+    sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
 ) -> dict:
     signals = prepare_signals(as_of, years=years, gold_price_basis=gold_price_basis)
     result = simulate(
@@ -626,6 +774,8 @@ def run(
         sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
         bond_annual_yield=bond_annual_yield,
+        use_sell_noise_filter=use_sell_noise_filter,
+        sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
     )
     result["signals"] = signals
     return result
