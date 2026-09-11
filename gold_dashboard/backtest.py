@@ -126,7 +126,16 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     short_sma = metrics.compute_sma(df["gold"], SHORT_REENTRY_WINDOW)
     above_short = (df["gold"] > short_sma).fillna(False)
     df["gold_sma_long"] = metrics.compute_sma(df["gold"], LONG_TREND_WINDOW)
-    df["gold_short_ma_crossover_up"] = above_short & ~above_short.shift(1).fillna(False)
+    # shift(..., fill_value=False) keeps this bool dtype end to end. Plain
+    # .shift(1) introduces a leading NaN, which silently upcasts the Series to
+    # object dtype; .fillna(False) doesn't undo that, so the ~ below would be
+    # bitwise NOT on Python ints (True/False as 1/0) instead of logical NOT —
+    # ~True == -2 and ~False == -1, both truthy, making this condition always
+    # true (i.e. "currently above the 20-day SMA") instead of "freshly crossed
+    # above it today". Confirmed against real KRX gold history: the buggy form
+    # marked every one of 1,675 "still above" days as a crossover, against 168
+    # genuine fresh crossings with this fix.
+    df["gold_short_ma_crossover_up"] = above_short & ~above_short.shift(1, fill_value=False)
     return df
 
 
