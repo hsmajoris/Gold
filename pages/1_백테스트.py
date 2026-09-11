@@ -45,6 +45,7 @@ DEFAULTS = {
     "bt_long_trend_buffer_pct": backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
     "bt_use_reentry_freq_limit": True,
     "bt_reentry_freq_limit_days": backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
+    "bt_use_new_high_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
     "bt_entry_delay_days": 0,
     "bt_exit_delay_days": 0,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
@@ -104,8 +105,11 @@ with st.expander("전략 규칙 보기"):
   (① 장기추세 필터, 필요조건 — 아래 두 가지를 모두 만족해야 함) 금 종가가 365일(역일) 이동평균보다
   "장기추세 필터 버퍼" %(기본 {buffer_pct:g}%) 이상 높고, 동시에 365일 이동평균 자체가
   30일(역일) 전보다 높아야(우상향) 하며, 그리고 (② 단기 재돌파 트리거) 금 종가가 30일(역일)
-  이동평균을 아래에서 위로 상향 돌파한 날 — 이것도 지연 없이 당일 즉시 매수. 아무 조건이나
-  먼저 만족하면 매수합니다
+  이동평균을 아래에서 위로 상향 돌파한 날 — 이것도 지연 없이 당일 즉시 매수. **또는** (고급
+  설정의 **52주 신고가 갱신 시 매수**가 켜져 있을 때만, 기본값 ON) 금 종가가 직전 365일(역일)
+  중 최고 종가를 처음으로 넘어서는 날(52주 신고가 신규 경신일) — 이것도 지연 없이 당일 즉시
+  매수, 재진입 조건과는 완전히 독립적이며 자체 빈도 제한도 없음. 아무 조건이나 먼저 만족하면
+  매수합니다
 - **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 고급 설정의 매도
   지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≤ 임계값` — 지연 없이 **당일 즉시 매도**
 - 지연이 설정된 green_count 신호는 그 시점 이후 첫 거래일 **종가**로 체결됩니다(지연 기간 중
@@ -276,6 +280,16 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             help="위 '단기 재진입 빈도 제한'이 켜져 있을 때만 작동합니다. ② 단기 재돌파 트리거로 "
             "인한 매수를 이 일수(역일 기준) 내 최대 1회로 제한합니다(기본 30일).",
         )
+        use_new_high_trigger = st.checkbox(
+            "52주 신고가 갱신 시 매수",
+            key="bt_use_new_high_trigger",
+            help="위 '단기 재진입 로직'과는 완전히 별개의, 독립적인 매수 조건입니다. 종가가 "
+            "직전 365일(역일) 중 최고 종가보다 높아지는 날(신규 52주 신고가 경신일, 단순히 "
+            "'지금 52주 최고가 상태'가 아니라 그날 처음 갱신된 경우만) 지연 없이 즉시 매수합니다"
+            "(green_count·금/은비율·재진입 조건과 무관하게 추가로 작동, 셋 중 아무거나 먼저 "
+            "만족해도 매수). 재진입 빈도 제한과 달리 이 트리거에는 자체 쿨다운이 없어 신고가를 "
+            "경신할 때마다(단, 이미 보유 중이면 매수를 다시 하지 않음) 작동합니다.",
+        )
 
     with adv_sell_col:
         st.markdown("**매도 관련**")
@@ -385,6 +399,7 @@ try:
         use_reentry_freq_limit=use_reentry_freq_limit,
         reentry_freq_limit_days=int(reentry_freq_limit_days),
         long_trend_buffer_pct=float(long_trend_buffer_pct),
+        use_new_high_trigger=use_new_high_trigger,
         buy_ratio=float(buy_ratio),
         sell_ratio=float(sell_ratio),
         buy_green_count=int(buy_green_count),

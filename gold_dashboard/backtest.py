@@ -91,6 +91,20 @@ LONG_TREND_SLOPE_LOOKBACK_DAYS = 30
 # may fire — at most once per this many calendar days. User-togglable per run.
 DEFAULT_REENTRY_FREQ_LIMIT_DAYS = 30
 
+# 52-week new-high breakout: an independent buy trigger (OR'd in alongside
+# green_count/ratio/reentry), separate from the 재진입 조건 above — NOT the
+# same thing as the old "금의 신고가 경신" trigger this module's docstring
+# mentions being replaced by the reentry logic (that one used the gold's
+# entire all-time high and fully replaced the buy-side trigger; this one is
+# a narrower 52-week/365-calendar-day window, fires alongside every other
+# buy trigger rather than instead of them, and — unlike the reentry
+# trigger — has no cooldown/frequency limit of its own). Fires only on the
+# day gold's close is strictly above the highest close of the prior
+# FIFTY_TWO_WEEK_HIGH_WINDOW_DAYS calendar days (a fresh breakout, not
+# "currently at/above the 52-week high" — see compute_signals).
+FIFTY_TWO_WEEK_HIGH_WINDOW_DAYS = 365
+DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER = True
+
 # Sell-signal noise filter: while gold is well above its 365-day (calendar)
 # SMA (a possible sign the sell signal is a blip in an ongoing uptrend rather
 # than a genuine reversal), a qualifying sell signal is ignored and a
@@ -204,6 +218,11 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     - gold_short_ma_crossover_up: gold closes above its SHORT_REENTRY_WINDOW-day
       SMA today, having been at/below it the previous day (a fresh short-term
       re-breakout, not merely "currently above").
+    - gold_new_52w_high: gold's close today is strictly above the highest
+      close of the prior FIFTY_TWO_WEEK_HIGH_WINDOW_DAYS calendar days (a
+      fresh 52-week-high breakout day, not merely "currently at/above the
+      52-week high" — see the new-high trigger's own comment above its
+      constants for how this differs from the reentry trigger).
     """
     df = df.copy()
     gf_cols = []
@@ -240,6 +259,15 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
     # 1,675 "still above" days as a crossover, against 168 genuine fresh
     # crossings with this fix.
     df["gold_short_ma_crossover_up"] = above_short & ~above_short.shift(1, fill_value=False)
+
+    # shift(1) before the rolling max excludes today's own close from "the
+    # prior N days' high" — otherwise every day sitting at its own new high
+    # would trivially compare equal to (never above) that high, and no
+    # breakout could ever be flagged.
+    prior_52w_high = (
+        df["gold"].shift(1).rolling(f"{FIFTY_TWO_WEEK_HIGH_WINDOW_DAYS}D", min_periods=1).max()
+    )
+    df["gold_new_52w_high"] = (df["gold"] > prior_52w_high).fillna(False)
     return df
 
 
@@ -290,6 +318,7 @@ def _buy_reason(
     buy_green_count: int,
     include_reentry: bool = False,
     long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
+    include_new_high: bool = False,
 ) -> str:
     reasons = []
     if gc >= buy_green_count:
@@ -298,6 +327,8 @@ def _buy_reason(
         reasons.append(f"금/은비율≥{buy_ratio:g}")
     if include_reentry:
         reasons.append(f"재진입(365일선+{long_trend_buffer_pct:g}%·우상향, 30일선 상향돌파)")
+    if include_new_high:
+        reasons.append("52주 신고가 갱신")
     return ", ".join(reasons)
 
 
@@ -318,6 +349,7 @@ def run_backtest(
     use_reentry_freq_limit: bool = True,
     reentry_freq_limit_days: int = DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
     long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
+    use_new_high_trigger: bool = DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
     buy_green_count: int = BUY_GREEN_COUNT,
@@ -340,11 +372,16 @@ def run_backtest(
       on or after that date — with no reconfirmation of the condition in
       between (a plain timer). While an order is pending, new green_count
       signals on the same side are ignored (only one pending order per side).
-    - **gold/silver ratio** (buy: `>= buy_ratio`, sell: `<= sell_ratio`) and the
+    - **gold/silver ratio** (buy: `>= buy_ratio`, sell: `<= sell_ratio`), the
       **reentry trigger** (see compute_reentry_trigger: gold sufficiently above
-      a rising long-term SMA AND a fresh short-term SMA re-breakout today) are
-      both *immediate*: they always fill the same day, ignoring the delay
-      settings, and preempt any green_count order still pending.
+      a rising long-term SMA AND a fresh short-term SMA re-breakout today),
+      and the **52-week new-high trigger** (`use_new_high_trigger`, on by
+      default — gold_new_52w_high, see compute_signals: today's close is a
+      fresh breakout above the prior FIFTY_TWO_WEEK_HIGH_WINDOW_DAYS calendar
+      days' high) are all *immediate*: they always fill the same day, ignoring
+      the delay settings, and preempt any green_count order still pending.
+      Unlike the reentry trigger, the new-high trigger has no cooldown/
+      frequency limit of its own.
 
     `use_reentry_trigger`: master switch for the reentry trigger, mainly meant
     for A/B comparisons (e.g. the 유효성 검증 page's "재진입 로직 적용 전/후"
@@ -440,6 +477,7 @@ def run_backtest(
     ratio = signals["gold_silver_ratio"]
     gold_sma_long = signals["gold_sma_long"]
     reentry_trigger = compute_reentry_trigger(signals, long_trend_buffer_pct)
+    new_high_trigger = signals["gold_new_52w_high"]
 
     holding = False
     entry_date = None
@@ -476,11 +514,14 @@ def run_backtest(
                 or last_reentry_fire_date is None
                 or (dt - last_reentry_fire_date).days >= reentry_freq_limit_days
             )
+            # No cooldown of its own (unlike the reentry trigger above) —
+            # fires every time it's true and we're not already holding.
+            new_high_ready = use_new_high_trigger and bool(new_high_trigger.loc[dt])
 
             entry_reason_today = None
-            if reentry_ready or r >= buy_ratio:
-                # Ratio/reentry buys are immediate: no delay, and this
-                # preempts any still-pending green_count order.
+            if reentry_ready or new_high_ready or r >= buy_ratio:
+                # Ratio/reentry/new-high buys are immediate: no delay, and
+                # this preempts any still-pending green_count order.
                 entry_reason_today = _buy_reason(
                     gc,
                     r,
@@ -488,6 +529,7 @@ def run_backtest(
                     buy_green_count,
                     include_reentry=reentry_ready,
                     long_trend_buffer_pct=long_trend_buffer_pct,
+                    include_new_high=new_high_ready,
                 )
                 pending_buy_date = None
                 pending_buy_reason = None
@@ -876,6 +918,7 @@ def simulate(
     use_reentry_freq_limit: bool = True,
     reentry_freq_limit_days: int = DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
     long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
+    use_new_high_trigger: bool = DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
     buy_green_count: int = BUY_GREEN_COUNT,
@@ -898,6 +941,7 @@ def simulate(
         use_reentry_freq_limit=use_reentry_freq_limit,
         reentry_freq_limit_days=reentry_freq_limit_days,
         long_trend_buffer_pct=long_trend_buffer_pct,
+        use_new_high_trigger=use_new_high_trigger,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
         buy_green_count=buy_green_count,
@@ -937,6 +981,7 @@ def run(
     use_reentry_freq_limit: bool = True,
     reentry_freq_limit_days: int = DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
     long_trend_buffer_pct: float = DEFAULT_LONG_TREND_BUFFER_PCT,
+    use_new_high_trigger: bool = DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
     buy_ratio: float = BUY_RATIO,
     sell_ratio: float = SELL_RATIO,
     buy_green_count: int = BUY_GREEN_COUNT,
@@ -959,6 +1004,7 @@ def run(
         use_reentry_freq_limit=use_reentry_freq_limit,
         reentry_freq_limit_days=reentry_freq_limit_days,
         long_trend_buffer_pct=long_trend_buffer_pct,
+        use_new_high_trigger=use_new_high_trigger,
         buy_ratio=buy_ratio,
         sell_ratio=sell_ratio,
         buy_green_count=buy_green_count,
