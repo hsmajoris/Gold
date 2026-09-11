@@ -5,7 +5,11 @@ from datetime import date
 
 INDICATOR_ORDER = ["real_rate", "dxy", "gold_silver_ratio", "wti", "vix"]
 
-MA_WINDOWS = [60, 30, 5]
+# Calendar-day (역일) windows, not trading-day counts — metrics.compute_sma
+# averages every observation within the trailing N calendar days, whatever
+# number of trading days that happens to contain. Standardized to the
+# 일주일(week)/한달(month)/세달(quarter) units used throughout this project.
+MA_WINDOWS = [90, 30, 7]
 
 # The backtest's default gold/silver-ratio buy/sell thresholds (immediate
 # trigger levels) and the main dashboard's chart reference lines/shading must

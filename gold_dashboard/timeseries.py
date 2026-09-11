@@ -18,8 +18,10 @@ from .timeutil import today_kst
 
 DXY_TICKERS = ["DX-Y.NYB", "^DXY", "DX=F"]
 YEARS = 7
-BUFFER_DAYS = 90  # extra calendar days of history fetched before the display/analysis
-# start, so a 60-day SMA already has a full window on day 1 of that period.
+BUFFER_DAYS = 110  # extra calendar days of history fetched before the display/analysis
+# start, so the longest calendar-day SMA (config.MA_WINDOWS' 90-day window)
+# already has a full window on day 1 of that period, with a margin over the
+# bare minimum of 90.
 
 # Raw single-series sources, keyed by a short id (not all of these are dashboard
 # indicator keys — "gold"/"silver" are the two legs of the gold/silver ratio).
@@ -144,8 +146,9 @@ _INDICATOR_SOURCE = {"real_rate": "real_rate", "dxy": "dxy", "wti": "wti", "vix"
 
 def build_indicator_chart_data(key: str, as_of: date | None = None, years: int = YEARS) -> dict:
     """Data for one indicator's history chart: its own daily series (trimmed to
-    the last `years`), 5/30/60-day SMAs of it (skipped for gold_silver_ratio,
-    which has no MA concept), and gold's own daily series for comparison.
+    the last `years`), config.MA_WINDOWS calendar-day SMAs of it (skipped for
+    gold_silver_ratio, which has no MA concept), and gold's own daily series
+    for comparison.
 
     Each returned series keeps its own native trading-calendar dates (no
     cross-series alignment/forward-fill) since they're drawn as independent

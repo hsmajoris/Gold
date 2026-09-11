@@ -12,8 +12,9 @@ from . import metrics
 from . import signals
 from .timeutil import today_kst
 
-# Lookback window behind the as-of date, long enough for the 60-day SMA plus
-# a comfortable margin for breakout-streak history (mirrors the old "2y" default).
+# Lookback window behind the as-of date, long enough for the 90-day calendar
+# SMA plus a comfortable margin for breakout-streak history (mirrors the old
+# "2y" default).
 LOOKBACK_DAYS = 730
 
 
