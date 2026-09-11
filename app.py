@@ -451,18 +451,36 @@ def render_dashboard() -> None:
         bg = "background-color: rgba(76,175,80,0.28);" if highlight else ""
         return f'<td style="padding:8px 12px;border:1px solid #ddd;{bg}">{text}</td>'
 
-    def ma_cell(sma: dict) -> str:
+    def ma_cell(sma: dict, group_border: str = "") -> str:
         """MA row cell: the MA value vs. close (primary) with the breakout-streak
         day count shown only as a small supplementary badge, not the headline.
         Highlighting reflects whether the signal is gold-friendly given the
-        indicator's correlation direction, not simply "close above its own MA"."""
+        indicator's correlation direction, not simply "close above its own MA".
+        `group_border` (border-top/right/bottom/left overrides, appended after
+        the base `border` shorthand so they win on just those sides) draws the
+        outer outline around the real_rate/dxy × 90·30·7일선 block — see the
+        call site below."""
         bg = "background-color: rgba(76,175,80,0.28);" if sma["gold_friendly"] else ""
         badge = (
             f'<div style="font-size:11px;color:#5a5a5a;margin-top:2px">{sma["streak_display"]}</div>'
             if sma["streak_display"]
             else ""
         )
-        return f'<td style="padding:8px 12px;border:1px solid #ddd;{bg}">{sma["display"]}{badge}</td>'
+        return (
+            f'<td style="padding:8px 12px;border:1px solid #ddd;{group_border}{bg}">'
+            f'{sma["display"]}{badge}</td>'
+        )
+
+    # The green_count factor block (real_rate/dxy × 90·30·7일선, 2 cols × 3 rows)
+    # gets a bold OUTER outline only — individual cells inside keep the default
+    # thin 1px border — so the six cells read as one grouped factor rather than
+    # six separately-emphasized ones. Achieved by giving only the cells on the
+    # block's actual perimeter a thick override on just that one side (a
+    # corner cell gets two): border-collapse:collapse on the <table> then
+    # merges each shared edge into a single line, so touching this block's own
+    # cells is enough — no changes needed on the rows/columns just outside it.
+    FACTOR_GROUP_COLS = ("real_rate", "dxy")
+    FACTOR_GROUP_BORDER = "3px solid #333"
 
     rows_html = []
 
@@ -475,9 +493,22 @@ def render_dashboard() -> None:
         cells = "".join(data_cell(data["static_rows"][row_name][k]) for k in indicator_order)
         rows_html.append(f"<tr>{header_cell(row_name)}{cells}</tr>")
 
-    for window in data["ma_windows"]:
-        cells = "".join(ma_cell(indicators[k]["sma"][str(window)]) for k in indicator_order)
-        rows_html.append(f"<tr>{header_cell(f'{window}일선')}{cells}</tr>")
+    ma_windows = data["ma_windows"]
+    for row_idx, window in enumerate(ma_windows):
+        cells = []
+        for k in indicator_order:
+            border_parts = []
+            if k in FACTOR_GROUP_COLS:
+                if row_idx == 0:
+                    border_parts.append(f"border-top:{FACTOR_GROUP_BORDER};")
+                if row_idx == len(ma_windows) - 1:
+                    border_parts.append(f"border-bottom:{FACTOR_GROUP_BORDER};")
+                if k == FACTOR_GROUP_COLS[0]:
+                    border_parts.append(f"border-left:{FACTOR_GROUP_BORDER};")
+                if k == FACTOR_GROUP_COLS[-1]:
+                    border_parts.append(f"border-right:{FACTOR_GROUP_BORDER};")
+            cells.append(ma_cell(indicators[k]["sma"][str(window)], "".join(border_parts)))
+        rows_html.append(f"<tr>{header_cell(f'{window}일선')}{''.join(cells)}</tr>")
 
     close_cells = "".join(data_cell(indicators[k]["prev_close"]["display"]) for k in indicator_order)
     rows_html.append(f"<tr>{header_cell(close_row_label)}{close_cells}</tr>")
