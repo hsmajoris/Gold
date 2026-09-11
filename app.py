@@ -330,6 +330,26 @@ border-radius:6px;padding:10px 14px;font-weight:600;color:#611a15;line-height:1.
             "World Gold Council · 원자료: FRED(REAINTRATREARAT10Y, TWEXBGSMTH)"
         )
 
+        # A nested st.expander() isn't allowed inside this outer one (Streamlit
+        # raises on expander-in-expander), so this is a button-driven toggle
+        # instead — collapsed by default, flips a session_state flag on click.
+        st.session_state.setdefault("dash_show_calc_method", False)
+        if st.button("📐 계산 방법 보기", key="dash_calc_method_btn"):
+            st.session_state["dash_show_calc_method"] = not st.session_state["dash_show_calc_method"]
+        if st.session_state["dash_show_calc_method"]:
+            st.markdown(
+                "- **데이터**: 실질금리(10년물 TIPS 실질수익률, FRED `REAINTRATREARAT10Y`), "
+                "달러인덱스(`TWEXBGSMTH`), 금 가격(월간) — 모두 월별 종가 기준\n"
+                "- R²는 각 2년 구간 내 월별 데이터로 피어슨 상관계수(r)를 구한 뒤 제곱한 값 "
+                "(R² = r²)\n"
+                "- \"실질금리 R²\"는 실질금리 레벨과 금값 레벨의 상관관계, \"달러인덱스 R²\"는 "
+                "달러인덱스 레벨과 금값 레벨의 상관관계를 각각 계산\n"
+                "- R²가 50% 이상이면 해당 팩터를 \"강함\"으로, 두 팩터 모두 50% 미만이면 "
+                "\"둘 다 약함\"으로 표시\n"
+                "- 표본 수(n)는 구간당 약 24개월(2006년 이전 달러인덱스는 데이터 시작 시점 "
+                "제약으로 n이 더 적음)"
+            )
+
 
 def render_dashboard() -> None:
     st.title("금(Gold) 상관관계 대시보드")
