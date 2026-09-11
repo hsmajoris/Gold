@@ -369,6 +369,7 @@ except Exception as exc:
 m = result["metrics"]
 equity = result["equity_curve"]
 bh_equity = result["bh_equity_curve"]
+yearly = result["yearly_returns"]
 trades = result["trades"]
 
 start_date = equity.index[0].date()
@@ -548,6 +549,53 @@ else:
 
 st.altair_chart(combined_chart.properties(height=380).interactive(), use_container_width=True)
 st.caption("▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고)")
+
+# ---- 4. 연도별 연환산수익률 막대그래프 ----
+st.subheader("연도별 연환산수익률")
+yearly_long = yearly.melt(
+    id_vars=["year", "days_span"],
+    value_vars=["strategy_return_annualized", "bh_return_annualized"],
+    var_name="series",
+    value_name="return",
+)
+yearly_long["series"] = yearly_long["series"].map(
+    {"strategy_return_annualized": STRATEGY_LABEL, "bh_return_annualized": BH_LABEL}
+)
+# raw (non-annualized) realized return for the tooltip, aligned to the same rows
+raw_map = {}
+for _, row in yearly.iterrows():
+    raw_map[(row["year"], STRATEGY_LABEL)] = row["strategy_return"]
+    raw_map[(row["year"], BH_LABEL)] = row["bh_return"]
+yearly_long["raw_return"] = [raw_map[(y, s)] for y, s in zip(yearly_long["year"], yearly_long["series"])]
+
+bar_chart = (
+    alt.Chart(yearly_long)
+    .mark_bar()
+    .encode(
+        x=alt.X("year:O", title=None),
+        xOffset=alt.XOffset("series:N", sort=[STRATEGY_LABEL, BH_LABEL]),
+        y=alt.Y("return:Q", title="연환산수익률", axis=alt.Axis(format="%")),
+        color=alt.Color(
+            "series:N",
+            title=None,
+            scale=alt.Scale(domain=[STRATEGY_LABEL, BH_LABEL], range=[STRATEGY_COLOR, BH_COLOR]),
+        ),
+        tooltip=[
+            alt.Tooltip("year:O", title="연도"),
+            alt.Tooltip("series:N", title="전략"),
+            alt.Tooltip("return:Q", title="연환산수익률", format=".1%"),
+            alt.Tooltip("raw_return:Q", title="해당 연도 실제 수익률", format=".1%"),
+            alt.Tooltip("days_span:Q", title="해당 연도 일수"),
+        ],
+    )
+    .properties(height=340)
+)
+st.altair_chart(bar_chart, use_container_width=True)
+st.caption(
+    f"{int(yearly['year'].iloc[0])}년과 {int(yearly['year'].iloc[-1])}년은 분석 기간에 걸친 "
+    "부분연도이며, 그 부분 기간의 실제 수익률을 연 단위로 환산한 값입니다(마우스오버 시 실제 "
+    "수익률 확인 가능). 신호전략이 그 해 내내 현금(미보유) 상태였다면 0%로 표시됩니다."
+)
 
 # ---- 5. 거래 내역 표 ----
 st.subheader("거래 내역")
