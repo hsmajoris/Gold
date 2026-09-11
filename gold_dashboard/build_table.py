@@ -62,6 +62,23 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
 
     direction = config.CORRELATION_DIRECTION[key]
 
+    # Row highlighting answers "is this signal actually used in a real buy/sell
+    # trigger, and currently gold-friendly?" — not just "close vs. its own MA".
+    # Only real_rate/dxy (green_count) and gold_silver_ratio (its own fixed
+    # threshold, unrelated to any MA) ever highlight; WTI/VIX are
+    # reference-only and never highlight, matching the main dashboard's
+    # per-indicator chart shading (app.py) and the backtest's real trigger
+    # logic (config.GREEN_COUNT_SIGNAL_INDICATORS is the single shared source
+    # of truth for which indicators feed a real trigger).
+    ratio_gold_friendly = None
+    if key == "gold_silver_ratio":
+        ratio_flag_series = signals.ratio_threshold_active(
+            series, config.DEFAULT_GS_RATIO_BUY_THRESHOLD, "ge"
+        )
+        ratio_gold_friendly = (
+            bool(ratio_flag_series.iloc[-1]) if not ratio_flag_series.empty else False
+        )
+
     sma_info = {}
     for window in config.MA_WINDOWS:
         ma = metrics.compute_sma(series, window)
@@ -75,12 +92,18 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
         )
         status_text = "상향 돌파" if breakout else "이평선 아래"
 
-        # Highlighting answers a different question from status_text: "is this signal
-        # gold-friendly?", not "is the close above its own MA?". Delegates to the single
-        # shared comparison in signals.py so this can never drift from the backtest's
-        # green_count or the main chart's shading, which use the same function.
-        gold_friendly_series = signals.gold_friendly_vs_ma(series, ma, direction)
-        gold_friendly = bool(gold_friendly_series.iloc[-1]) if not gold_friendly_series.empty else False
+        if key == "gold_silver_ratio":
+            gold_friendly = ratio_gold_friendly
+        elif key not in config.GREEN_COUNT_SIGNAL_INDICATORS:
+            gold_friendly = False
+        else:
+            # Delegates to the single shared comparison in signals.py so this can
+            # never drift from the backtest's green_count or the main chart's
+            # shading, which use the same function.
+            gold_friendly_series = signals.gold_friendly_vs_ma(series, ma, direction)
+            gold_friendly = (
+                bool(gold_friendly_series.iloc[-1]) if not gold_friendly_series.empty else False
+            )
 
         sma_info[str(window)] = {
             # Primary: the actual MA value vs. close, and whether close sits above/below it.
