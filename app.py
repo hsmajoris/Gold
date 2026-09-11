@@ -39,6 +39,13 @@ CHART_SIGNAL_SHADE_OPACITY = 0.16
 # page's setting never affects these charts.
 CHART_YEARS = 10
 
+# Indicators that actually feed the backtest's real_rate+dxy green_count buy
+# signal. WTI and VIX are reference-only (not used in any buy/sell trigger),
+# so their charts must never show the "buy signal active" shading — only
+# these two, and the gold/silver ratio (its own threshold-based trigger,
+# handled separately below), get a shaded band at all.
+GREEN_COUNT_SIGNAL_INDICATORS = {"real_rate", "dxy"}
+
 
 def _boolean_series_to_ranges(flag: pd.Series) -> list[tuple]:
     """Contiguous [start, end] date ranges where `flag` is True (inclusive of
@@ -139,22 +146,31 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         )
     )
 
-    # Buy-signal-active shading: for MA indicators, all 3 windows must simultaneously
-    # be gold-friendly (a stricter, single-indicator condition than any one MA row's
-    # highlight); for the ratio, the same >= threshold the backtest's ratio trigger
-    # uses by default. Both call gold_dashboard/signals.py — the same module
-    # build_table.py's highlighting and backtest.py's green_count call — so the
-    # shading can never silently diverge from the actual signal definitions.
+    # Buy-signal-active shading: only for indicators that actually feed a real
+    # buy/sell trigger. real_rate/dxy use the green_count condition (all 3 MA
+    # windows simultaneously gold-friendly, a stricter single-indicator view of
+    # the same comparison green_count sums); gold/silver ratio uses the same
+    # >= threshold as its own immediate-buy trigger (unrelated to any moving
+    # average). WTI and VIX are reference-only — never used in any buy/sell
+    # trigger — so they get no shading at all, regardless of what their own
+    # chart might otherwise suggest. Both real cases call gold_dashboard/signals.py
+    # — the same module build_table.py's highlighting and backtest.py's
+    # green_count/ratio triggers use — so the shading can never silently
+    # diverge from the actual signal definitions.
     if chart_data["kind"] == "ma":
-        signal_flag = signals.all_windows_gold_friendly_for(
-            indicator_key, chart_data["indicator"], chart_data["smas"]
+        signal_flag = (
+            signals.all_windows_gold_friendly_for(
+                indicator_key, chart_data["indicator"], chart_data["smas"]
+            )
+            if indicator_key in GREEN_COUNT_SIGNAL_INDICATORS
+            else None
         )
     else:
         signal_flag = signals.ratio_threshold_active(
             chart_data["indicator"], config.DEFAULT_GS_RATIO_BUY_THRESHOLD, "ge"
         )
 
-    shade_ranges = _boolean_series_to_ranges(signal_flag)
+    shade_ranges = _boolean_series_to_ranges(signal_flag) if signal_flag is not None else []
     layers = []
     if shade_ranges:
         shade_df = pd.DataFrame(
@@ -226,12 +242,17 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
             f"🔵 진한 파랑 = {label} 종가, 옅어질수록 5→30→60일 이동평균(왼쪽 축) · "
             "🟠 금 가격(오른쪽 축, $)"
         )
-        st.caption(
-            "🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 (5·30·60일 이평선 3개 모두 동시에 "
-            "만족하는 날). 실제 매매 신호의 green_count는 이 조건을 실질금리·달러인덱스 두 지표에서 "
-            "합산하므로, 이 지표 하나만으로 3개를 모두 만족하지 못해도 다른 지표 쪽에서 green_count≥5가 "
-            "채워져 매수가 발생할 수 있습니다."
-        )
+        if indicator_key in GREEN_COUNT_SIGNAL_INDICATORS:
+            st.caption(
+                "🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 (5·30·60일 이평선 3개 모두 동시에 "
+                "만족하는 날). 실제 매매 신호의 green_count는 이 조건을 실질금리·달러인덱스 두 지표에서 "
+                "합산하므로, 이 지표 하나만으로 3개를 모두 만족하지 못해도 다른 지표 쪽에서 green_count≥5가 "
+                "채워져 매수가 발생할 수 있습니다."
+            )
+        else:
+            st.caption(
+                f"{label}는 실제 매수·매도 신호에 사용되지 않는 참고용 지표라 음영 표시가 없습니다."
+            )
 
 
 def render_dashboard() -> None:
