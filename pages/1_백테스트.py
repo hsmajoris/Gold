@@ -663,19 +663,37 @@ st.caption(
 
 # ---- 3. 연도별 연환산수익률 막대그래프 ----
 st.subheader("연도별 연환산수익률")
-yearly_long = yearly.melt(
+STRAT_HELD_LABEL = f"{STRATEGY_LABEL}(보유기간만)"
+yearly_mode = st.radio(
+    "신호전략 계산 방식",
+    options=[STRAT_HYBRID_LABEL, STRAT_HELD_LABEL],
+    horizontal=True,
+    key="bt_yearly_chart_mode",
+    help=f"**{STRAT_HYBRID_LABEL}**(기본): 미보유(현금) 기간에도 위에서 설정한 기대수익률"
+    f"(연 {bond_yield_pct:g}%)을 적용해 연환산수익률을 계산합니다 — 요약 지표 ④ 그룹과 "
+    f"동일한 방식입니다. **{STRAT_HELD_LABEL}**: 미보유 기간은 0%로 취급하고 실제 보유 "
+    "기간의 등락만 반영합니다 — 요약 지표 ③ 그룹과 동일한 방식입니다.",
+)
+# `yearly` (from result["yearly_returns"]) is already computed from the hybrid
+# curve to match ④ — only recompute from the plain equity curve when the user
+# picks ③, using the same yearly_returns() function directly.
+yearly_display = yearly if yearly_mode == STRAT_HYBRID_LABEL else backtest.yearly_returns(equity, bh_equity)
+strategy_series_label = yearly_mode
+strategy_color = STRATEGY_HYBRID_COLOR if yearly_mode == STRAT_HYBRID_LABEL else STRATEGY_COLOR
+
+yearly_long = yearly_display.melt(
     id_vars=["year", "days_span"],
     value_vars=["strategy_return_annualized", "bh_return_annualized"],
     var_name="series",
     value_name="return",
 )
 yearly_long["series"] = yearly_long["series"].map(
-    {"strategy_return_annualized": STRATEGY_LABEL, "bh_return_annualized": BH_LABEL}
+    {"strategy_return_annualized": strategy_series_label, "bh_return_annualized": BH_LABEL}
 )
 # raw (non-annualized) realized return for the tooltip, aligned to the same rows
 raw_map = {}
-for _, row in yearly.iterrows():
-    raw_map[(row["year"], STRATEGY_LABEL)] = row["strategy_return"]
+for _, row in yearly_display.iterrows():
+    raw_map[(row["year"], strategy_series_label)] = row["strategy_return"]
     raw_map[(row["year"], BH_LABEL)] = row["bh_return"]
 yearly_long["raw_return"] = [raw_map[(y, s)] for y, s in zip(yearly_long["year"], yearly_long["series"])]
 
@@ -684,12 +702,12 @@ bar_chart = (
     .mark_bar()
     .encode(
         x=alt.X("year:O", title=None),
-        xOffset=alt.XOffset("series:N", sort=[STRATEGY_LABEL, BH_LABEL]),
+        xOffset=alt.XOffset("series:N", sort=[strategy_series_label, BH_LABEL]),
         y=alt.Y("return:Q", title="연환산수익률", axis=alt.Axis(format="%")),
         color=alt.Color(
             "series:N",
             title=None,
-            scale=alt.Scale(domain=[STRATEGY_LABEL, BH_LABEL], range=[STRATEGY_COLOR, BH_COLOR]),
+            scale=alt.Scale(domain=[strategy_series_label, BH_LABEL], range=[strategy_color, BH_COLOR]),
         ),
         tooltip=[
             alt.Tooltip("year:O", title="연도"),
@@ -702,10 +720,15 @@ bar_chart = (
     .properties(height=340)
 )
 st.altair_chart(bar_chart, use_container_width=True)
+yearly_cash_note = (
+    f"미보유(현금) 기간에는 기대수익률(연 {bond_yield_pct:g}%)이 적용됩니다."
+    if yearly_mode == STRAT_HYBRID_LABEL
+    else "신호전략이 그 해 내내 현금(미보유) 상태였다면 0%로 표시됩니다."
+)
 st.caption(
-    f"{int(yearly['year'].iloc[0])}년과 {int(yearly['year'].iloc[-1])}년은 분석 기간에 걸친 "
+    f"{int(yearly_display['year'].iloc[0])}년과 {int(yearly_display['year'].iloc[-1])}년은 분석 기간에 걸친 "
     "부분연도이며, 그 부분 기간의 실제 수익률을 연 단위로 환산한 값입니다(마우스오버 시 실제 "
-    "수익률 확인 가능). 신호전략이 그 해 내내 현금(미보유) 상태였다면 0%로 표시됩니다."
+    f"수익률 확인 가능). {yearly_cash_note}"
 )
 
 # ---- 4. 거래 내역 표 ----

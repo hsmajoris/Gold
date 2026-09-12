@@ -813,8 +813,13 @@ def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.Da
     span of that year falls inside the backtest window) and annualized to that
     same span so partial first/last years are comparable to full years.
 
-    A year the strategy spent entirely in cash naturally comes out to 0%, since
-    the equity curve doesn't move during cash periods — no special-casing needed.
+    `equity_curve` is generic — pass `hybrid_equity_curve` (the default the
+    caller in `simulate()` uses, so this matches the ④ 신호전략(기대수익률
+    포함) summary metric: a year spent entirely out of the market shows the
+    assumed `bond_annual_yield`, not 0%) or the plain `equity_curve` (③
+    신호전략(보유기간), where a year spent entirely in cash naturally comes
+    out to 0% since that curve doesn't move during cash periods) — whichever
+    matches what the caller wants to display.
     """
     years = sorted(set(equity_curve.index.year))
     rows = []
@@ -904,7 +909,11 @@ def simulate(
     )
     hybrid_equity_curve = hybrid.pop("hybrid_equity_curve")
     metrics_out.update(hybrid)
-    yearly = yearly_returns(equity_curve, bh_equity_curve)
+    # Matches the ④ 신호전략(기대수익률 포함) summary metric, not ③ — a year
+    # spent entirely out of the market shows bond_annual_yield, not 0%. The
+    # 유효성 검증 page's yearly bar chart can recompute this with the plain
+    # `equity_curve` instead if it wants to display ③ (보유기간만) here.
+    yearly = yearly_returns(hybrid_equity_curve, bh_equity_curve)
     return {
         "trades": trades,
         "equity_curve": equity_curve,
