@@ -3,9 +3,9 @@ strategy vs. a same-period Buy & Hold benchmark."""
 
 from datetime import date, timedelta
 
-import altair as alt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from gold_dashboard import backtest, config
@@ -147,7 +147,7 @@ with st.expander("전략 규칙 보기"):
 - 고급 설정의 **KRX 금현물 보유 수수료 (연, %)** (기본값 0.15%, ② KRX 금현물 선택 시에만
   적용)는 보유 중인 기간의 경과 일수에 비례해 연복리로 수익률에서 차감되며, Buy & Hold와
   신호전략 보유 기간 모두 동일하게 적용됩니다(① 국제 금 시세에는 적용되지 않음)
-- 분석 기간: **{years}년** (3~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
+- 분석 기간: **{years}년** (1~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
   데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
   N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
   분석 기간 10년 + 기준일 3년 전이면 "13년 전 ~ 3년 전"을 분석합니다(현재 설정:
@@ -514,17 +514,8 @@ st.subheader("누적수익률")
 STRAT_HYBRID_LABEL = f"{STRATEGY_LABEL}(기대수익률 포함)"
 
 # 신호전략(보유기간만)은 이 차트에서 제외 — Buy & Hold와 신호전략(기대수익률 포함) 둘만 표시.
-cum_df = pd.DataFrame(
-    {
-        "date": equity.index,
-        BH_LABEL: bh_equity.reindex(equity.index).values - 1.0,
-    }
-).melt("date", var_name="series", value_name="return")
-
-# ④(기대수익률 포함) curve's holding-segment points feed into the SAME
-# melted frame/color scale as BH, so both share exactly one legend. Its
-# non-holding-segment points are a separate, unencoded-color layer below
-# (dashed + lighter tint) so they don't add a 3rd legend entry.
+dates = equity.index
+bh_returns = bh_equity.reindex(equity.index).to_numpy() - 1.0
 hybrid_returns = hybrid_equity.reindex(equity.index).to_numpy() - 1.0
 holding_bool = holding_curve.reindex(equity.index).fillna(False).to_numpy()
 n_points = len(hybrid_returns)
@@ -545,86 +536,73 @@ else:
     point_in_holding[:] = holding_bool
     point_in_nonholding[:] = ~holding_bool
 
-hybrid_holding_df = pd.DataFrame(
-    {
-        "date": equity.index,
-        "series": STRAT_HYBRID_LABEL,
-        "return": np.where(point_in_holding, hybrid_returns, np.nan),
-    }
-)
-cum_df = pd.concat([cum_df, hybrid_holding_df], ignore_index=True)
+nonholding_note = f"기대수익률 연 {bond_yield_pct:g}% 가정 적용 구간"
 
-line_chart = (
-    alt.Chart(cum_df)
-    .mark_line(strokeWidth=2)
-    .encode(
-        x=alt.X("date:T", axis=alt.Axis(title=None, format="%Y", tickCount="year")),
-        y=alt.Y("return:Q", title="누적수익률", axis=alt.Axis(format="%")),
-        color=alt.Color(
-            "series:N",
-            title=None,
-            scale=alt.Scale(
-                domain=[BH_LABEL, STRAT_HYBRID_LABEL],
-                range=[BH_COLOR, STRATEGY_HYBRID_COLOR],
-            ),
-        ),
-        tooltip=[
-            alt.Tooltip("date:T", title="날짜"),
-            alt.Tooltip("series:N", title="전략"),
-            alt.Tooltip("return:Q", title="누적수익률", format=".1%"),
-        ],
-    )
-)
-
-# 미보유 구간: 옅은 톤 + 점선, 위 색상 스케일과 무관한 리터럴 색상이라 범례에
-# 별도 항목을 만들지 않음(같은 STRAT_HYBRID_LABEL 시리즈의 연장선일 뿐).
-hybrid_nonholding_df = pd.DataFrame(
-    {
-        "date": equity.index,
-        "return": np.where(point_in_nonholding, hybrid_returns, np.nan),
-        "안내": f"기대수익률 연 {bond_yield_pct:g}% 가정 적용 구간",
-    }
-)
-hybrid_nonholding_line = (
-    alt.Chart(hybrid_nonholding_df)
-    .mark_line(strokeWidth=2, strokeDash=[6, 4], color=STRATEGY_HYBRID_NONHOLDING_COLOR)
-    .encode(
-        x="date:T",
-        y="return:Q",
-        tooltip=[
-            alt.Tooltip("date:T", title="날짜"),
-            alt.Tooltip("return:Q", title="누적수익률(기대수익률 적용)", format=".1%"),
-            alt.Tooltip("안내:N", title=None),
-        ],
-    )
-)
+fig = go.Figure()
 
 # 미보유 구간 배경 음영(회색) — 연속 미보유 구간을 하나의 띠로 묶어서 표시.
-non_holding_bands = None
+# (Plotly의 add_vrect는 shape이라 자체 hover 툴팁은 없지만, 같은 구간을 덮는
+# 아래 점선 라인이 동일한 안내 문구를 hover 툴팁으로 제공.)
 if n_points > 1:
-    seg_df = pd.DataFrame(
-        {"start": equity.index[:-1], "end": equity.index[1:], "holding": holding_bool[:-1]}
-    )
+    seg_df = pd.DataFrame({"start": dates[:-1], "end": dates[1:], "holding": holding_bool[:-1]})
     seg_df["run_id"] = (seg_df["holding"] != seg_df["holding"].shift()).cumsum()
     runs = seg_df.groupby("run_id").agg(
         start=("start", "first"), end=("end", "last"), holding=("holding", "first")
     )
-    bands_df = runs.loc[~runs["holding"], ["start", "end"]].copy()
-    if not bands_df.empty:
-        bands_df["안내"] = f"기대수익률 연 {bond_yield_pct:g}% 가정 적용 구간"
-        non_holding_bands = (
-            alt.Chart(bands_df)
-            .mark_rect(color=NONHOLDING_BAND_COLOR, opacity=0.14)
-            .encode(
-                x="start:T",
-                x2="end:T",
-                tooltip=[
-                    alt.Tooltip("start:T", title="시작"),
-                    alt.Tooltip("end:T", title="종료"),
-                    alt.Tooltip("안내:N", title=None),
-                ],
-            )
+    bands_df = runs.loc[~runs["holding"], ["start", "end"]]
+    for _, band in bands_df.iterrows():
+        fig.add_vrect(
+            x0=band["start"],
+            x1=band["end"],
+            fillcolor=NONHOLDING_BAND_COLOR,
+            opacity=0.14,
+            line_width=0,
+            layer="below",
         )
+
+fig.add_trace(
+    go.Scatter(
+        x=dates,
+        y=bh_returns,
+        mode="lines",
+        name=BH_LABEL,
+        line=dict(color=BH_COLOR, width=2),
+        hovertemplate="%{x|%Y-%m-%d}<br>" + BH_LABEL + ": %{y:.1%}<extra></extra>",
+    )
+)
+
+# ④(기대수익률 포함) curve — 보유 구간(실선). 미보유 구간과 같은 범례 항목을
+# 공유하도록 name을 동일하게 두고, 아래 미보유 구간 트레이스는 showlegend=False로
+# 숨겨 범례에 3번째 항목이 생기지 않게 함.
+fig.add_trace(
+    go.Scatter(
+        x=dates,
+        y=np.where(point_in_holding, hybrid_returns, np.nan),
+        mode="lines",
+        name=STRAT_HYBRID_LABEL,
+        connectgaps=False,
+        line=dict(color=STRATEGY_HYBRID_COLOR, width=2),
+        hovertemplate="%{x|%Y-%m-%d}<br>" + STRAT_HYBRID_LABEL + ": %{y:.1%}<extra></extra>",
+    )
+)
+
+# 미보유 구간: 옅은 톤 + 점선, 범례에는 표시하지 않음(같은 STRAT_HYBRID_LABEL
+# 시리즈의 연장선일 뿐).
+fig.add_trace(
+    go.Scatter(
+        x=dates,
+        y=np.where(point_in_nonholding, hybrid_returns, np.nan),
+        mode="lines",
+        name=STRAT_HYBRID_LABEL,
+        showlegend=False,
+        connectgaps=False,
+        line=dict(color=STRATEGY_HYBRID_NONHOLDING_COLOR, width=2, dash="dash"),
+        customdata=np.full(n_points, nonholding_note),
+        hovertemplate=(
+            "%{x|%Y-%m-%d}<br>누적수익률(기대수익률 적용): %{y:.1%}<br>%{customdata}<extra></extra>"
+        ),
+    )
+)
 
 marker_rows = []
 for t in trades:
@@ -655,39 +633,60 @@ _price_tooltip_format = "$,.2f" if gold_price_basis == config.GOLD_PRICE_BASIS_I
 _price_tooltip_title = "체결가" if gold_price_basis == config.GOLD_PRICE_BASIS_INTL else "체결가 (원)"
 
 if not marker_df.empty:
-    markers = (
-        alt.Chart(marker_df)
-        .mark_point(size=90, filled=True, opacity=0.9)
-        .encode(
-            x="date:T",
-            y="return:Q",
-            color=alt.Color(
-                "구분:N", title=None, scale=alt.Scale(domain=["매수", "매도"], range=[BUY_COLOR, SELL_COLOR])
-            ),
-            shape=alt.Shape(
-                "구분:N", scale=alt.Scale(domain=["매수", "매도"], range=["triangle-up", "triangle-down"])
-            ),
-            tooltip=[
-                alt.Tooltip("date:T", title="날짜"),
-                alt.Tooltip("구분:N", title="구분"),
-                alt.Tooltip("가격:Q", title=_price_tooltip_title, format=_price_tooltip_format),
-                alt.Tooltip("return:Q", title="당시 누적수익률", format=".1%"),
-                alt.Tooltip("사유:N", title="사유"),
-            ],
+    for label, color, symbol in (
+        ("매수", BUY_COLOR, "triangle-up"),
+        ("매도", SELL_COLOR, "triangle-down"),
+    ):
+        sub = marker_df[marker_df["구분"] == label]
+        if sub.empty:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=sub["date"],
+                y=sub["return"],
+                mode="markers",
+                name=label,
+                marker=dict(symbol=symbol, color=color, size=11, line=dict(width=0)),
+                customdata=np.stack([sub["가격"].to_numpy(), sub["사유"].to_numpy()], axis=-1),
+                hovertemplate=(
+                    "%{x|%Y-%m-%d}<br>구분: "
+                    + label
+                    + "<br>"
+                    + _price_tooltip_title
+                    + ": %{customdata[0]:"
+                    + _price_tooltip_format
+                    + "}<br>당시 누적수익률: %{y:.1%}<br>사유: %{customdata[1]}<extra></extra>"
+                ),
+            )
         )
-    )
-    chart_layers = [line_chart, hybrid_nonholding_line, markers]
-else:
-    chart_layers = [line_chart, hybrid_nonholding_line]
-if non_holding_bands is not None:
-    chart_layers = [non_holding_bands] + chart_layers
-combined_chart = alt.layer(*chart_layers).resolve_scale(color="independent", shape="independent")
 
-st.altair_chart(combined_chart.properties(height=380).interactive(), use_container_width=True)
+fig.update_xaxes(
+    tickformat="%Y",
+    rangeslider=dict(visible=True),
+    rangeselector=dict(
+        buttons=list(
+            [
+                dict(count=1, label="1년", step="year", stepmode="backward"),
+                dict(count=3, label="3년", step="year", stepmode="backward"),
+                dict(count=5, label="5년", step="year", stepmode="backward"),
+                dict(step="all", label="전체"),
+            ]
+        )
+    ),
+)
+fig.update_yaxes(title="누적수익률", tickformat=".0%")
+fig.update_layout(
+    height=460,
+    margin=dict(t=60, b=10),
+    hovermode="closest",
+    legend=dict(orientation="h", yanchor="bottom", y=1.2, xanchor="left", x=0),
+)
+
+st.plotly_chart(fig, use_container_width=True)
 st.caption(
     "▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고) · "
     f"{STRAT_HYBRID_LABEL}의 점선·회색 음영 구간 = 미보유(현금) 기간에 기대수익률을 "
-    "가정 적용한 부분"
+    "가정 적용한 부분 · 하단 슬라이더로 구간을 드래그해 확대, 상단 버튼으로 빠른 기간 이동 가능"
 )
 
 # ---- 3. 연도별 연환산수익률 막대그래프 ----
@@ -726,29 +725,33 @@ for _, row in yearly_display.iterrows():
     raw_map[(row["year"], BH_LABEL)] = row["bh_return"]
 yearly_long["raw_return"] = [raw_map[(y, s)] for y, s in zip(yearly_long["year"], yearly_long["series"])]
 
-bar_chart = (
-    alt.Chart(yearly_long)
-    .mark_bar()
-    .encode(
-        x=alt.X("year:O", title=None),
-        xOffset=alt.XOffset("series:N", sort=[strategy_series_label, BH_LABEL]),
-        y=alt.Y("return:Q", title="연환산수익률", axis=alt.Axis(format="%")),
-        color=alt.Color(
-            "series:N",
-            title=None,
-            scale=alt.Scale(domain=[strategy_series_label, BH_LABEL], range=[strategy_color, BH_COLOR]),
-        ),
-        tooltip=[
-            alt.Tooltip("year:O", title="연도"),
-            alt.Tooltip("series:N", title="전략"),
-            alt.Tooltip("return:Q", title="연환산수익률", format=".1%"),
-            alt.Tooltip("raw_return:Q", title="해당 연도 실제 수익률", format=".1%"),
-            alt.Tooltip("days_span:Q", title="해당 연도 일수"),
-        ],
+bar_fig = go.Figure()
+for label, color in ((strategy_series_label, strategy_color), (BH_LABEL, BH_COLOR)):
+    sub = yearly_long[yearly_long["series"] == label]
+    bar_fig.add_trace(
+        go.Bar(
+            x=sub["year"].astype(str),
+            y=sub["return"],
+            name=label,
+            marker_color=color,
+            customdata=np.stack([sub["raw_return"].to_numpy(), sub["days_span"].to_numpy()], axis=-1),
+            hovertemplate=(
+                "연도: %{x}<br>전략: "
+                + label
+                + "<br>연환산수익률: %{y:.1%}<br>해당 연도 실제 수익률: %{customdata[0]:.1%}"
+                + "<br>해당 연도 일수: %{customdata[1]:d}<extra></extra>"
+            ),
+        )
     )
-    .properties(height=340)
+bar_fig.update_layout(
+    height=340,
+    barmode="group",
+    yaxis=dict(title="연환산수익률", tickformat=".0%"),
+    xaxis=dict(title=None),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    margin=dict(t=40, b=10),
 )
-st.altair_chart(bar_chart, use_container_width=True)
+st.plotly_chart(bar_fig, use_container_width=True)
 yearly_cash_note = (
     f"미보유(현금) 기간에는 기대수익률(연 {bond_yield_pct:g}%)이 적용됩니다."
     if yearly_mode == STRAT_HYBRID_LABEL

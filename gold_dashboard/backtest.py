@@ -41,10 +41,10 @@ from .timeutil import today_kst
 # (config.py) so both can never drift apart — see compute_signals below.
 MA_WINDOWS = config.MA_WINDOWS
 
-MIN_BACKTEST_YEARS = 3
+MIN_BACKTEST_YEARS = 1
 MAX_BACKTEST_YEARS = 15
 # Default analysis period a fresh session starts on; the 유효성 검증 page lets
-# the user override this per-session (3-15 years) without affecting the main
+# the user override this per-session (1-15 years) without affecting the main
 # dashboard's own fixed-window charts (app.py's CHART_YEARS, unrelated to
 # this). Deliberately independent of timeseries.YEARS. Deliberately NOT tied
 # to MAX_BACKTEST_YEARS (raising the max shouldn't silently raise the default
