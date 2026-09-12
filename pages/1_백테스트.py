@@ -39,15 +39,12 @@ DEFAULTS = {
     "bt_years": backtest.BACKTEST_YEARS,
     "bt_buy_green_count": backtest.BUY_GREEN_COUNT,
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
-    "bt_buy_ratio": float(backtest.BUY_RATIO),
-    "bt_sell_ratio": float(backtest.SELL_RATIO),
     "bt_use_reentry_trigger": False,
     "bt_long_trend_buffer_pct": backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
     "bt_use_reentry_freq_limit": True,
     "bt_reentry_freq_limit_days": backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
     "bt_use_new_high_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
-    "bt_entry_delay_days": 0,
-    "bt_exit_delay_days": 0,
+    "bt_use_new_low_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
     "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
     "bt_use_sell_noise_filter": True,
@@ -60,8 +57,8 @@ for _key, _default in DEFAULTS.items():
 
 st.title("신호 기반 매매 전략 백테스트")
 st.caption(
-    "실질금리·달러인덱스의 이동평균 돌파 신호와 금/은비율 임계값을 결합한 매수·매도 규칙을, "
-    "동일 시작일의 Buy & Hold와 비교합니다."
+    "실질금리·달러인덱스의 이동평균 돌파 신호와 52주 신고가/신저가 갱신을 결합한 매수·매도 "
+    "규칙을, 동일 시작일의 Buy & Hold와 비교합니다."
 )
 
 # Shared with the main dashboard page via config.GOLD_PRICE_BASIS_STATE_KEY —
@@ -99,37 +96,36 @@ st.caption(
 with st.expander("전략 규칙 보기"):
     st.markdown(
         """
-- **매수** (미보유 상태일 때만): 아래 "매수 조건" 카드의 `green_count ≥ 임계값` — 고급 설정의
-  매수 지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≥ 임계값` — 지연 없이 **당일 즉시 매수**.
-  **또는** (고급 설정의 **단기 재진입 로직 사용**이 켜져 있을 때만) **재진입 조건**:
-  (① 장기추세 필터, 필요조건 — 아래 두 가지를 모두 만족해야 함) 금 종가가 365일(역일) 이동평균보다
-  "장기추세 필터 버퍼" %(기본 {buffer_pct:g}%) 이상 높고, 동시에 365일 이동평균 자체가
-  30일(역일) 전보다 높아야(우상향) 하며, 그리고 (② 단기 재돌파 트리거) 금 종가가 30일(역일)
-  이동평균을 아래에서 위로 상향 돌파한 날 — 이것도 지연 없이 당일 즉시 매수. **또는** (고급
-  설정의 **52주 신고가 갱신 시 매수**가 켜져 있을 때만, 기본값 ON) 금 종가가 직전 365일(역일)
-  중 최고 종가를 처음으로 넘어서는 날(52주 신고가 신규 경신일) — 이것도 지연 없이 당일 즉시
-  매수, 재진입 조건과는 완전히 독립적이며 자체 빈도 제한도 없음. 아무 조건이나 먼저 만족하면
-  매수합니다
-- **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 고급 설정의 매도
-  지연일수만큼 기다린 뒤 체결. **또는** `금/은비율 ≤ 임계값` — 지연 없이 **당일 즉시 매도**
-- 지연이 설정된 green_count 신호는 그 시점 이후 첫 거래일 **종가**로 체결됩니다(지연 기간 중
-  조건 재확인 없이 그대로 체결 — 지연일수 0이면 신호 당일 종가에 즉시 체결). 금/은비율과
-  재진입 신호는 지연 설정과 무관하게 항상 신호 당일 종가에 체결되며, 아직 대기 중인
-  green_count 지연 주문이 있어도 먼저 체결됩니다
+- **매수** (미보유 상태일 때만): 아래 "매수 조건" 카드의 `green_count ≥ 임계값` — 지연 없이
+  **당일 즉시 매수**. **또는** (고급 설정의 **단기 재진입 로직 사용**이 켜져 있을 때만)
+  **재진입 조건**: (① 장기추세 필터, 필요조건 — 아래 두 가지를 모두 만족해야 함) 금 종가가
+  365일(역일) 이동평균보다 "장기추세 필터 버퍼" %(기본 {buffer_pct:g}%) 이상 높고, 동시에
+  365일 이동평균 자체가 30일(역일) 전보다 높아야(우상향) 하며, 그리고 (② 단기 재돌파 트리거)
+  금 종가가 30일(역일) 이동평균을 아래에서 위로 상향 돌파한 날 — 이것도 당일 즉시 매수.
+  **또는** (고급 설정의 **52주 신고가 갱신 시 매수**가 켜져 있을 때만, 기본값 ON) 금 종가가
+  직전 365일(역일) 중 최고 종가를 처음으로 넘어서는 날(52주 신고가 신규 경신일) — 이것도 당일
+  즉시 매수, 재진입 조건과는 완전히 독립적이며 자체 빈도 제한도 없음. 아무 조건이나 먼저
+  만족하면 매수합니다
+- **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 지연 없이 **당일
+  즉시 매도**. **또는** (고급 설정의 **52주 신저가 갱신 시 매도**가 켜져 있을 때만, 기본값 ON)
+  금 종가가 직전 365일(역일) 중 최저 종가보다 낮아지는 날(52주 신저가 신규 경신일) — 이것도
+  당일 즉시 매도, 자체 빈도 제한 없음. 둘 중 아무 조건이나 먼저 만족하면 매도합니다
+- 모든 매수·매도 조건은 지연 없이 신호 당일 종가에 즉시 체결됩니다(과거에 있던 지연 체결
+  기능은 완전히 제거됨)
 - 고급 설정의 **단기 재진입 로직 사용** (기본값 OFF)을 켜야 재진입 조건(①②)이 적용됩니다 —
-  꺼져 있으면(기본값) 이 로직 도입 이전의 기준(green_count·금/은비율만)으로 동작합니다. 켜져
+  꺼져 있으면(기본값) 이 로직 도입 이전의 기준(green_count만)으로 동작합니다. 켜져
   있을 때만 그 아래 **단기 재진입 빈도 제한** (기본값 ON, 이 상위 설정이 꺼져 있으면 비활성화)이
   작동합니다 — 켜두면 재진입 조건 중 ② 단기 재돌파 트리거로 인한 매수만 최근 "단기 재진입
   빈도 제한 일수"(기본 {freq_limit_days}일, 역일 기준) 내 최대 1회로 제한되고(① 장기추세
   필터는 이 제한과 무관하게 항상 필요조건), 꺼두면 ①② 조건만으로 제한 없이 자유롭게
-  재진입합니다. 이 제한은 green_count·금/은비율 매수 조건에는 영향을 주지 않습니다
+  재진입합니다. 이 제한은 green_count 매수 조건에는 영향을 주지 않습니다
 - 고급 설정의 **최소 보유일수**(역일/달력일 기준, 주말·공휴일 관계없이 매수일로부터의 날짜
-  차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count와
-  금/은비율 즉시 매도 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
+  차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count·52주
+  신저가 갱신 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
   두는 전략을 시뮬레이션할 때 사용
 - 고급 설정의 **상승추세 중 매도신호 노이즈 필터** (기본값 ON, 매수 쪽 재진입 로직과는 완전히
-  별개)는 매도신호가 실제로 체결되기 직전(green_count 지연 주문의 체결일, 또는 금/은비율
-  즉시 매도일)에 개입합니다. 그날(D0) 종가가 365일(역일) 이동평균보다 5% 이상 높을 때만 작동하며
+  별개)는 매도신호가 실제로 체결되기 직전(green_count 또는 52주 신저가 갱신)에 개입합니다.
+  그날(D0) 종가가 365일(역일) 이동평균보다 5% 이상 높을 때만 작동하며
   (미만이면 이 필터 없이 항상 그대로 즉시 매도), 작동하면 D0의 매도신호는 무시하고 관찰을
   시작합니다. 관찰 중 추가로 뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않으며 참고용
   기록으로만 남습니다. 매도 실행 여부를 확인하는 방식은 **매도 확인 - 매일 갱신 2시그마 밴드**
@@ -204,12 +200,7 @@ with buy_card:
             "green_count 임계값 (이상)",
             min_value=0, max_value=6, step=1, key="bt_buy_green_count",
             help="실질금리·달러인덱스 × 7/30/90일(역일) 이평선, 총 6개 셀 중 금값에 우호적인 셀 수가 "
-            "이 값 이상이면 매수 신호 (고급 설정의 매수 지연일수만큼 기다린 뒤 체결).",
-        )
-        buy_ratio = st.number_input(
-            "금/은비율 임계값 (이상)",
-            min_value=1.0, max_value=200.0, step=1.0, key="bt_buy_ratio",
-            help="금/은비율이 이 값 이상이면 그날 즉시 매수합니다 (지연 미적용).",
+            "이 값 이상이면 그날 즉시 매수 신호.",
         )
 with sell_card:
     with st.container(border=True):
@@ -217,43 +208,28 @@ with sell_card:
         sell_green_count = st.number_input(
             "green_count 임계값 (이하)",
             min_value=0, max_value=6, step=1, key="bt_sell_green_count",
-            help="금값에 우호적인 셀 수가 이 값 이하로 떨어지면 매도 신호 (고급 설정의 매도 "
-            "지연일수만큼 기다린 뒤 체결).",
-        )
-        sell_ratio = st.number_input(
-            "금/은비율 임계값 (이하)",
-            min_value=1.0, max_value=200.0, step=1.0, key="bt_sell_ratio",
-            help="금/은비율이 이 값 이하이면 그날 즉시 매도합니다 (지연 미적용).",
+            help="금값에 우호적인 셀 수가 이 값 이하로 떨어지면 그날 즉시 매도 신호.",
         )
 
-if sell_ratio >= buy_ratio:
+if sell_green_count >= buy_green_count:
     st.warning(
         "매도 임계값이 매수 임계값보다 크거나 같습니다. 매수 즉시 매도 조건도 함께 만족해 "
         "거의 바로 청산될 수 있습니다."
     )
 
-with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · 단기 재진입 로직 — 기본값 그대로 둬도 무방)"):
+with st.expander("⚙️ 고급 설정 (최소 보유일수 · 단기 재진입 로직 — 기본값 그대로 둬도 무방)"):
     st.caption(
-        "금/은비율 임계값과 재진입 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다. "
-        "아래 지연일수는 green_count 신호에만 적용됩니다."
+        "모든 매수·매도 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다."
     )
     adv_buy_col, adv_sell_col = st.columns(2)
     with adv_buy_col:
         st.markdown("**매수 관련**")
-        entry_delay_days = st.number_input(
-            "매수 지연일수 (일, green_count 신호에만 적용)",
-            min_value=0, max_value=180, step=1, key="bt_entry_delay_days",
-            help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매수'를 시뮬레이션합니다. "
-            "금/은비율·재진입 매수에는 적용되지 않습니다.",
-        )
-        st.caption(f"≈ {entry_delay_days / 30:.1f}개월 후 매수")
         use_reentry_trigger = st.checkbox(
             "단기 재진입 로직 사용",
             key="bt_use_reentry_trigger",
             help="끄면 장기추세 필터(① 365일 이동평균)와 단기 재돌파 트리거(② 30일 이동평균 "
             "상향 돌파) 조건 자체를 전혀 적용하지 않고, 이 로직 도입 이전의 재진입 기준"
-            "(green_count·금/은비율만)으로 되돌아갑니다. green_count·금/은비율 매수 조건에는 "
-            "영향을 주지 않습니다.",
+            "(green_count만)으로 되돌아갑니다. green_count 매수 조건에는 영향을 주지 않습니다.",
         )
         long_trend_buffer_pct = st.number_input(
             "① 장기추세 필터 버퍼 (%)",
@@ -285,27 +261,30 @@ with st.expander("⚙️ 고급 설정 (지연일수 · 최소 보유일수 · �
             key="bt_use_new_high_trigger",
             help="위 '단기 재진입 로직'과는 완전히 별개의, 독립적인 매수 조건입니다. 종가가 "
             "직전 365일(역일) 중 최고 종가보다 높아지는 날(신규 52주 신고가 경신일, 단순히 "
-            "'지금 52주 최고가 상태'가 아니라 그날 처음 갱신된 경우만) 지연 없이 즉시 매수합니다"
-            "(green_count·금/은비율·재진입 조건과 무관하게 추가로 작동, 셋 중 아무거나 먼저 "
-            "만족해도 매수). 재진입 빈도 제한과 달리 이 트리거에는 자체 쿨다운이 없어 신고가를 "
+            "'지금 52주 최고가 상태'가 아니라 그날 처음 갱신된 경우만) 즉시 매수합니다"
+            "(green_count·재진입 조건과 무관하게 추가로 작동, 둘 중 아무거나 먼저 만족해도 "
+            "매수). 재진입 빈도 제한과 달리 이 트리거에는 자체 쿨다운이 없어 신고가를 "
             "경신할 때마다(단, 이미 보유 중이면 매수를 다시 하지 않음) 작동합니다.",
         )
 
     with adv_sell_col:
         st.markdown("**매도 관련**")
-        exit_delay_days = st.number_input(
-            "매도 지연일수 (일, green_count 신호에만 적용)",
-            min_value=0, max_value=180, step=1, key="bt_exit_delay_days",
-            help="예: 30을 입력하면 'green_count 신호 발생 1개월 후 매도'를 시뮬레이션합니다. "
-            "금/은비율 매도에는 적용되지 않습니다.",
+        use_new_low_trigger = st.checkbox(
+            "52주 신저가 갱신 시 매도",
+            key="bt_use_new_low_trigger",
+            help="위 '52주 신고가 갱신 시 매수'의 매도판 대칭 조건입니다. 종가가 직전 365일"
+            "(역일) 중 최저 종가보다 낮아지는 날(신규 52주 신저가 경신일, 그날 처음 갱신된 "
+            "경우만) 즉시 매도합니다(green_count 조건과 무관하게 추가로 작동, 둘 중 아무거나 "
+            "먼저 만족해도 매도). 이 트리거에도 자체 쿨다운은 없어 신저가를 경신할 때마다"
+            "(단, 이미 미보유 상태면 매도를 다시 하지 않음) 작동하며, 아래 '최소 보유일수'가 "
+            "지나기 전에는 이 트리거를 포함해 모든 매도 조건이 평가되지 않습니다.",
         )
-        st.caption(f"≈ {exit_delay_days / 30:.1f}개월 후 매도")
         min_holding_days = st.number_input(
             "매수 후 최소 보유일수 (일, 역일 기준)",
             min_value=0, max_value=1825, step=1, key="bt_min_holding_days",
-            help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count, 금/은비율 모두)을 "
-            "아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다. 주말·공휴일과 "
-            "무관하게 매수일로부터의 달력일 차이(date2 - date1)로 계산됩니다.",
+            help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count·52주 신저가 갱신 "
+            "모두)을 아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다. "
+            "주말·공휴일과 무관하게 매수일로부터의 달력일 차이(date2 - date1)로 계산됩니다.",
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
         use_sell_noise_filter = st.checkbox(
@@ -393,15 +372,12 @@ try:
     signals = load_signals(today_kst().isoformat(), int(years), gold_price_basis)
     result = backtest.simulate(
         signals,
-        entry_delay_days=int(entry_delay_days),
-        exit_delay_days=int(exit_delay_days),
         use_reentry_trigger=use_reentry_trigger,
         use_reentry_freq_limit=use_reentry_freq_limit,
         reentry_freq_limit_days=int(reentry_freq_limit_days),
         long_trend_buffer_pct=float(long_trend_buffer_pct),
         use_new_high_trigger=use_new_high_trigger,
-        buy_ratio=float(buy_ratio),
-        sell_ratio=float(sell_ratio),
+        use_new_low_trigger=use_new_low_trigger,
         buy_green_count=int(buy_green_count),
         sell_green_count=int(sell_green_count),
         min_holding_days=int(min_holding_days),
@@ -738,9 +714,8 @@ if trades:
     ]
     st.dataframe(pd.DataFrame(trade_rows), use_container_width=True, hide_index=True)
     st.caption(
-        "매수 사유/매도 사유는 신호가 처음 발생한 날 기준입니다. green_count 매수/매도는 "
-        "지연일수만큼 지난 뒤 체결되어 매수·매도일이 신호 발생일과 다를 수 있지만, 금/은비율·"
-        "재진입 매수는 항상 체결일 = 신호 발생일입니다."
+        "매수 사유/매도 사유는 신호가 발생한 날 기준이며, 모든 조건이 체결일 = 신호 발생일"
+        "(지연 없음)입니다."
     )
 else:
     st.caption("이 기간 동안 매수 신호가 발생하지 않아 거래 내역이 없습니다.")
