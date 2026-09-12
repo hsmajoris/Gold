@@ -332,14 +332,28 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 · 단기 재진입 
             "적용됩니다(기본값 0.15%).",
         )
 
-# The "기대수익률" input itself is rendered later, inside the ④ 신호전략
-# (미보유기간 기대수익률 포함) summary-metric group — but its value is needed
-# here, before that section, to run the simulation. Reading straight from
-# session_state (rather than calling st.number_input again) works because a
-# widget's session_state entry always reflects its latest value regardless of
-# where in the script it's actually instantiated this run, and a given key can
-# only be instantiated once per run.
-bond_yield_pct = float(st.session_state["bt_bond_yield_pct"])
+# The actual widget for "기대수익률" is instantiated HERE, unconditionally,
+# rather than down in the ④ 신호전략(미보유기간 기대수익률 포함) group where its
+# value is displayed — because that group only renders after `simulate()`
+# (below) succeeds. A widget Streamlit doesn't instantiate in a given run has
+# its session_state entry cleared at the end of that run; if simulate() ever
+# raises (bad data, an edge-case parameter combo, a flaky refetch) and hits
+# st.stop() before reaching that group, the next successful run would find
+# the key missing and DEFAULTS.setdefault() would silently reset it back to
+# the 10% default — silently discarding whatever value the user had set,
+# with no error shown (confirmed via a Streamlit AppTest repro: forcing one
+# simulate() call to fail reverted a user-set 7.5% straight back to 10% on
+# the very next rerun, even though that rerun itself succeeded). Instantiating
+# it up here, before anything that can fail, means it always renders and its
+# value can never be silently wiped this way.
+bond_yield_pct = st.number_input(
+    "기대수익률 (연, %)",
+    min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
+    help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율로 운용했다고 "
+    "가정합니다(예: 채권 매입). 값을 바꾸면 아래 ④ 신호전략(미보유기간 기대수익률 포함) "
+    "그룹의 누적수익률·CAGR이 바로 재계산됩니다.",
+)
+bond_yield_pct = float(bond_yield_pct)
 
 refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
 
@@ -453,12 +467,10 @@ with strategy_hybrid_col:
         f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
         help="위 누적수익률을 분석 기간 전체를 기준으로 연환산한 값입니다.",
     )
-    bond_yield_pct = st.number_input(
-        "기대수익률 (연, %)",
-        min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
-        help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율로 운용했다고 "
-        "가정합니다(예: 채권 매입). 값을 바꾸면 이 그룹의 누적수익률·CAGR이 바로 재계산됩니다.",
-    )
+    # The actual "기대수익률" widget lives above the try/except that runs
+    # simulate() (see the comment there for why) — this just echoes the value
+    # it's already set to, right next to the numbers it drives.
+    st.caption(f"기대수익률 가정: 연 {bond_yield_pct:g}% (⚙️ 고급 설정 아래에서 조정)")
 
 if m["has_open_position"]:
     st.info(
