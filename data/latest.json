@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-12T07:08:34.359421+09:00",
+  "generated_at": "2026-09-13T07:07:33.099022+09:00",
   "requested_as_of": null,
   "as_of": "2026-09-11",
   "indicator_order": [
@@ -56,35 +56,35 @@
       "source": "Yahoo Finance (DX-Y.NYB)",
       "as_of": "2026-09-11",
       "prev_close": {
-        "value": 99.095,
-        "display": "99.10"
+        "value": 99.12,
+        "display": "99.12"
       },
       "sma": {
         "90": {
-          "ma_value": 100.2115,
+          "ma_value": 100.2119,
           "ma_display": "100.21",
           "status_text": "이평선 아래",
-          "display": "100.21 (종가 99.10 → 이평선 아래)",
+          "display": "100.21 (종가 99.12 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
           "streak_display": "",
           "gold_friendly": true
         },
         "30": {
-          "ma_value": 99.2388,
+          "ma_value": 99.24,
           "ma_display": "99.24",
           "status_text": "이평선 아래",
-          "display": "99.24 (종가 99.10 → 이평선 아래)",
+          "display": "99.24 (종가 99.12 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
           "streak_display": "",
           "gold_friendly": true
         },
         "7": {
-          "ma_value": 98.9487,
+          "ma_value": 98.955,
           "ma_display": "98.95",
           "status_text": "상향 돌파",
-          "display": "98.95 (종가 99.10 → 상향 돌파)",
+          "display": "98.95 (종가 99.12 → 상향 돌파)",
           "streak": 2,
           "breakout": true,
           "streak_display": "2일째",
@@ -97,35 +97,35 @@
       "source": "yfinance GC=F / SI=F",
       "as_of": "2026-09-11",
       "prev_close": {
-        "value": 67.5177,
-        "display": "67.5"
+        "value": 67.6364,
+        "display": "67.6"
       },
       "sma": {
         "90": {
-          "ma_value": 67.8496,
-          "ma_display": "67.8",
+          "ma_value": 67.8515,
+          "ma_display": "67.9",
           "status_text": "이평선 아래",
-          "display": "67.8 (종가 67.5 → 이평선 아래)",
+          "display": "67.9 (종가 67.6 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
           "streak_display": "",
           "gold_friendly": false
         },
         "30": {
-          "ma_value": 67.1263,
+          "ma_value": 67.1319,
           "ma_display": "67.1",
           "status_text": "상향 돌파",
-          "display": "67.1 (종가 67.5 → 상향 돌파)",
+          "display": "67.1 (종가 67.6 → 상향 돌파)",
           "streak": 2,
           "breakout": true,
           "streak_display": "2일째",
           "gold_friendly": false
         },
         "7": {
-          "ma_value": 66.6711,
+          "ma_value": 66.7008,
           "ma_display": "66.7",
           "status_text": "상향 돌파",
-          "display": "66.7 (종가 67.5 → 상향 돌파)",
+          "display": "66.7 (종가 67.6 → 상향 돌파)",
           "streak": 2,
           "breakout": true,
           "streak_display": "2일째",
