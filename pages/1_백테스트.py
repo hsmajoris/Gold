@@ -1,7 +1,7 @@
 """Backtest page: real-rate/DXY MA breakout signal + gold/silver-ratio threshold
 strategy vs. a same-period Buy & Hold benchmark."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import altair as alt
 import numpy as np
@@ -37,6 +37,7 @@ BH_LABEL = "Buy & Hold"
 
 DEFAULTS = {
     "bt_years": backtest.BACKTEST_YEARS,
+    "bt_asof_years_ago": 0,
     "bt_buy_green_count": backtest.BUY_GREEN_COUNT,
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
     "bt_use_reentry_trigger": False,
@@ -146,13 +147,17 @@ with st.expander("전략 규칙 보기"):
 - 고급 설정의 **KRX 금현물 보유 수수료 (연, %)** (기본값 0.15%, ② KRX 금현물 선택 시에만
   적용)는 보유 중인 기간의 경과 일수에 비례해 연복리로 수익률에서 차감되며, Buy & Hold와
   신호전략 보유 기간 모두 동일하게 적용됩니다(① 국제 금 시세에는 적용되지 않음)
-- 분석 기간: 아래에서 설정한 오늘 기준 최근 **{years}년** (3~10년 조정 가능, 이동평균 계산용으로
-  그 이전 {buffer}캘린더일치 데이터를 추가로 사용)
+- 분석 기간: **{years}년** (3~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
+  데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
+  N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
+  분석 기간 10년 + 기준일 3년 전이면 "13년 전 ~ 3년 전"을 분석합니다(현재 설정:
+  기준일 {asof_years_ago}년 전)
         """.format(
             years=int(st.session_state["bt_years"]),
             buffer=backtest.BUFFER_DAYS,
             buffer_pct=float(st.session_state["bt_long_trend_buffer_pct"]),
             freq_limit_days=int(st.session_state["bt_reentry_freq_limit_days"]),
+            asof_years_ago=int(st.session_state["bt_asof_years_ago"]),
         )
     )
 
@@ -166,24 +171,43 @@ with reset_col:
             st.session_state[_key] = _default
         st.rerun()
 
-# Independent of the main dashboard: this key (bt_years) is only ever read or
-# written on this page, and the main dashboard's per-indicator charts always
-# fetch a fixed CHART_YEARS window regardless of what's set here. Must be
-# instantiated after the reset button above (Streamlit forbids writing to a
-# widget's session_state key once that widget has been instantiated in the
-# same script run).
-years = st.number_input(
-    "분석 기간 (최근 N년)",
-    min_value=backtest.MIN_BACKTEST_YEARS,
-    max_value=backtest.MAX_BACKTEST_YEARS,
-    step=1,
-    key="bt_years",
-    help="이 페이지의 백테스트 결과(거래 내역·승률·CAGR·아래 그래프)에만 영향을 줍니다 — "
-    "메인 대시보드의 지표별 그래프는 이 값과 무관하게 항상 고정된 기간으로 표시됩니다.",
-)
+# Independent of the main dashboard: these two keys (bt_asof_years_ago,
+# bt_years) are only ever read or written on this page, and the main
+# dashboard's per-indicator charts always fetch a fixed CHART_YEARS window
+# regardless of what's set here. Must be instantiated after the reset button
+# above (Streamlit forbids writing to a widget's session_state key once that
+# widget has been instantiated in the same script run).
+asof_col, years_col = st.columns(2)
+with asof_col:
+    asof_years_ago = st.number_input(
+        "기준일 (오늘로부터 N년 전)",
+        min_value=0,
+        max_value=backtest.MAX_BACKTEST_YEARS,
+        step=1,
+        key="bt_asof_years_ago",
+        help="0이면(기본값) 오늘을 기준으로 분석 종료일을 잡습니다(기존과 동일한 동작). N을 "
+        "입력하면 분석 종료일 자체가 오늘로부터 N년 전으로 이동하고, 분석 시작일은 거기서 "
+        "다시 '분석 기간'만큼 더 과거로 이동합니다 — 예: 분석 기간 10년 + 기준일 3년 전이면 "
+        "'오늘로부터 13년 전 ~ 3년 전'을 분석합니다(최근 급등기 등 특정 구간을 일부러 "
+        "제외하고 과거 구간만 보고 싶을 때 사용).",
+    )
+with years_col:
+    years = st.number_input(
+        "분석 기간 (기준일로부터 N년)",
+        min_value=backtest.MIN_BACKTEST_YEARS,
+        max_value=backtest.MAX_BACKTEST_YEARS,
+        step=1,
+        key="bt_years",
+        help="이 페이지의 백테스트 결과(거래 내역·승률·CAGR·아래 그래프)에만 영향을 줍니다 — "
+        "메인 대시보드의 지표별 그래프는 이 값과 무관하게 항상 고정된 기간으로 표시됩니다.",
+    )
+
+# today_kst() - N*365일 = 분석 종료일(기준일). N=0이면 오늘 그대로라 이전과 완전히 동일하게
+# 동작함(하위 호환).
+as_of_date = today_kst() - timedelta(days=int(asof_years_ago) * 365)
 
 if gold_price_basis == config.GOLD_PRICE_BASIS_KRX and timeseries.gold_window_would_clamp_to_krx(
-    today_kst(), int(years), backtest.BUFFER_DAYS
+    as_of_date, int(years), backtest.BUFFER_DAYS
 ):
     st.info(
         f"KRX 금현물시장은 {config.KRX_GOLD_EARLIEST_DATE} 이후 데이터만 존재합니다. "
@@ -355,7 +379,12 @@ bond_yield_pct = st.number_input(
 )
 bond_yield_pct = float(bond_yield_pct)
 
-refresh_clicked = st.button("데이터 새로고침 (오늘 기준으로 다시 수집)")
+refresh_label = (
+    "데이터 새로고침 (오늘 기준으로 다시 수집)"
+    if asof_years_ago == 0
+    else f"데이터 새로고침 ({as_of_date.isoformat()} 기준으로 다시 수집)"
+)
+refresh_clicked = st.button(refresh_label)
 
 
 @st.cache_data(ttl=3600, show_spinner="데이터를 내려받는 중입니다...")
@@ -383,7 +412,7 @@ effective_holding_fee_pct = (
 )
 
 try:
-    signals = load_signals(today_kst().isoformat(), int(years), gold_price_basis)
+    signals = load_signals(as_of_date.isoformat(), int(years), gold_price_basis)
     result = backtest.simulate(
         signals,
         use_reentry_trigger=use_reentry_trigger,
