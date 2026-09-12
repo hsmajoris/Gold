@@ -42,12 +42,14 @@ from .timeutil import today_kst
 MA_WINDOWS = config.MA_WINDOWS
 
 MIN_BACKTEST_YEARS = 3
-MAX_BACKTEST_YEARS = 10
+MAX_BACKTEST_YEARS = 15
 # Default analysis period a fresh session starts on; the 유효성 검증 page lets
-# the user override this per-session (3-10 years) without affecting the main
+# the user override this per-session (3-15 years) without affecting the main
 # dashboard's own fixed-window charts (app.py's CHART_YEARS, unrelated to
-# this). Deliberately independent of timeseries.YEARS.
-BACKTEST_YEARS = MAX_BACKTEST_YEARS
+# this). Deliberately independent of timeseries.YEARS. Deliberately NOT tied
+# to MAX_BACKTEST_YEARS (raising the max shouldn't silently raise the default
+# a fresh session starts on).
+BACKTEST_YEARS = 10
 # Extra calendar days of history fetched before the analysis start. The
 # reentry trigger's LONG_TREND_WINDOW-day (calendar) SMA plus the
 # LONG_TREND_SLOPE_LOOKBACK_DAYS the slope check additionally looks back
@@ -299,9 +301,14 @@ def compute_reentry_trigger(
 def trim_to_backtest_window(
     df: pd.DataFrame, as_of: date | None = None, years: int = BACKTEST_YEARS
 ) -> pd.DataFrame:
+    """Trims to [end_date - years, end_date]. The upper bound matters even
+    though every caller today fetches `df` already end-bounded at `as_of` (so
+    there's normally no later data to trim off) — it's what makes a historical
+    `as_of` (see 유효성 검증 page's "기준일" input) safe regardless of how `df`
+    was built, instead of silently relying on the fetch step alone."""
     end_date = as_of or today_kst()
     start_date = end_date - timedelta(days=years * 365)
-    trimmed = df[df.index >= pd.Timestamp(start_date)]
+    trimmed = df[(df.index >= pd.Timestamp(start_date)) & (df.index <= pd.Timestamp(end_date))]
     if trimmed.empty:
         raise RuntimeError("no data available in the requested backtest window")
     return trimmed
