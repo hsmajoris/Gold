@@ -4,3 +4,4 @@ yfinance>=0.2.40
 requests>=2.31
 tenacity>=8.2
 altair>=5.0
+plotly>=5.24
