@@ -48,13 +48,14 @@ MAX_BACKTEST_YEARS = 10
 # dashboard's own fixed-window charts (app.py's CHART_YEARS, unrelated to
 # this). Deliberately independent of timeseries.YEARS.
 BACKTEST_YEARS = MAX_BACKTEST_YEARS
-# Extra calendar days of history fetched before the analysis start. Sized for
-# the reentry trigger's LONG_TREND_WINDOW-day (calendar) SMA plus the
+# Extra calendar days of history fetched before the analysis start. The
+# reentry trigger's LONG_TREND_WINDOW-day (calendar) SMA plus the
 # LONG_TREND_SLOPE_LOOKBACK_DAYS the slope check additionally looks back
-# beyond that (365 + 30 = 395 calendar days minimum) — deliberately
-# independent of timeseries.BUFFER_DAYS, which only needs to cover
-# MA_WINDOWS' own max (90 days) for the main dashboard's per-indicator chart
-# fetches.
+# beyond that would only need 180 + 30 = 210 calendar days minimum, but the
+# 52-week new-high/new-low triggers' own FIFTY_TWO_WEEK_WINDOW_DAYS (365)
+# window is the larger, binding requirement — deliberately independent of
+# timeseries.BUFFER_DAYS, which only needs to cover MA_WINDOWS' own max
+# (90 days) for the main dashboard's per-indicator chart fetches.
 BUFFER_DAYS = 430
 
 BUY_GREEN_COUNT = 6
@@ -71,17 +72,18 @@ DEFAULT_MIN_HOLDING_DAYS = 0
 # SMA itself sloping up over LONG_TREND_SLOPE_LOOKBACK_DAYS calendar days);
 # the trigger itself fires the day gold closes back above its
 # SHORT_REENTRY_WINDOW-day calendar SMA, having been at/below it the previous
-# day (a short-term re-breakout). Standardized to 세달(quarter, 90 calendar
-# days) and 한달(month, 30 calendar days) respectively.
-LONG_TREND_WINDOW = 365
+# day (a short-term re-breakout). This same LONG_TREND_WINDOW SMA
+# (gold_sma_long) is also what section 5's sell-noise filter gate compares
+# price against below — one shared column, two independent consumers.
+LONG_TREND_WINDOW = 180  # 6 calendar months
 SHORT_REENTRY_WINDOW = 30
-# How far above its own 365-day SMA gold's close must be (as a %) for the
-# long-term trend filter to hold. User-adjustable per run.
+# How far above its own LONG_TREND_WINDOW-day SMA gold's close must be (as a
+# %) for the long-term trend filter to hold. User-adjustable per run.
 DEFAULT_LONG_TREND_BUFFER_PCT = 5.0
-# How many calendar days back the 365-day SMA's slope is measured over
-# (today's SMA must exceed the SMA as it stood this many calendar days ago —
-# see metrics.value_n_days_ago, a calendar-day lookup rather than a
-# trading-day row shift).
+# How many calendar days back the LONG_TREND_WINDOW-day SMA's slope is
+# measured over (today's SMA must exceed the SMA as it stood this many
+# calendar days ago — see metrics.value_n_days_ago, a calendar-day lookup
+# rather than a trading-day row shift).
 LONG_TREND_SLOPE_LOOKBACK_DAYS = 30
 # Default cap on how often the reentry trigger alone (not other buy triggers)
 # may fire — at most once per this many calendar days. User-togglable per run.
@@ -104,14 +106,15 @@ FIFTY_TWO_WEEK_WINDOW_DAYS = 365
 DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER = True
 DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER = True
 
-# Sell-signal noise filter: while gold is well above its 365-day (calendar)
-# SMA (a possible sign the sell signal is a blip in an ongoing uptrend rather
-# than a genuine reversal), a qualifying sell signal is ignored and a
+# Sell-signal noise filter: while gold is well above its LONG_TREND_WINDOW-day
+# (calendar) SMA — the same gold_sma_long column the reentry trigger above
+# uses — (a possible sign the sell signal is a blip in an ongoing uptrend
+# rather than a genuine reversal), a qualifying sell signal is ignored and a
 # 7-calendar-day "wait and see" period starts instead of executing it
 # immediately. See run_backtest's docstring for the exact mechanism.
-# Entry gate: how far above the 365-day SMA gold's close must be (on the day
-# a sell signal fires) for the filter to engage at all instead of selling
-# immediately.
+# Entry gate: how far above the LONG_TREND_WINDOW-day SMA gold's close must
+# be (on the day a sell signal fires) for the filter to engage at all instead
+# of selling immediately.
 DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT = 5.0
 
 # Exit confirmation, method ① (default) — "매일 갱신 2시그마 밴드": every
@@ -274,11 +277,11 @@ def compute_reentry_trigger(
     a different buffer % without recomputing (or refetching) anything else.
 
     ① long-term trend filter (necessary condition, both must hold):
-       - gold close is at least `long_trend_buffer_pct`% above its 365-day
-         (calendar) SMA (not just barely above it).
+       - gold close is at least `long_trend_buffer_pct`% above its
+         LONG_TREND_WINDOW-day (calendar) SMA (not just barely above it).
        - that SMA is itself higher than it stood LONG_TREND_SLOPE_LOOKBACK_DAYS
-         calendar days ago (the 365-day SMA must be sloping up, i.e. gold is
-         in a genuine uptrend, not just a flat/declining SMA that price
+         calendar days ago (the LONG_TREND_WINDOW-day SMA must be sloping up,
+         i.e. gold is in a genuine uptrend, not just a flat/declining SMA that price
          happens to sit above) — a calendar-day lookup via
          metrics.value_n_days_ago, not a trading-day row shift.
     ② short-term re-breakout: gold_short_ma_crossover_up (see compute_signals).
@@ -315,7 +318,7 @@ def _buy_reason(
     if gc >= buy_green_count:
         reasons.append(f"green_count≥{buy_green_count}")
     if include_reentry:
-        reasons.append(f"재진입(365일선+{long_trend_buffer_pct:g}%·우상향, 30일선 상향돌파)")
+        reasons.append(f"재진입(180일선+{long_trend_buffer_pct:g}%·우상향, 30일선 상향돌파)")
     if include_new_high:
         reasons.append("52주 신고가 갱신")
     return ", ".join(reasons)
@@ -391,8 +394,8 @@ def run_backtest(
     Sell-signal noise filter (`use_sell_noise_filter`, on by default,
     independent of the buy-side reentry filter): applies to any sell signal
     (green_count or 52-week new-low) that fires on a day gold's close (D0) is
-    more than `sell_noise_filter_buffer_pct`% above its 365-day calendar SMA
-    (`gold_sma_long`) — i.e. still in a clear uptrend, where an isolated sell
+    more than `sell_noise_filter_buffer_pct`% above its LONG_TREND_WINDOW-day
+    calendar SMA (`gold_sma_long`) — i.e. still in a clear uptrend, where an isolated sell
     signal is more likely noise than a genuine reversal. Below that buffer,
     every sell signal executes immediately exactly as if this filter didn't
     exist. Above it, the signal is ignored (position stays open) and an
