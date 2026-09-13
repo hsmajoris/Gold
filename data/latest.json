@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-13T07:07:33.099022+09:00",
+  "generated_at": "2026-09-14T07:08:17.533905+09:00",
   "requested_as_of": null,
   "as_of": "2026-09-11",
   "indicator_order": [
@@ -97,12 +97,12 @@
       "source": "yfinance GC=F / SI=F",
       "as_of": "2026-09-11",
       "prev_close": {
-        "value": 67.6364,
+        "value": 67.6336,
         "display": "67.6"
       },
       "sma": {
         "90": {
-          "ma_value": 67.8515,
+          "ma_value": 67.8514,
           "ma_display": "67.9",
           "status_text": "이평선 아래",
           "display": "67.9 (종가 67.6 → 이평선 아래)",
@@ -112,7 +112,7 @@
           "gold_friendly": false
         },
         "30": {
-          "ma_value": 67.1319,
+          "ma_value": 67.1318,
           "ma_display": "67.1",
           "status_text": "상향 돌파",
           "display": "67.1 (종가 67.6 → 상향 돌파)",
@@ -122,7 +122,7 @@
           "gold_friendly": false
         },
         "7": {
-          "ma_value": 66.7008,
+          "ma_value": 66.7001,
           "ma_display": "66.7",
           "status_text": "상향 돌파",
           "display": "66.7 (종가 67.6 → 상향 돌파)",
