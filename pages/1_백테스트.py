@@ -1,6 +1,7 @@
 """Backtest page: real-rate/DXY MA breakout signal + gold/silver-ratio threshold
 strategy vs. a same-period Buy & Hold benchmark."""
 
+import uuid
 from datetime import date, timedelta
 
 import numpy as np
@@ -11,6 +12,110 @@ import streamlit as st
 from gold_dashboard import backtest, config
 from gold_dashboard import timeseries
 from gold_dashboard.timeutil import today_kst
+
+
+def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
+    """Render a Plotly figure so its y-axis rescales to whatever data falls
+    inside the current x-range whenever that range changes (rangeslider drag,
+    rangeselector button, or box-zoom) — Plotly does not do this on its own;
+    by default the y-axis stays fixed to the full-series range even when the
+    x-axis is zoomed in, which makes a zoomed-in view look flat. st.plotly_chart
+    renders inside an iframe Streamlit controls, with no hook for attaching a
+    custom JS listener, so this bypasses it and embeds the figure's own HTML
+    (via st.iframe, which allows script execution) with a `plotly_relayout`
+    listener attached directly:
+    on every x-range change it recomputes min/max over the now-visible points
+    of every trace and applies that as the new y-range (with a small padding),
+    and restores full y-autorange when the x-range itself resets to "전체".
+    """
+    div_id = f"pyauto_{uuid.uuid4().hex}"
+    plot_html = fig.to_html(
+        include_plotlyjs="cdn",
+        full_html=False,
+        div_id=div_id,
+        config={"responsive": True},
+    )
+    script = f"""
+<script>
+(function() {{
+    var gd = document.getElementById("{div_id}");
+    if (!gd) return;
+    var busy = false;
+    // Plotly.py's default JSON encoder writes numeric arrays in a compact
+    // {{dtype, bdata}} (base64) wire format instead of a plain JSON array.
+    // plotly.js does NOT decode this back into a plain/typed array on
+    // gd.data[i].{{x,y}} (it only decodes it internally for its own
+    // rendering/autorange math), so reading tr.y[i] directly on that compact
+    // form silently returns undefined for every point. Decode it ourselves
+    // rather than depend on any Plotly-internal (e.g. gd._fullData) copy.
+    function toArray(v) {{
+        if (v == null) return null;
+        if (Array.isArray(v) || ArrayBuffer.isView(v)) return v;
+        if (typeof v === "object" && typeof v.bdata === "string") {{
+            if (v.__decoded) return v.__decoded;
+            var bin = atob(v.bdata);
+            var buf = new ArrayBuffer(bin.length);
+            var bytes = new Uint8Array(buf);
+            for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            var ctors = {{
+                f8: Float64Array, f4: Float32Array,
+                i1: Int8Array, u1: Uint8Array,
+                i2: Int16Array, u2: Uint16Array,
+                i4: Int32Array, u4: Uint32Array,
+            }};
+            var decoded = new (ctors[v.dtype] || Float64Array)(buf);
+            v.__decoded = decoded;
+            return decoded;
+        }}
+        return null;
+    }}
+    function visibleYRange(x0, x1) {{
+        var t0 = new Date(x0).getTime();
+        var t1 = new Date(x1).getTime();
+        var ymin = Infinity, ymax = -Infinity;
+        (gd.data || []).forEach(function(tr) {{
+            var xs = toArray(tr.x), ys = toArray(tr.y);
+            if (!xs || !ys) return;
+            for (var i = 0; i < xs.length; i++) {{
+                var xv = new Date(xs[i]).getTime();
+                var yv = ys[i];
+                if (yv === null || yv === undefined || isNaN(yv)) continue;
+                if (xv >= t0 && xv <= t1) {{
+                    if (yv < ymin) ymin = yv;
+                    if (yv > ymax) ymax = yv;
+                }}
+            }}
+        }});
+        if (!isFinite(ymin) || !isFinite(ymax)) return null;
+        if (ymin === ymax) {{ ymin -= 0.01; ymax += 0.01; }}
+        var pad = (ymax - ymin) * 0.08;
+        return [ymin - pad, ymax + pad];
+    }}
+    function onRelayout(ev) {{
+        if (busy) return;
+        if (ev["xaxis.autorange"] === true) {{
+            busy = true;
+            Plotly.relayout(gd, {{"yaxis.autorange": true}}).then(function() {{ busy = false; }});
+            return;
+        }}
+        var x0 = ev["xaxis.range[0]"];
+        var x1 = ev["xaxis.range[1]"];
+        if ((x0 === undefined || x1 === undefined) && Array.isArray(ev["xaxis.range"])) {{
+            x0 = ev["xaxis.range"][0];
+            x1 = ev["xaxis.range"][1];
+        }}
+        if (x0 === undefined || x1 === undefined) return;
+        var yr = visibleYRange(x0, x1);
+        if (yr) {{
+            busy = true;
+            Plotly.relayout(gd, {{"yaxis.range": yr, "yaxis.autorange": false}}).then(function() {{ busy = false; }});
+        }}
+    }}
+    gd.on("plotly_relayout", onRelayout);
+}})();
+</script>
+"""
+    st.iframe(plot_html + script, height=height + 100)
 
 # Page config (title/layout) is centralized in app.py's main(), since
 # st.navigation there replaces the classic pages/-folder auto-discovery this
@@ -682,7 +787,7 @@ fig.update_layout(
     legend=dict(orientation="h", yanchor="bottom", y=1.2, xanchor="left", x=0),
 )
 
-st.plotly_chart(fig, use_container_width=True)
+render_plotly_with_y_autoscale(fig, height=460)
 st.caption(
     "▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고) · "
     f"{STRAT_HYBRID_LABEL}의 점선·회색 음영 구간 = 미보유(현금) 기간에 기대수익률을 "
