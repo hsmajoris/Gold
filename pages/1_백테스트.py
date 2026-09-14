@@ -34,25 +34,30 @@ def render_backtest_chart(
        as the new y-range (with a small padding), restoring full y-autorange
        when the x-range resets to "전체".
 
-    2. X-axis year/month tick switching: the figure's own `dtick="M12"` (see
-       its `update_xaxes` call) already pins ticks to exactly one per
-       calendar year, but that alone shows *zero* ticks once zoomed in past
-       roughly a year. On every x-range change this also switches dtick to
-       one-per-month ("%Y-%m") when the visible span is under ~1 year, and
-       back to one-per-year ("%Y") otherwise — always anchored to a real
-       calendar boundary (Jan 1 / the 1st of a month), never snapped to
-       whatever date a data point happens to fall on.
+    2. X-axis year/month tick switching: ticks are computed as an explicit
+       (tickvals, ticktext) array rather than a single dtick, so January ticks
+       can read as a bare year ("2024") while other month ticks read as
+       "4월" etc. — a single d3 tickformat string can't mix those two label
+       shapes. On every x-range change (zoom in/out, rangeslider drag,
+       rangeselector button, reset to "전체") this recomputes which months
+       get a tick from the total visible span: >6년 = Jan only (연도만),
+       4~6년 = Jan/Jul, 2~4년 = Jan/Apr/Jul/Oct, ≤2년 = every month. Ticks are
+       always generated from real calendar month starts (never snapped to a
+       data point), so they can never collide/duplicate regardless of tier.
 
     3. 국면 음영 라디오 ("표시 안함"/"장기 국면"/"일반 국면", 서로 배타적): 선택된
-       세트의 구간을 파랑 계열(상승 계열)·빨강 계열(하락 계열)로, **Y=0%(수익률
-       기준선) 아래쪽만** 칠한다(차트 최하단~0%). 매수/매도 보유기간을 나타내는
-       회색 음영은 반대로 **Y=0% 위쪽만**(0%~차트 최상단) 칠해서, 둘이 Y=0을
-       경계로 서로 다른 영역을 차지해 겹치지 않는다 — 이 페이지는 `fig`에 shape을
-       미리 그려두지 않고 `regime_payload`로 넘어온 날짜 구간(국면 음영·미보유
-       구간 둘 다)만 가지고 매번 이 함수의 JS가 직접 그린다. X축은 Plotly가 현재
-       보이는 구간에 맞춰 자동으로 잘라 그려주므로 줌이 바뀔 때마다 좌표를 다시
-       계산할 필요가 없지만, Y축 최솟값·최댓값은 Y-autoscale로 줌마다 바뀌므로
-       라디오 선택이 바뀔 때는 물론 y축이 재조정될 때도 두 음영 모두 다시
+       세트의 구간을 파랑 계열(상승 계열)·빨강 계열(하락 계열)로 칠한다. 이 음영은
+       `yref="y domain"`으로 그려 차트 plot area 높이의 고정 비율(6%)만 차트
+       **최하단에 붙여서** 칠한다 — Y축 데이터 값이 아니라 플롯 영역 자체를
+       기준으로 하므로, Y축이 확대/축소로 재조정돼도 음영 두께(픽셀 기준)가
+       줄어들거나 늘어나지 않고 항상 동일하게 유지된다. 매수/매도 보유기간을
+       나타내는 회색 음영은 그대로 데이터 좌표 기준(`yref="y"`)으로 **Y=0% 위쪽만**
+       (0%~차트 최상단) 칠해서 국면 음영과 겹치지 않는다 — 이 페이지는 `fig`에
+       shape을 미리 그려두지 않고 `regime_payload`로 넘어온 날짜 구간(국면 음영·
+       미보유 구간 둘 다)만 가지고 매번 이 함수의 JS가 직접 그린다. X축은 Plotly가
+       현재 보이는 구간에 맞춰 자동으로 잘라 그려주므로 줌이 바뀔 때마다 좌표를
+       다시 계산할 필요가 없지만, 회색 음영의 Y축 최댓값은 Y-autoscale로 줌마다
+       바뀌므로 y축이 재조정될 때마다(국면 음영은 라디오 선택이 바뀔 때도) 다시
        계산한다.
 
     4. 신호전략/Buy & Hold 라인 표시 체크박스: 신호전략 체크박스는 보유·미보유
@@ -190,28 +195,38 @@ def render_backtest_chart(
         return [ymin - pad, ymax + pad];
     }}
 
-    // Below ~1 year of visible span, a fixed one-tick-per-year axis (dtick
-    // "M12") shows zero ticks, so switch to one-tick-per-month ("M1") with a
-    // "%Y-%m" label instead — still anchored to a real calendar boundary
-    // (the 1st of a month, never snapped to the nearest data point) and
-    // still exactly one tick per unit, so labels can never repeat either way.
-    var YEAR_MS = 366 * 24 * 60 * 60 * 1000;
+    // 총 표시 기간(연 단위)에 따라 매년 몇 개월에 눈금을 찍을지 결정 — 1월은
+    // 항상 포함(연도 레이블), 나머지는 아래 규칙의 달만 추가로 포함해 "N월"로
+    // 표시한다. dtick 하나로는 "1월만 연도, 나머지는 월"처럼 서로 다른 두 라벨
+    // 형식을 섞을 수 없어서, tickvals/ticktext를 직접 계산해 넘긴다.
+    var MS_PER_YEAR = 365.25 * 24 * 60 * 60 * 1000;
+    function monthsForSpan(yearsSpan) {{
+        if (yearsSpan <= 2) return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+        if (yearsSpan <= 4) return [0, 3, 6, 9];
+        if (yearsSpan <= 6) return [0, 6];
+        return [0];
+    }}
     function xTickUpdates(x0, x1) {{
         var t0 = new Date(x0);
         var t1 = new Date(x1);
-        if ((t1.getTime() - t0.getTime()) < YEAR_MS) {{
-            var monthStart = new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), 1));
-            return {{
-                "xaxis.dtick": "M1",
-                "xaxis.tick0": monthStart.toISOString(),
-                "xaxis.tickformat": "%Y-%m",
-            }};
+        var yearsSpan = (t1.getTime() - t0.getTime()) / MS_PER_YEAR;
+        var months = monthsForSpan(yearsSpan);
+        // 보이는 구간 양쪽으로 1년씩 여유를 둬서, 확대/축소 중 살짝 벗어난
+        // 연도의 눈금도 항상 준비돼 있도록 한다(Plotly가 실제 보이는 x범위
+        // 밖의 틱은 알아서 그리지 않으므로 여기서 굳이 딱 잘라낼 필요는 없음).
+        var startYear = t0.getUTCFullYear() - 1;
+        var endYear = t1.getUTCFullYear() + 1;
+        var tickvals = [], ticktext = [];
+        for (var y = startYear; y <= endYear; y++) {{
+            months.forEach(function(m) {{
+                tickvals.push(new Date(Date.UTC(y, m, 1)).toISOString());
+                ticktext.push(m === 0 ? String(y) : (m + 1) + "월");
+            }});
         }}
-        var jan1 = new Date(Date.UTC(t0.getUTCFullYear(), 0, 1));
         return {{
-            "xaxis.dtick": "M12",
-            "xaxis.tick0": jan1.toISOString(),
-            "xaxis.tickformat": "%Y",
+            "xaxis.tickmode": "array",
+            "xaxis.tickvals": tickvals,
+            "xaxis.ticktext": ticktext,
         }};
     }}
 
@@ -264,14 +279,6 @@ def render_backtest_chart(
     // 매수/매도 보유기간을 나타내는 회색 음영(전체 높이)과 시각적으로 겹치지
     // 않게 한다 — 그 구간의 국면 여부 자체는 하단 참여율 카드로 이미 보여주므로,
     // 음영 자체가 0% 위쪽(수익률이 플러스인 영역)까지 덮을 필요는 없다. ----
-    function currentYBottom() {{
-        if (gd.layout.yaxis && Array.isArray(gd.layout.yaxis.range)) {{
-            return gd.layout.yaxis.range[0];
-        }}
-        var full = fullXExtent();
-        var yr = visibleYRange(full[0], full[1]);
-        return yr ? yr[0] : 0;
-    }}
     function currentYTop() {{
         if (gd.layout.yaxis && Array.isArray(gd.layout.yaxis.range)) {{
             return gd.layout.yaxis.range[1];
@@ -280,13 +287,18 @@ def render_backtest_chart(
         var yr = visibleYRange(full[0], full[1]);
         return yr ? yr[1] : 0;
     }}
-    function shapeDictsFor(setName, yBottom) {{
+    // 차트 plot area 높이의 고정 비율(6%)로 그린다 — yref를 데이터 좌표("y")가
+    // 아니라 "y domain"(0=축 최하단, 1=축 최상단, Y축 스케일과 무관한 상대
+    // 비율)으로 두면 Y-autoscale로 확대/축소해 Y축 값 범위가 바뀌어도 이 띠의
+    // 두께(픽셀 기준)가 얇아지거나 두꺼워지지 않고 항상 동일하게 유지된다.
+    var REGIME_BAND_DOMAIN_FRAC = 0.06;
+    function shapeDictsFor(setName) {{
         if (setName === "none") return [];
         var list = setName === "A" ? regimeData.shapesA : regimeData.shapesB;
         return list.map(function(s) {{
             return {{
-                type: "rect", xref: "x", yref: "y",
-                x0: s.x0, x1: s.x1, y0: yBottom, y1: 0,
+                type: "rect", xref: "x", yref: "y domain",
+                x0: s.x0, x1: s.x1, y0: 0, y1: REGIME_BAND_DOMAIN_FRAC,
                 // 선명한 파랑/빨강 계열 — 0.15~0.25 범위 안에서 라인·마커가
                 // 가려지지 않는 선의 최대치인 0.25로 더 진하게.
                 fillcolor: s.kind === "up" ? "rgba(37,99,235,0.25)" : "rgba(220,38,38,0.25)",
@@ -314,7 +326,7 @@ def render_backtest_chart(
         // 그대로 배열 순서에 반영 — 다만 둘 다 layer:"below"라서 어느 쪽이든
         // Buy&Hold/신호전략 라인과 매수·매도 마커(둘 다 실제 trace)보다는 항상
         // 아래에 그려진다; 이 순서는 두 shape끼리의 상대적 배치만 결정한다.
-        var shapes = shapeDictsFor(currentRegimeSet, currentYBottom())
+        var shapes = shapeDictsFor(currentRegimeSet)
             .concat(nonHoldingShapeDicts(currentYTop()));
         suppressRelayout = true;
         Plotly.relayout(gd, {{shapes: shapes}}).then(function() {{ suppressRelayout = false; }});
@@ -351,7 +363,7 @@ def render_backtest_chart(
             Plotly.relayout(gd, updates).then(function() {{
                 busy = false;
                 updateCards();
-                updateShapes(); // y축이 새로 자동조정됐으니 음영의 y0(하단)도 맞춰 다시 계산
+                updateShapes(); // y축이 새로 자동조정됐으니 회색 음영의 y1(상단)도 맞춰 다시 계산
             }});
             return;
         }}
@@ -365,7 +377,7 @@ def render_backtest_chart(
         Plotly.relayout(gd, updates).then(function() {{
             busy = false;
             updateCards();
-            updateShapes(); // 줌으로 y축 범위가 바뀌었으니 음영의 y0(하단)도 그에 맞춰 재계산
+            updateShapes(); // 줌으로 y축 범위가 바뀌었으니 회색 음영의 y1(상단)도 그에 맞춰 재계산
         }});
     }}
     gd.on("plotly_relayout", onRelayout);
@@ -382,8 +394,17 @@ def render_backtest_chart(
         updateCards();
     }});
 
-    updateCards();
-    updateShapes(); // 회색 미보유 음영이 이제 정적 shape이 아니라 여기서 처음 그려짐
+    // 페이지 로드 시점에도 전체 기간 기준으로 연/월 틱을 한 번 맞춰 준다(줌
+    // 조작이 있기 전까지는 fig가 Python에서 설정한 정적 dtick="M12"만 갖고
+    // 있으므로) — suppressRelayout으로 감싸서 이 자체 relayout이 onRelayout의
+    // x-줌 감지 로직을 건드리지 않게 한다.
+    var initFull = fullXExtent();
+    suppressRelayout = true;
+    Plotly.relayout(gd, xTickUpdates(initFull[0], initFull[1])).then(function() {{
+        suppressRelayout = false;
+        updateCards();
+        updateShapes(); // 회색 미보유 음영이 이제 정적 shape이 아니라 여기서 처음 그려짐
+    }});
 }})();
 </script>
 """
