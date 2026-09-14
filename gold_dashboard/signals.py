@@ -21,9 +21,7 @@ def gold_friendly_vs_ma(value: pd.Series, sma: pd.Series, direction: str) -> pd.
 
     - "inverse" (real rate, DXY): gold-friendly when value <= sma (at/below
       its own MA — a rate/dollar breakout *above* its MA is bearish for gold).
-    - "positive" (WTI, VIX) or "threshold" (gold/silver ratio's own-MA
-      breakout, used only for its main-table highlight): gold-friendly when
-      value > sma (breakout above).
+    - "positive" (WTI, VIX): gold-friendly when value > sma (breakout above).
     """
     if direction == "inverse":
         return (value <= sma).fillna(False)
@@ -50,16 +48,3 @@ def all_windows_gold_friendly_for(indicator_key: str, value: pd.Series, smas: di
     for flag in flags[1:]:
         result = result & flag
     return result
-
-
-def ratio_threshold_active(ratio: pd.Series, threshold: float, comparison: str) -> pd.Series:
-    """True on days the gold/silver ratio alone would trigger a threshold-based
-    signal: comparison="ge" for ratio >= threshold (buy), "le" for
-    ratio <= threshold (sell). Shared by the backtest's ratio trigger and the
-    main dashboard's chart shading so both reference the identical comparison.
-    """
-    if comparison == "ge":
-        return (ratio >= threshold).fillna(False)
-    if comparison == "le":
-        return (ratio <= threshold).fillna(False)
-    raise ValueError(f"unknown comparison: {comparison}")

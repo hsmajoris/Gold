@@ -1,5 +1,6 @@
-"""Backtest page: real-rate/DXY MA breakout signal + gold/silver-ratio threshold
-strategy vs. a same-period Buy & Hold benchmark."""
+"""Backtest page: real-rate/DXY MA breakout signal (green_count) + 52-week
+new-high/new-low and reentry triggers, vs. a same-period Buy & Hold
+benchmark."""
 
 import json
 import uuid
@@ -10,7 +11,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from gold_dashboard import backtest, config
+from gold_dashboard import backtest, config, regime
 from gold_dashboard import timeseries
 from gold_dashboard.timeutil import today_kst
 
@@ -79,7 +80,7 @@ def render_backtest_chart(
     )
     payload_id = f"{div_id}_payload"
     payload_json = json.dumps(regime_payload, ensure_ascii=False)
-    card_labels = ["대세상승장", "상승장", "보합장", "하락장", "대세하락장"]
+    card_labels = regime.REGIME_LABELS
 
     controls_top = f"""
 <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;
@@ -432,97 +433,10 @@ STRATEGY_HYBRID_NONHOLDING_COLOR = "#c9bfe0"
 STRATEGY_LABEL = "신호전략"
 BH_LABEL = "Buy & Hold"
 
-# ---- 누적수익률 차트의 국면 음영/참여율 카드 기능이 쓰는, 수동으로 확정된 시장
-# 국면 구간표 (차트를 보고 직접 지정한 값 — 어떤 공식으로 도출된 게 아님).
-# "대세"(장기) 구간은 "일반" 구간과 겹칠 수 있고, 그 경우 국면별 참여율 계산에서는
-# 대세 쪽 라벨을 우선 적용한다. 이 네 리스트에 안 걸리는 나머지 기간은 전부
-# 보합장으로 취급. 차트 상단의 "국면 표시" 라디오는 이 표를 "장기 국면"
-# (REGIME_SECULAR_UP/DOWN만) 세트와 "일반 국면"(REGIME_UPTREND/DOWNTREND만)
-# 세트로 나눠서 보여주는 것일 뿐, 서로 독립된 2개의 3단계(상승/보합/하락)
-# 구분이다 — 아래 참여율 카드처럼 5단계로 합쳐서 우선순위를 매기지 않는다.
-REGIME_UPTREND = [
-    ("2014-06-05", "2014-08-08"), ("2014-11-07", "2015-01-21"),
-    ("2015-12-03", "2016-02-26"), ("2016-04-19", "2016-07-06"),
-    ("2016-12-16", "2017-04-20"), ("2017-07-14", "2017-09-08"),
-    ("2017-12-13", "2018-02-06"), ("2018-09-28", "2019-08-13"),
-    ("2019-11-12", "2020-07-28"), ("2021-11-04", "2022-03-09"),
-    ("2023-03-13", "2023-04-07"), ("2024-03-04", "2024-10-23"),
-    ("2024-11-15", "2025-02-14"), ("2025-08-20", "2025-10-15"),
-    ("2025-10-28", "2026-01-29"),
-]
-REGIME_DOWNTREND = [
-    ("2014-03-24", "2014-06-05"), ("2014-08-08", "2014-11-07"),
-    ("2015-01-21", "2015-04-27"), ("2015-08-24", "2015-11-30"),
-    ("2016-07-06", "2016-12-16"), ("2017-04-20", "2017-05-16"),
-    ("2017-09-08", "2017-12-13"), ("2018-06-15", "2018-09-28"),
-    ("2020-07-28", "2020-11-30"), ("2021-01-06", "2021-03-05"),
-    ("2025-02-14", "2025-02-27"), ("2025-10-15", "2025-10-28"),
-    ("2026-01-29", "2026-07-30"),
-]
-REGIME_SECULAR_UP = [
-    ("2015-11-30", "2016-07-06"), ("2019-11-12", "2020-07-28"),
-    ("2024-03-04", "2025-02-14"), ("2025-08-20", "2025-10-15"),
-]
-REGIME_SECULAR_DOWN = [
-    ("2015-01-21", "2015-11-30"), ("2020-07-28", "2020-11-30"),
-    ("2026-01-29", "2026-07-30"),
-]
-
-
-def _regime_ts_ranges(pairs):
-    return [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in pairs]
-
-
-def _in_any_range(d, ranges):
-    return any(a <= d <= b for a, b in ranges)
-
-
-def classify_regime_5way(dates_index):
-    """Per-day label in {대세상승장, 상승장, 보합장, 하락장, 대세하락장} for every
-    date in `dates_index`, giving REGIME_SECULAR_* priority over REGIME_UPTREND/
-    DOWNTREND wherever they overlap; anything covered by none of the four
-    ranges is 보합장. Used only by the participation-rate cards (always all 5
-    labels, independent of the shading radio's A/B/none choice)."""
-    up, down = _regime_ts_ranges(REGIME_UPTREND), _regime_ts_ranges(REGIME_DOWNTREND)
-    sec_up, sec_down = _regime_ts_ranges(REGIME_SECULAR_UP), _regime_ts_ranges(REGIME_SECULAR_DOWN)
-    labels = []
-    for d in dates_index:
-        d = pd.Timestamp(d)
-        if _in_any_range(d, sec_up):
-            labels.append("대세상승장")
-        elif _in_any_range(d, sec_down):
-            labels.append("대세하락장")
-        elif _in_any_range(d, up):
-            labels.append("상승장")
-        elif _in_any_range(d, down):
-            labels.append("하락장")
-        else:
-            labels.append("보합장")
-    return labels
-
-
-def _clip_ranges(pairs, lo, hi):
-    out = []
-    for a, b in pairs:
-        a, b = pd.Timestamp(a), pd.Timestamp(b)
-        s, e = max(a, lo), min(b, hi)
-        if s <= e:
-            out.append((s, e))
-    return out
-
-
-def regime_shading_shapes(up_pairs, down_pairs, lo, hi):
-    """{x0,x1,kind} dicts (kind='up'|'down') for the given pair of range
-    lists, clipped to [lo, hi] — the shading-radio's A/B set, not the 5-way
-    participation labels. JS turns these into full Plotly shape dicts (color,
-    y0/y1 in paper coords) since the color choice/z-order belong to rendering,
-    not to this data-prep step."""
-    shapes = [{"x0": a.isoformat(), "x1": b.isoformat(), "kind": "up"}
-              for a, b in _clip_ranges(up_pairs, lo, hi)]
-    shapes += [{"x0": a.isoformat(), "x1": b.isoformat(), "kind": "down"}
-               for a, b in _clip_ranges(down_pairs, lo, hi)]
-    return shapes
-
+# 누적수익률 차트의 국면 음영/참여율 카드가 쓰는 국면 구간표·5단계 분류·shape
+# 변환 헬퍼는 gold_dashboard/regime.py로 옮겨 대시보드 핵심 요약 문구([1]
+# 참여율 자동 계산 요구사항)와 공유하는 단일 소스로 관리한다 — 아래
+# `regime.REGIME_UPTREND` 등으로 참조.
 
 DEFAULTS = {
     "bt_years": backtest.BACKTEST_YEARS,
@@ -578,9 +492,8 @@ gold_price_basis = st.radio(
 st.session_state[config.GOLD_PRICE_BASIS_STATE_KEY] = gold_price_basis
 st.caption(
     "② KRX 금현물은 환율을 곱해 환산한 값이 아니라, KRX 금현물시장(04020000, \"금 99.99_1kg\") "
-    "실제 국내 시세(KRW/g)를 그대로 사용합니다(출처: Naver 증권). 금/은비율은 이 선택과 무관하게 "
-    "항상 국제 금·은 시세(GC=F/SI=F, USD/oz) 기준으로 계산됩니다 — 대시보드 표의 금/은비율 행과 "
-    "동일합니다. ② 선택 시 최초 데이터 수집에 1분 내외 걸릴 수 있습니다(이후 캐시되어 즉시 표시)."
+    "실제 국내 시세(KRW/g)를 그대로 사용합니다(출처: Naver 증권). ② 선택 시 최초 데이터 수집에 "
+    "1분 내외 걸릴 수 있습니다(이후 캐시되어 즉시 표시)."
 )
 
 with st.expander("전략 규칙 보기"):
@@ -933,28 +846,24 @@ trades = result["trades"]
 
 # 누적수익률 차트의 "신호강도(6/0·5/1·4/2)" 드롭다운 + 국면별 참여율 카드용 —
 # 현재 페이지의 다른 모든 설정(재진입·52주 트리거·매도노이즈필터 등)은 그대로 두고
-# green_count 매수/매도 임계값만 세 조합으로 바꿔가며 같은 signals에 다시 돌린다.
-_THRESHOLD_PAIRS = [(6, 0), (5, 1), (4, 2)]
-_threshold_holding = {}
-for _bg, _sg in _THRESHOLD_PAIRS:
-    _tres = backtest.simulate(
-        signals,
-        use_reentry_trigger=use_reentry_trigger,
-        use_reentry_freq_limit=use_reentry_freq_limit,
-        reentry_freq_limit_days=int(reentry_freq_limit_days),
-        long_trend_buffer_pct=float(long_trend_buffer_pct),
-        use_new_high_trigger=use_new_high_trigger,
-        use_new_low_trigger=use_new_low_trigger,
-        buy_green_count=_bg,
-        sell_green_count=_sg,
-        min_holding_days=int(min_holding_days),
-        bond_annual_yield=float(bond_yield_pct) / 100.0,
-        use_sell_noise_filter=use_sell_noise_filter,
-        use_daily_band_confirmation=use_daily_band_confirmation,
-        sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
-        gold_holding_fee_annual_pct=effective_holding_fee_pct,
-    )
-    _threshold_holding[f"{_bg}/{_sg}"] = _tres["holding_curve"]
+# green_count 매수/매도 임계값만 regime.THRESHOLD_PAIRS의 세 조합으로 바꿔가며
+# 같은 signals에 다시 돌린다(gold_dashboard/regime.py — 대시보드 핵심 요약
+# 문구도 같은 함수로 참여율을 계산하는 단일 소스).
+_threshold_holding = regime.compute_threshold_holding(
+    signals,
+    use_reentry_trigger=use_reentry_trigger,
+    use_reentry_freq_limit=use_reentry_freq_limit,
+    reentry_freq_limit_days=int(reentry_freq_limit_days),
+    long_trend_buffer_pct=float(long_trend_buffer_pct),
+    use_new_high_trigger=use_new_high_trigger,
+    use_new_low_trigger=use_new_low_trigger,
+    min_holding_days=int(min_holding_days),
+    bond_annual_yield=float(bond_yield_pct) / 100.0,
+    use_sell_noise_filter=use_sell_noise_filter,
+    use_daily_band_confirmation=use_daily_band_confirmation,
+    sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
+    gold_holding_fee_annual_pct=effective_holding_fee_pct,
+)
 
 start_date = equity.index[0].date()
 end_date = equity.index[-1].date()
@@ -1033,7 +942,7 @@ dates = equity.index
 # 국면 음영(요구사항1)/참여율 카드(요구사항3)에 쓸 데이터를 JS로 그대로 넘기기 위한
 # 준비 — 전부 파이썬에서 한 번만 계산해 JSON으로 임베드하고, 줌 구간 필터링·비율
 # 재계산 자체는 서버 왕복 없이 JS가 그 자리에서 한다.
-_regime5_labels = classify_regime_5way(dates)
+_regime5_labels = regime.classify_regime_5way(dates)
 _held_by_threshold = {
     key: hc.reindex(dates).fillna(False).astype(int).tolist()
     for key, hc in _threshold_holding.items()
@@ -1042,8 +951,12 @@ _regime_payload = {
     "dates": [d.isoformat() for d in dates],
     "regime5": _regime5_labels,
     "held": _held_by_threshold,
-    "shapesA": regime_shading_shapes(REGIME_SECULAR_UP, REGIME_SECULAR_DOWN, dates.min(), dates.max()),
-    "shapesB": regime_shading_shapes(REGIME_UPTREND, REGIME_DOWNTREND, dates.min(), dates.max()),
+    "shapesA": regime.regime_shading_shapes(
+        regime.REGIME_SECULAR_UP, regime.REGIME_SECULAR_DOWN, dates.min(), dates.max()
+    ),
+    "shapesB": regime.regime_shading_shapes(
+        regime.REGIME_UPTREND, regime.REGIME_DOWNTREND, dates.min(), dates.max()
+    ),
 }
 
 bh_returns = bh_equity.reindex(equity.index).to_numpy() - 1.0
