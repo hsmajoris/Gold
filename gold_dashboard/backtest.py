@@ -462,11 +462,22 @@ def run_backtest(
     """
     dates = signals.index
     gold = signals["gold"]
-    green_count = signals["green_count"]
-    gold_sma_long = signals["gold_sma_long"]
-    reentry_trigger = compute_reentry_trigger(signals, long_trend_buffer_pct)
-    new_high_trigger = signals["gold_new_52w_high"]
-    new_low_trigger = signals["gold_new_52w_low"]
+    # Pre-extracted as plain numpy arrays, indexed by integer position `i`
+    # alongside `dates` in the loop below (all share `signals.index`, so
+    # `*_arr[i]` is always the exact same value `series.loc[dates[i]]` would
+    # return) — repeatedly calling `.loc[dt]` inside a several-thousand-
+    # iteration Python loop routes through pandas' full label-lookup machinery
+    # (hashing, type dispatch, bounds/type checks) on every single access,
+    # which dominates this function's cost when it runs (as it does here, up
+    # to 4x per page load — once for the selected threshold, three more for
+    # the participation cards' 6/0·5/1·4/2 comparison). Plain numpy scalar
+    # indexing skips all of that while computing the identical value.
+    gold_arr = gold.to_numpy()
+    green_count_arr = signals["green_count"].to_numpy()
+    gold_sma_long_arr = signals["gold_sma_long"].to_numpy()
+    reentry_trigger_arr = compute_reentry_trigger(signals, long_trend_buffer_pct).to_numpy()
+    new_high_trigger_arr = signals["gold_new_52w_high"].to_numpy()
+    new_low_trigger_arr = signals["gold_new_52w_low"].to_numpy()
 
     holding = False
     entry_date = None
@@ -484,10 +495,10 @@ def run_backtest(
     equity_values = []
     holding_values = []
 
-    for dt in dates:
-        gc = int(green_count.loc[dt])
-        price = float(gold.loc[dt])
-        raw_reentry_trigger = use_reentry_trigger and bool(reentry_trigger.loc[dt])
+    for i, dt in enumerate(dates):
+        gc = int(green_count_arr[i])
+        price = float(gold_arr[i])
+        raw_reentry_trigger = use_reentry_trigger and bool(reentry_trigger_arr[i])
 
         if not holding:
             # The reentry trigger fires today only if its underlying condition
@@ -500,7 +511,7 @@ def run_backtest(
             )
             # No cooldown of its own (unlike the reentry trigger above) —
             # fires every time it's true and we're not already holding.
-            new_high_ready = use_new_high_trigger and bool(new_high_trigger.loc[dt])
+            new_high_ready = use_new_high_trigger and bool(new_high_trigger_arr[i])
 
             entry_reason_today = None
             if reentry_ready or new_high_ready or gc >= buy_green_count:
@@ -531,7 +542,7 @@ def run_backtest(
             if (dt - entry_date).days >= min_holding_days:
                 # No cooldown of its own (mirrors the new-high buy trigger) —
                 # fires every time it's true while holding.
-                new_low_ready = use_new_low_trigger and bool(new_low_trigger.loc[dt])
+                new_low_ready = use_new_low_trigger and bool(new_low_trigger_arr[i])
                 if new_low_ready or gc <= sell_green_count:
                     exit_reason_today = _sell_reason(gc, sell_green_count, include_new_low=new_low_ready)
 
@@ -618,7 +629,7 @@ def run_backtest(
                             )
                     sell_noise_state = None
             elif exit_reason_today is not None:
-                sma_long_today = gold_sma_long.loc[dt]
+                sma_long_today = gold_sma_long_arr[i]
                 in_uptrend_zone = (
                     use_sell_noise_filter
                     and not pd.isna(sma_long_today)
@@ -667,7 +678,7 @@ def run_backtest(
 
     if holding:
         last_dt = dates[-1]
-        last_price = float(gold.loc[last_dt])
+        last_price = float(gold_arr[-1])
         trades.append(
             {
                 "entry_date": entry_date,
@@ -784,6 +795,13 @@ def compute_hybrid_cagr(
     recomputation to drift out of sync).
     """
     dates = holding_curve.index
+    # Pre-extracted to plain numpy arrays for the same reason as run_backtest's
+    # loop — repeated `.iloc[]` calls on a pandas Series inside a several-
+    # thousand-iteration Python loop carry real per-call overhead that plain
+    # array indexing skips, with no change to the values read (both series
+    # share `dates`, so `*_arr[i]` is always `*.iloc[i]`).
+    holding_arr = holding_curve.to_numpy()
+    gold_arr = gold.to_numpy()
     hybrid_equity = 1.0
     equity_values = [1.0]
     non_holding_days = 0
@@ -791,8 +809,8 @@ def compute_hybrid_cagr(
     for i in range(1, len(dates)):
         elapsed_days = (dates[i] - dates[i - 1]).days
         total_days += elapsed_days
-        if bool(holding_curve.iloc[i - 1]):
-            factor = float(gold.iloc[i] / gold.iloc[i - 1]) * _fee_decay(
+        if bool(holding_arr[i - 1]):
+            factor = float(gold_arr[i] / gold_arr[i - 1]) * _fee_decay(
                 elapsed_days, gold_holding_fee_annual_pct
             )
         else:
