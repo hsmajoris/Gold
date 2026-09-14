@@ -45,7 +45,7 @@ def render_backtest_chart(
        whatever date a data point happens to fall on.
 
     3. 국면 음영 라디오 ("표시 안함"/"장기 국면"/"일반 국면", 서로 배타적): 선택된
-       세트의 구간을 옅은 하늘색(상승 계열)·핑크색(하락 계열)으로 칠한다. X축은
+       세트의 구간을 파랑 계열(상승 계열)·빨강 계열(하락 계열)로 칠한다. X축은
        Plotly가 현재 보이는 구간에 맞춰 자동으로 잘라 그려주므로 줌이 바뀔 때마다
        좌표를 다시 계산할 필요가 없지만, Y축은 차트 최하단(현재 y축 최솟값)~0%
        까지만 채운다 — 매수/매도 보유기간을 나타내는 회색 음영(전체 높이)과
@@ -280,13 +280,19 @@ def render_backtest_chart(
             return {{
                 type: "rect", xref: "x", yref: "y",
                 x0: s.x0, x1: s.x1, y0: yBottom, y1: 0,
-                fillcolor: s.kind === "up" ? "rgba(135,206,250,0.15)" : "rgba(255,182,193,0.15)",
+                // 선명한 파랑/빨강 계열(0.15~0.25 사이에서 라인·마커가 가려지지
+                // 않는 선의 최대치인 0.2) — 옅은 하늘색/핑크보다 눈에 띄게.
+                fillcolor: s.kind === "up" ? "rgba(59,130,246,0.2)" : "rgba(239,68,68,0.2)",
                 line: {{width: 0}}, layer: "below",
             }};
         }});
     }}
     function updateShapes() {{
-        var shapes = baseShapes.concat(shapeDictsFor(currentRegimeSet, currentYBottom()));
+        // 요청된 렌더링 순서(국면 음영이 맨 아래, 그 위에 보유기간 회색 음영)
+        // 그대로 배열 순서에 반영 — 다만 둘 다 layer:"below"라서 어느 쪽이든
+        // Buy&Hold/신호전략 라인과 매수·매도 마커(둘 다 실제 trace)보다는 항상
+        // 아래에 그려진다; 이 순서는 두 shape끼리의 상대적 배치만 결정한다.
+        var shapes = shapeDictsFor(currentRegimeSet, currentYBottom()).concat(baseShapes);
         suppressRelayout = true;
         Plotly.relayout(gd, {{shapes: shapes}}).then(function() {{ suppressRelayout = false; }});
     }}
@@ -1131,7 +1137,10 @@ if not marker_df.empty:
                 mode="markers",
                 name=label,
                 meta="marker_strategy",
-                marker=dict(symbol=symbol, color=color, size=11, line=dict(width=0)),
+                # 흰색 테두리(halo) — 국면 음영이 파랑/빨강으로 진해지면서 같은
+                # 색 계열 마커(매수=파랑/매도=빨강)가 배경에 묻히지 않도록, 배경이
+                # 무엇이든 마커 윤곽이 항상 도드라지게 한다.
+                marker=dict(symbol=symbol, color=color, size=11, line=dict(color="white", width=2)),
                 customdata=np.stack([sub["가격"].to_numpy(), sub["사유"].to_numpy()], axis=-1),
                 hovertemplate=(
                     "%{x|%Y-%m-%d}<br>구분: "
