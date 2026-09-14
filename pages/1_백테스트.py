@@ -2,6 +2,7 @@
 new-high/new-low and reentry triggers, vs. a same-period Buy & Hold
 benchmark."""
 
+import functools
 import json
 import uuid
 from datetime import date, timedelta
@@ -9,11 +10,26 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io._html as _plotly_html
 import streamlit as st
 
 from gold_dashboard import backtest, config, regime
 from gold_dashboard import timeseries
 from gold_dashboard.timeutil import today_kst
+
+# Profiling fig.to_html(include_plotlyjs="cdn") showed ~40% of its cost was
+# plotly.py re-reading its entire bundled plotly.js (~3MB) off disk and
+# SHA-256-hashing it from scratch on every single call, purely to fill in
+# the CDN <script>'s `integrity=` (Subresource Integrity) attribute — see
+# plotly/io/_html.py's `include_plotlyjs == "cdn"` branch. That content
+# (get_plotlyjs()) is 100% static for a given plotly.py install, takes no
+# arguments, and never changes at runtime, so it's a safe memoization target:
+# this computes the exact same hash/output, just once per process instead of
+# once per chart render, with the rendered HTML unaffected either way.
+# Guarded so re-running this page script (Streamlit reruns the whole module
+# top-to-bottom on every interaction) only wraps it the first time.
+if not hasattr(_plotly_html.get_plotlyjs, "cache_clear"):
+    _plotly_html.get_plotlyjs = functools.lru_cache(maxsize=1)(_plotly_html.get_plotlyjs)
 
 
 def render_backtest_chart(
