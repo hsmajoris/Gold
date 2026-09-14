@@ -113,7 +113,8 @@ def render_backtest_chart(
   <div>
     <label style="margin-right:10px;"><input type="checkbox" id="chkStrategy_{div_id}"
         checked> 신호전략(기대수익률 포함)</label>
-    <label><input type="checkbox" id="chkBH_{div_id}" checked> Buy &amp; Hold</label>
+    <label style="margin-right:10px;"><input type="checkbox" id="chkBH_{div_id}" checked> Buy &amp; Hold</label>
+    <label><input type="checkbox" id="chkNetFees_{div_id}" checked> 수수료 반영</label>
   </div>
 </div>
 """
@@ -349,7 +350,12 @@ def render_backtest_chart(
         Plotly.relayout(gd, {{shapes: shapes}}).then(function() {{ suppressRelayout = false; }});
     }}
 
-    // ---- 신호전략/Buy&Hold 라인 표시 체크박스 (신호전략은 마커까지 함께) ----
+    // ---- 신호전략/Buy&Hold 라인 표시 체크박스 (신호전략은 마커까지 함께) +
+    // 수수료 반영/미반영(_net/_gross) 토글 — 세 체크박스를 조합해서 4개 트레이스
+    // 그룹(전략_net/전략_gross/BH_net/BH_gross)의 visible을 각각 계산한다.
+    // "수수료 반영"은 _net과 _gross를 서로 배타적으로 전환할 뿐 신호전략/BH
+    // 표시 여부 자체와는 독립적이라, showStrategy·showBH가 꺼져 있으면 그
+    // 그룹은 net/gross 상태와 무관하게 항상 숨는다.
     function indicesForMeta(tag) {{
         var idx = [];
         (gd.data || []).forEach(function(tr, i) {{ if (tr.meta === tag) idx.push(i); }});
@@ -358,10 +364,15 @@ def render_backtest_chart(
     function updateLineVisibility() {{
         var showStrategy = document.getElementById("chkStrategy_{div_id}").checked;
         var showBH = document.getElementById("chkBH_{div_id}").checked;
-        var stratIdx = indicesForMeta("line_strategy").concat(indicesForMeta("marker_strategy"));
-        var bhIdx = indicesForMeta("line_bh");
-        if (stratIdx.length) Plotly.restyle(gd, {{visible: showStrategy}}, stratIdx);
-        if (bhIdx.length) Plotly.restyle(gd, {{visible: showBH}}, bhIdx);
+        var showNet = document.getElementById("chkNetFees_{div_id}").checked;
+        var stratNetIdx = indicesForMeta("line_strategy_net").concat(indicesForMeta("marker_strategy_net"));
+        var stratGrossIdx = indicesForMeta("line_strategy_gross").concat(indicesForMeta("marker_strategy_gross"));
+        var bhNetIdx = indicesForMeta("line_bh_net");
+        var bhGrossIdx = indicesForMeta("line_bh_gross");
+        if (stratNetIdx.length) Plotly.restyle(gd, {{visible: showStrategy && showNet}}, stratNetIdx);
+        if (stratGrossIdx.length) Plotly.restyle(gd, {{visible: showStrategy && !showNet}}, stratGrossIdx);
+        if (bhNetIdx.length) Plotly.restyle(gd, {{visible: showBH && showNet}}, bhNetIdx);
+        if (bhGrossIdx.length) Plotly.restyle(gd, {{visible: showBH && !showNet}}, bhGrossIdx);
     }}
 
     function onRelayout(ev) {{
@@ -406,6 +417,7 @@ def render_backtest_chart(
     }});
     document.getElementById("chkStrategy_{div_id}").addEventListener("change", updateLineVisibility);
     document.getElementById("chkBH_{div_id}").addEventListener("change", updateLineVisibility);
+    document.getElementById("chkNetFees_{div_id}").addEventListener("change", updateLineVisibility);
     document.getElementById("selThreshold_{div_id}").addEventListener("change", function() {{
         currentThreshold = this.value;
         updateCards();
@@ -470,7 +482,10 @@ DEFAULTS = {
     "bt_use_sell_noise_filter": True,
     "bt_use_daily_band_confirmation": backtest.DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     "bt_sell_noise_filter_drop_pct": backtest.DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
-    "bt_krx_holding_fee_pct": backtest.DEFAULT_KRX_HOLDING_FEE_ANNUAL_PCT,
+    "bt_apply_fees": True,
+    "bt_buy_fee_pct": backtest.DEFAULT_BUY_FEE_PCT,
+    "bt_sell_fee_pct": backtest.DEFAULT_SELL_FEE_PCT,
+    "bt_daily_holding_fee_pct": backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
 }
 for _key, _default in DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -562,9 +577,12 @@ with st.expander("전략 규칙 보기"):
   - **꺼짐**: D0+7일(역일 기준) 고정 시점의 종가만을 D0 종가와 비교합니다 — "매도 확인
     하락률"(기본 5%) 이상 낮으면 그날 매도, 그만큼 낮지 않으면 관찰모드를 해제하고 D0의 신호는
     없었던 것으로 처리합니다
-- 고급 설정의 **KRX 금현물 보유 수수료 (연, %)** (기본값 0.15%, ② KRX 금현물 선택 시에만
-  적용)는 보유 중인 기간의 경과 일수에 비례해 연복리로 수익률에서 차감되며, Buy & Hold와
-  신호전략 보유 기간 모두 동일하게 적용됩니다(① 국제 금 시세에는 적용되지 않음)
+- 고급 설정의 **수수료**(② KRX 금현물 선택 시에만 적용, ① 국제 금 시세에는 적용되지 않음)는
+  세 가지로 나뉩니다: **매수/매도 수수료**(각 기본 0.165%, 편도)는 매수·매도 체결이 일어날
+  때마다 그 시점에 1회성으로 차감되어 매매 횟수에 비례해 총액이 늘어나고, **보관수수료**
+  (기본 0.00022%, 일률)는 보유 잔량에 매일 누적됩니다(신호전략은 실제 보유 중일 때만, Buy &
+  Hold는 전체 기간). "수수료 반영" 체크박스로 전부 껐다 켤 수 있고, 차트에서는 이 값과
+  별개로 수수료 반영/미반영 곡선을 토글로 비교할 수 있습니다
 - 분석 기간: **{years}년** (1~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
   데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
   N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
@@ -764,14 +782,46 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 · 단기 재진입 
             "관찰모드를 해제해 계속 보유). 0으로 두면 이전처럼 '조금이라도 낮으면 매도'와 "
             "동일해집니다.",
         )
-        krx_holding_fee_pct = st.number_input(
-            "KRX 금현물 보유 수수료 (연, %)",
-            min_value=0.0, max_value=5.0, step=0.01, format="%.2f", key="bt_krx_holding_fee_pct",
-            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
-            help="② KRX 금현물 선택 시에만 적용되는 연간 보유(보관) 비용입니다(① 국제 금 시세는 "
-            "실물이 아닌 참고 가격이라 적용되지 않음). 보유 중인 기간 동안 경과 일수에 비례해 "
-            "연복리로 수익률에서 차감되며, Buy & Hold와 신호전략 보유 기간 모두 동일하게 "
-            "적용됩니다(기본값 0.15%).",
+
+    st.markdown("**수수료** (② KRX 금현물 선택 시에만 적용 — ① 국제 금 시세는 실물이 아닌 "
+                "참고 가격이라 적용되지 않음)")
+    apply_fees = st.checkbox(
+        "수수료 반영",
+        key="bt_apply_fees",
+        disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
+        help="체크를 해제하면 아래 세 수수료 입력값과 무관하게 전부 0으로 두고 계산합니다"
+        "(입력값 자체는 그대로 남아있어 다시 체크하면 복원됩니다). 차트에서는 이 체크박스와 "
+        "별개로 '수수료 반영/미반영' 곡선을 토글로 바로 비교해볼 수 있습니다(줌 상태 유지).",
+    )
+    fee_buy_col, fee_sell_col, fee_holding_col = st.columns(3)
+    with fee_buy_col:
+        buy_fee_pct = st.number_input(
+            "매수 수수료 (%, 편도)",
+            min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_buy_fee_pct",
+            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+            help="매수 체결 시마다 그날 매수금액에 부과되는 1회성 수수료입니다(기본값 "
+            "0.165%, 미래에셋증권 KRX 금현물 매매수수료 기준). 보유기간과 무관하게 매수할 "
+            "때마다 매번 발생하므로, 매매 횟수가 많은 신호강도일수록 총액도 커집니다.",
+        )
+    with fee_sell_col:
+        sell_fee_pct = st.number_input(
+            "매도 수수료 (%, 편도)",
+            min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_sell_fee_pct",
+            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+            help="매도 체결 시마다 그날 매도금액에 부과되는 1회성 수수료입니다(기본값 "
+            "0.165%). Buy & Hold는 분석기간 종료 시점에 전량 매도한다고 가정해 이 수수료를 "
+            "마지막 날 1회 반영합니다.",
+        )
+    with fee_holding_col:
+        daily_holding_fee_pct = st.number_input(
+            "보관수수료 (%, 일률)",
+            min_value=0.0, max_value=1.0, step=0.00001, format="%.5f", key="bt_daily_holding_fee_pct",
+            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+            help="보유 잔량에 매일 부과되는 수수료입니다(기본값 0.00022%, 부가세 포함 추정치 "
+            "— 연율이 아니라 하루 치 요율입니다). 정확한 산정 주기(일할 계산 후 월초 청구 "
+            "vs. 월말 잔량 기준 월 1회 부과)가 아직 확인되지 않아, 우선 '매일 이 %만큼 "
+            "누적'으로 가정해 계산합니다. 매수/매도 수수료와 달리 실제 보유 기간에만(신호전략은 "
+            "보유 중일 때만, Buy & Hold는 전체 기간) 발생합니다.",
         )
 
 # The actual widget for "기대수익률" is instantiated HERE, unconditionally,
@@ -822,31 +872,59 @@ def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
     return f"${value:,.2f}"
 
 
-# Meaningless (and not applied) unless the KRX basis is active — the input
-# itself stays enabled-looking with its 0.15 default either way, but only
-# actually reaches the simulation when relevant.
-effective_holding_fee_pct = (
-    float(krx_holding_fee_pct) if gold_price_basis == config.GOLD_PRICE_BASIS_KRX else 0.0
+# Meaningless (and not applied) unless the KRX basis is active AND "수수료
+# 반영" is checked — the three inputs stay enabled-looking with their
+# defaults either way, but only actually reach the simulation when relevant.
+_fees_active = apply_fees and gold_price_basis == config.GOLD_PRICE_BASIS_KRX
+effective_buy_fee_pct = float(buy_fee_pct) if _fees_active else 0.0
+effective_sell_fee_pct = float(sell_fee_pct) if _fees_active else 0.0
+effective_daily_holding_fee_pct = float(daily_holding_fee_pct) if _fees_active else 0.0
+
+# Shared by both the fee-adjusted ("net") and always-zero-fee ("gross") runs
+# below, AND by _threshold_holding's per-threshold reruns further down —
+# trades/holding_curve never depend on the fee rates at all (every buy/sell
+# trigger is computed purely from `signals`), only the equity numbers differ,
+# so this is the only place these settings need to be typed. Deliberately
+# excludes buy_green_count/sell_green_count: the main runs below need this
+# page's own selected threshold, while compute_threshold_holding fills in its
+# own three (6/0·5/1·4/2) per call — bundling them here would collide with
+# both.
+_shared_sim_kwargs = dict(
+    use_reentry_trigger=use_reentry_trigger,
+    use_reentry_freq_limit=use_reentry_freq_limit,
+    reentry_freq_limit_days=int(reentry_freq_limit_days),
+    long_trend_buffer_pct=float(long_trend_buffer_pct),
+    use_new_high_trigger=use_new_high_trigger,
+    use_new_low_trigger=use_new_low_trigger,
+    min_holding_days=int(min_holding_days),
+    bond_annual_yield=float(bond_yield_pct) / 100.0,
+    use_sell_noise_filter=use_sell_noise_filter,
+    use_daily_band_confirmation=use_daily_band_confirmation,
+    sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
 )
 
 try:
     signals = load_signals(as_of_date.isoformat(), int(years), gold_price_basis)
     result = backtest.simulate(
         signals,
-        use_reentry_trigger=use_reentry_trigger,
-        use_reentry_freq_limit=use_reentry_freq_limit,
-        reentry_freq_limit_days=int(reentry_freq_limit_days),
-        long_trend_buffer_pct=float(long_trend_buffer_pct),
-        use_new_high_trigger=use_new_high_trigger,
-        use_new_low_trigger=use_new_low_trigger,
+        **_shared_sim_kwargs,
         buy_green_count=int(buy_green_count),
         sell_green_count=int(sell_green_count),
-        min_holding_days=int(min_holding_days),
-        bond_annual_yield=float(bond_yield_pct) / 100.0,
-        use_sell_noise_filter=use_sell_noise_filter,
-        use_daily_band_confirmation=use_daily_band_confirmation,
-        sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
-        gold_holding_fee_annual_pct=effective_holding_fee_pct,
+        buy_fee_pct=effective_buy_fee_pct,
+        sell_fee_pct=effective_sell_fee_pct,
+        daily_holding_fee_pct=effective_daily_holding_fee_pct,
+    )
+    # "총수익률(수수료 미반영)" — 차트의 수수료 반영/미반영 토글이 비교할 상대편.
+    # trades/holding_curve는 위 result와 완전히 동일(신호 자체가 수수료와 무관)
+    # 하고, equity/누적수익률 계열만 다르다.
+    result_gross = backtest.simulate(
+        signals,
+        **_shared_sim_kwargs,
+        buy_green_count=int(buy_green_count),
+        sell_green_count=int(sell_green_count),
+        buy_fee_pct=0.0,
+        sell_fee_pct=0.0,
+        daily_holding_fee_pct=0.0,
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
@@ -860,25 +938,21 @@ hybrid_equity = result["hybrid_equity_curve"]
 yearly = result["yearly_returns"]
 trades = result["trades"]
 
+bh_equity_gross = result_gross["bh_equity_curve"]
+hybrid_equity_gross = result_gross["hybrid_equity_curve"]
+
 # 누적수익률 차트의 "신호강도(6/0·5/1·4/2)" 드롭다운 + 국면별 참여율 카드용 —
 # 현재 페이지의 다른 모든 설정(재진입·52주 트리거·매도노이즈필터 등)은 그대로 두고
 # green_count 매수/매도 임계값만 regime.THRESHOLD_PAIRS의 세 조합으로 바꿔가며
 # 같은 signals에 다시 돌린다(gold_dashboard/regime.py — 대시보드 핵심 요약
-# 문구도 같은 함수로 참여율을 계산하는 단일 소스).
+# 문구도 같은 함수로 참여율을 계산하는 단일 소스). 참여율은 보유 여부만 보므로
+# 수수료 값 자체는 결과에 영향이 없다.
 _threshold_holding = regime.compute_threshold_holding(
     signals,
-    use_reentry_trigger=use_reentry_trigger,
-    use_reentry_freq_limit=use_reentry_freq_limit,
-    reentry_freq_limit_days=int(reentry_freq_limit_days),
-    long_trend_buffer_pct=float(long_trend_buffer_pct),
-    use_new_high_trigger=use_new_high_trigger,
-    use_new_low_trigger=use_new_low_trigger,
-    min_holding_days=int(min_holding_days),
-    bond_annual_yield=float(bond_yield_pct) / 100.0,
-    use_sell_noise_filter=use_sell_noise_filter,
-    use_daily_band_confirmation=use_daily_band_confirmation,
-    sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
-    gold_holding_fee_annual_pct=effective_holding_fee_pct,
+    **_shared_sim_kwargs,
+    buy_fee_pct=effective_buy_fee_pct,
+    sell_fee_pct=effective_sell_fee_pct,
+    daily_holding_fee_pct=effective_daily_holding_fee_pct,
 )
 
 start_date = equity.index[0].date()
@@ -977,6 +1051,12 @@ _regime_payload = {
 
 bh_returns = bh_equity.reindex(equity.index).to_numpy() - 1.0
 hybrid_returns = hybrid_equity.reindex(equity.index).to_numpy() - 1.0
+# "총수익률(수수료 미반영)" 대응 곡선 — 차트의 수수료 반영/미반영 체크박스가
+# 토글하는 상대편. holding_curve/dates는 result_gross와 result가 완전히
+# 동일(수수료는 신호 자체에 영향을 주지 않음)하므로 equity.index로 그대로
+# reindex해도 안전하다.
+bh_returns_gross = bh_equity_gross.reindex(equity.index).to_numpy() - 1.0
+hybrid_returns_gross = hybrid_equity_gross.reindex(equity.index).to_numpy() - 1.0
 holding_bool = holding_curve.reindex(equity.index).fillna(False).to_numpy()
 n_points = len(hybrid_returns)
 # Segment j spans (point j, point j+1) and is a "holding" segment iff
@@ -1025,9 +1105,24 @@ fig.add_trace(
         y=bh_returns,
         mode="lines",
         name=BH_LABEL,
-        meta="line_bh",
+        meta="line_bh_net",
         line=dict(color=BH_COLOR, width=2),
         hovertemplate="%{x|%Y-%m-%d}<br>" + BH_LABEL + ": %{y:.1%}<extra></extra>",
+    )
+)
+# "총수익률(수수료 미반영)" 버전 — 기본은 숨김(visible=False, 플롯·범례 모두에서
+# 제외). 차트의 "수수료 반영" 체크박스가 이 세트와 위 "_net" 세트를 서로
+# 배타적으로 토글한다(render_backtest_chart의 updateLineVisibility 참고).
+fig.add_trace(
+    go.Scatter(
+        x=dates,
+        y=bh_returns_gross,
+        mode="lines",
+        name=BH_LABEL,
+        meta="line_bh_gross",
+        visible=False,
+        line=dict(color=BH_COLOR, width=2),
+        hovertemplate="%{x|%Y-%m-%d}<br>" + BH_LABEL + "(수수료 미반영): %{y:.1%}<extra></extra>",
     )
 )
 
@@ -1040,7 +1135,7 @@ fig.add_trace(
         y=np.where(point_in_holding, hybrid_returns, np.nan),
         mode="lines",
         name=STRAT_HYBRID_LABEL,
-        meta="line_strategy",
+        meta="line_strategy_net",
         connectgaps=False,
         line=dict(color=STRATEGY_HYBRID_COLOR, width=2),
         hovertemplate="%{x|%Y-%m-%d}<br>" + STRAT_HYBRID_LABEL + ": %{y:.1%}<extra></extra>",
@@ -1055,7 +1150,7 @@ fig.add_trace(
         y=np.where(point_in_nonholding, hybrid_returns, np.nan),
         mode="lines",
         name=STRAT_HYBRID_LABEL,
-        meta="line_strategy",
+        meta="line_strategy_net",
         showlegend=False,
         connectgaps=False,
         line=dict(color=STRATEGY_HYBRID_NONHOLDING_COLOR, width=2, dash="dash"),
@@ -1066,13 +1161,58 @@ fig.add_trace(
     )
 )
 
+# 신호전략 총수익률(수수료 미반영) — 위 net 라인 두 개(보유/미보유)와 동일한
+# 구조로 기본 숨김. 보유·미보유를 나누는 이유는 net과 동일(색·점선 스타일로
+# 구분).
+fig.add_trace(
+    go.Scatter(
+        x=dates,
+        y=np.where(point_in_holding, hybrid_returns_gross, np.nan),
+        mode="lines",
+        name=STRAT_HYBRID_LABEL,
+        meta="line_strategy_gross",
+        visible=False,
+        connectgaps=False,
+        line=dict(color=STRATEGY_HYBRID_COLOR, width=2),
+        hovertemplate="%{x|%Y-%m-%d}<br>" + STRAT_HYBRID_LABEL + "(수수료 미반영): %{y:.1%}<extra></extra>",
+    )
+)
+fig.add_trace(
+    go.Scatter(
+        x=dates,
+        y=np.where(point_in_nonholding, hybrid_returns_gross, np.nan),
+        mode="lines",
+        name=STRAT_HYBRID_LABEL,
+        meta="line_strategy_gross",
+        visible=False,
+        showlegend=False,
+        connectgaps=False,
+        line=dict(color=STRATEGY_HYBRID_NONHOLDING_COLOR, width=2, dash="dash"),
+        customdata=np.full(n_points, nonholding_note),
+        hovertemplate=(
+            "%{x|%Y-%m-%d}<br>누적수익률(수수료 미반영, 기대수익률 적용): %{y:.1%}<br>"
+            "%{customdata}<extra></extra>"
+        ),
+    )
+)
+
 marker_rows = []
+marker_rows_gross = []
 for t in trades:
     marker_rows.append(
         {
             "date": t["entry_date"],
             "구분": "매수",
             "return": float(hybrid_equity.loc[t["entry_date"]]) - 1.0,
+            "가격": round(t["entry_price"], 2),
+            "사유": t["entry_reason"] or "-",
+        }
+    )
+    marker_rows_gross.append(
+        {
+            "date": t["entry_date"],
+            "구분": "매수",
+            "return": float(hybrid_equity_gross.loc[t["entry_date"]]) - 1.0,
             "가격": round(t["entry_price"], 2),
             "사유": t["entry_reason"] or "-",
         }
@@ -1087,7 +1227,17 @@ for t in trades:
                 "사유": t["exit_reason"] or "-",
             }
         )
+        marker_rows_gross.append(
+            {
+                "date": t["exit_date"],
+                "구분": "매도",
+                "return": float(hybrid_equity_gross.loc[t["exit_date"]]) - 1.0,
+                "가격": round(t["exit_price"], 2),
+                "사유": t["exit_reason"] or "-",
+            }
+        )
 marker_df = pd.DataFrame(marker_rows)
+marker_df_gross = pd.DataFrame(marker_rows_gross)
 
 # Basis-aware price display: KRX (KRW/g) shows no decimals and no "$", intl
 # (USD/oz) keeps the original "$" formatting.
@@ -1108,7 +1258,7 @@ if not marker_df.empty:
                 y=sub["return"],
                 mode="markers",
                 name=label,
-                meta="marker_strategy",
+                meta="marker_strategy_net",
                 # 흰색 테두리(halo) — 국면 음영이 파랑/빨강으로 진해지면서 같은
                 # 색 계열 마커(매수=파랑/매도=빨강)가 배경에 묻히지 않도록, 배경이
                 # 무엇이든 마커 윤곽이 항상 도드라지게 한다.
@@ -1122,6 +1272,30 @@ if not marker_df.empty:
                     + ": %{customdata[0]:"
                     + _price_tooltip_format
                     + "}<br>당시 누적수익률: %{y:.1%}<br>사유: %{customdata[1]}<extra></extra>"
+                ),
+            )
+        )
+        # 총수익률(수수료 미반영) 버전 — 같은 매수·매도 시점, Y값(당시 누적수익률)만
+        # hybrid_equity_gross 기준으로 다름. 기본 숨김.
+        sub_gross = marker_df_gross[marker_df_gross["구분"] == label]
+        fig.add_trace(
+            go.Scatter(
+                x=sub_gross["date"],
+                y=sub_gross["return"],
+                mode="markers",
+                name=label,
+                meta="marker_strategy_gross",
+                visible=False,
+                marker=dict(symbol=symbol, color=color, size=11, line=dict(color="white", width=2)),
+                customdata=np.stack([sub_gross["가격"].to_numpy(), sub_gross["사유"].to_numpy()], axis=-1),
+                hovertemplate=(
+                    "%{x|%Y-%m-%d}<br>구분: "
+                    + label
+                    + "<br>"
+                    + _price_tooltip_title
+                    + ": %{customdata[0]:"
+                    + _price_tooltip_format
+                    + "}<br>당시 누적수익률(수수료 미반영): %{y:.1%}<br>사유: %{customdata[1]}<extra></extra>"
                 ),
             )
         )

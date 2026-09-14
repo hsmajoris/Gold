@@ -179,21 +179,37 @@ def sell_noise_band_pct(elapsed_trading_days: int) -> float:
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.
 DEFAULT_BOND_ANNUAL_YIELD = 0.10
 
-# KRX gold-spot's real custody/holding fee — an annual %, deducted
-# continuously (compounded over elapsed calendar days) from both the
-# strategy's holding periods and the Buy & Hold curve, whenever gold is
-# actually held. Meaningless for the international GC=F basis (a paper
-# reference price, not a custodied physical asset) — the UI is responsible
-# for passing 0.0 there and this default only when the KRX basis is active;
-# simulate()/run_backtest() themselves don't know or care which basis is in
-# use, only the fee rate they're given.
-DEFAULT_KRX_HOLDING_FEE_ANNUAL_PCT = 0.15
+# KRX gold-spot's real trading costs (미래에셋증권 fee schedule), split into the
+# two genuinely different cost types the old single "annual holding fee"
+# conflated:
+# - Transaction fee: a ONE-TIME % of the traded notional, charged at every
+#   buy and every sell fill — independent of how long the position is held.
+#   Buy and sell each default to the same 0.165%, but are separate, both
+#   user-adjustable (a round trip is buy + sell ≈ 0.33% combined).
+# - Holding fee: a custody charge on whatever quantity is actually held,
+#   proportional to elapsed TIME, not to trade count. The exact accrual
+#   schedule (daily accrual billed monthly vs. a single charge on month-end
+#   balance) isn't confirmed, so this assumes "매일 0.00022%씩(일률, 연율
+#   아님) 누적, 월초 청구" (flat daily rate, compounded once per elapsed
+#   calendar day) until the real schedule is confirmed — only
+#   DEFAULT_DAILY_HOLDING_FEE_PCT itself would need to change if it turns out
+#   to be a different cadence/coefficient.
+# Both are meaningless for the international GC=F basis (a paper reference
+# price, not a custodied/traded physical asset) — the UI is responsible for
+# passing 0.0 there; simulate()/run_backtest() themselves don't know or care
+# which basis is in use, only the fee rates they're given.
+DEFAULT_BUY_FEE_PCT = 0.165
+DEFAULT_SELL_FEE_PCT = 0.165
+DEFAULT_DAILY_HOLDING_FEE_PCT = 0.00022
 
 
-def _fee_decay(elapsed_days: float, annual_fee_pct: float) -> float:
-    """Multiplicative factor for a continuous annual holding fee compounded
-    over `elapsed_days` calendar days. 1.0 (no-op) when annual_fee_pct is 0."""
-    return (1.0 - annual_fee_pct / 100.0) ** (elapsed_days / 365.25)
+def _daily_fee_decay(elapsed_days: float, daily_fee_pct: float) -> float:
+    """Multiplicative factor for a holding fee expressed as a flat DAILY rate
+    (see DEFAULT_DAILY_HOLDING_FEE_PCT's "일할 계산" assumption above) —
+    `daily_fee_pct` is compounded once per elapsed calendar day (never
+    divided by 365; it's already a per-day rate). 1.0 (no-op) when
+    `daily_fee_pct` is 0."""
+    return (1.0 - daily_fee_pct / 100.0) ** elapsed_days
 
 
 def fetch_raw_data(
@@ -356,7 +372,9 @@ def run_backtest(
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
-    gold_holding_fee_annual_pct: float = 0.0,
+    buy_fee_pct: float = 0.0,
+    sell_fee_pct: float = 0.0,
+    daily_holding_fee_pct: float = 0.0,
 ) -> tuple[list[dict], pd.Series, pd.Series, pd.Series, list[dict]]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
@@ -437,12 +455,19 @@ def run_backtest(
     during the episode, D0 included) as a reference-only stat that never
     affects the sell decision itself.
 
-    `gold_holding_fee_annual_pct`: a continuous annual cost (e.g. KRX gold's
-    real custody fee) deducted from both the strategy's equity while holding
-    and the Buy & Hold curve throughout, compounded over elapsed calendar
-    days: each day's return is multiplied by
-    `(1 - gold_holding_fee_annual_pct / 100) ** (elapsed_days / 365.25)`.
-    0.0 (the default) reproduces pre-fee behavior exactly.
+    `buy_fee_pct`/`sell_fee_pct`: a one-time % of the traded notional charged
+    exactly at the moment of that fill — `buy_fee_pct` is applied to
+    `equity_at_entry` the instant a position opens (so it also covers a
+    position opened on this window's very first day), `sell_fee_pct` to
+    `running_equity` the instant it closes. Both 0.0 (the default) reproduce
+    pre-fee behavior exactly.
+
+    `daily_holding_fee_pct`: a custody cost accrued only on days the position
+    is actually held, compounded once per elapsed calendar day (see
+    _daily_fee_decay and DEFAULT_DAILY_HOLDING_FEE_PCT's "일할 계산"
+    assumption) — each day's return while holding is multiplied by
+    `(1 - daily_holding_fee_pct / 100) ** elapsed_days`. 0.0 (the default)
+    reproduces pre-fee behavior exactly.
 
     Returns (trades, equity_curve, bh_equity_curve, holding_curve,
     sell_noise_log). Both equity curves start at 1.0 on the first date. The
@@ -530,7 +555,10 @@ def run_backtest(
                 entry_date = dt
                 entry_price = price
                 entry_reason = entry_reason_today
-                equity_at_entry = running_equity
+                # Buy-side transaction fee: an instant haircut on the equity
+                # just committed, right as the position opens (including a
+                # position opened on this window's very first day).
+                equity_at_entry = running_equity * (1.0 - buy_fee_pct / 100.0)
                 sell_noise_state = None  # defensive: a fresh position starts with no open episode
         else:
             exit_reason_today = None
@@ -648,8 +676,12 @@ def run_backtest(
 
             if exit_reason_today is not None:
                 exit_price = price
-                fee_factor = _fee_decay((dt - entry_date).days, gold_holding_fee_annual_pct)
-                running_equity = equity_at_entry * (exit_price / entry_price) * fee_factor
+                fee_factor = _daily_fee_decay((dt - entry_date).days, daily_holding_fee_pct)
+                # Sell-side transaction fee: an instant haircut on the
+                # proceeds, right as the position closes.
+                running_equity = (
+                    equity_at_entry * (exit_price / entry_price) * fee_factor * (1.0 - sell_fee_pct / 100.0)
+                )
                 trades.append(
                     {
                         "entry_date": entry_date,
@@ -670,7 +702,7 @@ def run_backtest(
                 equity_at_entry = None
 
         if holding:
-            fee_factor = _fee_decay((dt - entry_date).days, gold_holding_fee_annual_pct)
+            fee_factor = _daily_fee_decay((dt - entry_date).days, daily_holding_fee_pct)
             equity_values.append(equity_at_entry * (price / entry_price) * fee_factor)
         else:
             equity_values.append(running_equity)
@@ -715,12 +747,18 @@ def run_backtest(
         )
 
     equity_curve = pd.Series(equity_values, index=dates, name="strategy_equity")
-    # Buy & Hold holds continuously from the first date, so the fee compounds
-    # over each row's elapsed calendar days since the very start (unlike the
-    # strategy curve, which resets its clock at each entry_date).
+    # Buy & Hold holds continuously from the first date, so the holding fee
+    # compounds over each row's elapsed calendar days since the very start
+    # (unlike the strategy curve, which resets its clock at each entry_date).
+    # Transaction fees: one buy (day 1, a constant haircut applied to the
+    # whole curve from the start) + — per the 2026-09-14 confirmation that
+    # B&H is treated as "sold at the end of the analysis window" rather than
+    # "still open" — one sell (applied only to the final day's value).
     elapsed_since_start = (dates - dates[0]).days.to_numpy()
-    bh_fee_decay = (1.0 - gold_holding_fee_annual_pct / 100.0) ** (elapsed_since_start / 365.25)
-    bh_equity_curve = ((gold / gold.iloc[0]) * bh_fee_decay).rename("bh_equity")
+    bh_holding_fee_decay = (1.0 - daily_holding_fee_pct / 100.0) ** elapsed_since_start
+    bh_equity_curve = (gold / gold.iloc[0]) * bh_holding_fee_decay * (1.0 - buy_fee_pct / 100.0)
+    bh_equity_curve = bh_equity_curve.rename("bh_equity")
+    bh_equity_curve.iloc[-1] *= 1.0 - sell_fee_pct / 100.0
     holding_curve = pd.Series(holding_values, index=dates, name="holding")
     return trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log
 
@@ -769,12 +807,14 @@ def compute_hybrid_cagr(
     holding_curve: pd.Series,
     gold: pd.Series,
     bond_annual_yield: float,
-    gold_holding_fee_annual_pct: float = 0.0,
+    buy_fee_pct: float = 0.0,
+    sell_fee_pct: float = 0.0,
+    daily_holding_fee_pct: float = 0.0,
 ) -> dict:
     """The full-period CAGR variant that fills non-holding days with an
     assumed bond return instead of leaving them flat: holding days compound at
-    gold's actual day-over-day return (net of gold_holding_fee_annual_pct, if
-    any), non-holding days compound at `bond_annual_yield` annualized over the
+    gold's actual day-over-day return (net of daily_holding_fee_pct, if any),
+    non-holding days compound at `bond_annual_yield` annualized over the
     elapsed calendar days since the previous row. This directly complements
     compute_metrics()'s "strategy_cagr" (which is invested-days-only) with a
     whole-period figure, so the two can be compared side by side.
@@ -788,11 +828,22 @@ def compute_hybrid_cagr(
     close). Using the current day's flag instead would double-count the
     entry day's price move that the strategy never actually captured.
 
+    `buy_fee_pct`/`sell_fee_pct` (one-time, on the traded notional) are
+    applied to the step in which a position opens/closes — a step classified
+    as "not holding" (bond-yield step) that ENDS in a fresh entry also pays
+    the buy fee there, and a step classified as "holding" (gold-return step)
+    that ENDS in a close also pays the sell fee there, mirroring exactly
+    where run_backtest() charges each — plus a special case for a position
+    that's already open on this window's very first day (impossible to
+    express as a "step", since there's no step before day 0), where the buy
+    fee is charged directly against the initial 1.0 starting equity instead.
+
     The returned "hybrid_equity_curve" (same index as holding_curve, starting
-    at 1.0 on the first date) is the day-by-day equity behind hybrid_cagr/
-    hybrid_total_return — built by the same loop, so a chart plotting it is
-    guaranteed to agree with those two scalars exactly (no separate
-    recomputation to drift out of sync).
+    at 1.0 on the first date, or at (1 - buy_fee_pct%) if day 0 is already
+    holding) is the day-by-day equity behind hybrid_cagr/hybrid_total_return —
+    built by the same loop, so a chart plotting it is guaranteed to agree
+    with those two scalars exactly (no separate recomputation to drift out
+    of sync).
     """
     dates = holding_curve.index
     # Pre-extracted to plain numpy arrays for the same reason as run_backtest's
@@ -802,20 +853,26 @@ def compute_hybrid_cagr(
     # share `dates`, so `*_arr[i]` is always `*.iloc[i]`).
     holding_arr = holding_curve.to_numpy()
     gold_arr = gold.to_numpy()
-    hybrid_equity = 1.0
-    equity_values = [1.0]
+    hybrid_equity = 1.0 - buy_fee_pct / 100.0 if bool(holding_arr[0]) else 1.0
+    equity_values = [hybrid_equity]
     non_holding_days = 0
     total_days = 0
     for i in range(1, len(dates)):
         elapsed_days = (dates[i] - dates[i - 1]).days
         total_days += elapsed_days
-        if bool(holding_arr[i - 1]):
-            factor = float(gold_arr[i] / gold_arr[i - 1]) * _fee_decay(
-                elapsed_days, gold_holding_fee_annual_pct
+        was_holding = bool(holding_arr[i - 1])
+        is_holding = bool(holding_arr[i])
+        if was_holding:
+            factor = float(gold_arr[i] / gold_arr[i - 1]) * _daily_fee_decay(
+                elapsed_days, daily_holding_fee_pct
             )
+            if not is_holding:  # closes exactly on day i
+                factor *= 1.0 - sell_fee_pct / 100.0
         else:
             factor = (1.0 + bond_annual_yield) ** (elapsed_days / 365.25)
             non_holding_days += elapsed_days
+            if is_holding:  # opens exactly on day i
+                factor *= 1.0 - buy_fee_pct / 100.0
         hybrid_equity *= factor
         equity_values.append(hybrid_equity)
 
@@ -939,7 +996,9 @@ def simulate(
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
-    gold_holding_fee_annual_pct: float = 0.0,
+    buy_fee_pct: float = 0.0,
+    sell_fee_pct: float = 0.0,
+    daily_holding_fee_pct: float = 0.0,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
     prepared signals and derive trades/equity curves/metrics/yearly returns."""
@@ -958,11 +1017,13 @@ def simulate(
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
         use_daily_band_confirmation=use_daily_band_confirmation,
         sell_noise_filter_drop_pct=sell_noise_filter_drop_pct,
-        gold_holding_fee_annual_pct=gold_holding_fee_annual_pct,
+        buy_fee_pct=buy_fee_pct,
+        sell_fee_pct=sell_fee_pct,
+        daily_holding_fee_pct=daily_holding_fee_pct,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
     hybrid = compute_hybrid_cagr(
-        holding_curve, signals["gold"], bond_annual_yield, gold_holding_fee_annual_pct
+        holding_curve, signals["gold"], bond_annual_yield, buy_fee_pct, sell_fee_pct, daily_holding_fee_pct
     )
     hybrid_equity_curve = hybrid.pop("hybrid_equity_curve")
     metrics_out.update(hybrid)
@@ -1001,7 +1062,9 @@ def run(
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
-    gold_holding_fee_annual_pct: float = 0.0,
+    buy_fee_pct: float = 0.0,
+    sell_fee_pct: float = 0.0,
+    daily_holding_fee_pct: float = 0.0,
 ) -> dict:
     signals = prepare_signals(as_of, years=years, gold_price_basis=gold_price_basis)
     result = simulate(
@@ -1020,7 +1083,9 @@ def run(
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
         use_daily_band_confirmation=use_daily_band_confirmation,
         sell_noise_filter_drop_pct=sell_noise_filter_drop_pct,
-        gold_holding_fee_annual_pct=gold_holding_fee_annual_pct,
+        buy_fee_pct=buy_fee_pct,
+        sell_fee_pct=sell_fee_pct,
+        daily_holding_fee_pct=daily_holding_fee_pct,
     )
     result["signals"] = signals
     return result
