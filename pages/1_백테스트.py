@@ -45,11 +45,14 @@ def render_backtest_chart(
        whatever date a data point happens to fall on.
 
     3. 국면 음영 라디오 ("표시 안함"/"장기 국면"/"일반 국면", 서로 배타적): 선택된
-       세트의 구간을 옅은 하늘색(상승 계열)·핑크색(하락 계열)으로 칠한다. Plotly가
-       shape을 현재 보이는 x축 구간에 맞춰 자동으로 잘라 그려주므로, 줌이 바뀔
-       때마다 shape 좌표를 다시 계산할 필요는 없다 — 라디오 선택이 바뀔 때만
-       shapes를 통째로 갈아끼운다. 기존 미보유구간 회색 음영(`base_shapes`)은
-       항상 유지한 채 그 위에 얹는다.
+       세트의 구간을 옅은 하늘색(상승 계열)·핑크색(하락 계열)으로 칠한다. X축은
+       Plotly가 현재 보이는 구간에 맞춰 자동으로 잘라 그려주므로 줌이 바뀔 때마다
+       좌표를 다시 계산할 필요가 없지만, Y축은 차트 최하단(현재 y축 최솟값)~0%
+       까지만 채운다 — 매수/매도 보유기간을 나타내는 회색 음영(전체 높이)과
+       겹쳐 뿌옇게 보이지 않도록, 0% 위(수익률이 플러스인 영역)에는 국면 음영을
+       넣지 않는다. y축 최솟값은 Y-autoscale로 줌마다 바뀌므로, 라디오 선택이
+       바뀔 때는 물론 y축이 재조정될 때도 shapes를 다시 계산한다. 기존
+       미보유구간 회색 음영(`base_shapes`)은 항상 유지한 채 그 위에 얹는다.
 
     4. 신호전략/Buy & Hold 라인 표시 체크박스: 신호전략 체크박스는 보유·미보유
        라인 2개와 매수·매도 마커까지 함께 숨긴다 — 각 트레이스에 심어둔 `meta`
@@ -124,6 +127,11 @@ def render_backtest_chart(
     var gd = document.getElementById("{div_id}");
     if (!gd) return;
     var busy = false;
+    // Set while updateShapes() issues its own Plotly.relayout({{shapes: ...}})
+    // call, so onRelayout doesn't mistake that shapes-only relayout event for
+    // a user-driven x-zoom and reset the view (Plotly.relayout fires
+    // "plotly_relayout" for *any* layout change, shapes included).
+    var suppressRelayout = false;
     var regimeData = JSON.parse(document.getElementById("{payload_id}").textContent);
     var baseShapes = {base_shapes_json};
     var cardLabels = {json.dumps(card_labels, ensure_ascii=False)};
@@ -252,21 +260,35 @@ def render_backtest_chart(
     }}
 
     // ---- 국면 음영 shapes: 기존(회색 미보유구간) shapes는 항상 유지하고, 그
-    // 위에 라디오로 선택된 세트(A/B/없음)의 shapes만 갈아끼운다 ----
-    function shapeDictsFor(setName) {{
+    // 위에 라디오로 선택된 세트(A/B/없음)의 shapes만 갈아끼운다. Y축은 0%(수익률
+    // 기준선) 위로는 칠하지 않고 차트 최하단(현재 Y축 최솟값)~0%까지만 채워서,
+    // 매수/매도 보유기간을 나타내는 회색 음영(전체 높이)과 시각적으로 겹치지
+    // 않게 한다 — 그 구간의 국면 여부 자체는 하단 참여율 카드로 이미 보여주므로,
+    // 음영 자체가 0% 위쪽(수익률이 플러스인 영역)까지 덮을 필요는 없다. ----
+    function currentYBottom() {{
+        if (gd.layout.yaxis && Array.isArray(gd.layout.yaxis.range)) {{
+            return gd.layout.yaxis.range[0];
+        }}
+        var full = fullXExtent();
+        var yr = visibleYRange(full[0], full[1]);
+        return yr ? yr[0] : 0;
+    }}
+    function shapeDictsFor(setName, yBottom) {{
         if (setName === "none") return [];
         var list = setName === "A" ? regimeData.shapesA : regimeData.shapesB;
         return list.map(function(s) {{
             return {{
-                type: "rect", xref: "x", yref: "paper",
-                x0: s.x0, x1: s.x1, y0: 0, y1: 1,
+                type: "rect", xref: "x", yref: "y",
+                x0: s.x0, x1: s.x1, y0: yBottom, y1: 0,
                 fillcolor: s.kind === "up" ? "rgba(135,206,250,0.15)" : "rgba(255,182,193,0.15)",
                 line: {{width: 0}}, layer: "below",
             }};
         }});
     }}
     function updateShapes() {{
-        Plotly.relayout(gd, {{shapes: baseShapes.concat(shapeDictsFor(currentRegimeSet))}});
+        var shapes = baseShapes.concat(shapeDictsFor(currentRegimeSet, currentYBottom()));
+        suppressRelayout = true;
+        Plotly.relayout(gd, {{shapes: shapes}}).then(function() {{ suppressRelayout = false; }});
     }}
 
     // ---- 신호전략/Buy&Hold 라인 표시 체크박스 (신호전략은 마커까지 함께) ----
@@ -285,7 +307,7 @@ def render_backtest_chart(
     }}
 
     function onRelayout(ev) {{
-        if (busy) return;
+        if (busy || suppressRelayout) return;
         var x0 = ev["xaxis.range[0]"];
         var x1 = ev["xaxis.range[1]"];
         if ((x0 === undefined || x1 === undefined) && Array.isArray(ev["xaxis.range"])) {{
@@ -297,7 +319,11 @@ def render_backtest_chart(
             var updates = xTickUpdates(full[0], full[1]);
             updates["yaxis.autorange"] = true;
             busy = true;
-            Plotly.relayout(gd, updates).then(function() {{ busy = false; updateCards(); }});
+            Plotly.relayout(gd, updates).then(function() {{
+                busy = false;
+                updateCards();
+                updateShapes(); // y축이 새로 자동조정됐으니 음영의 y0(하단)도 맞춰 다시 계산
+            }});
             return;
         }}
         var yr = visibleYRange(x0, x1);
@@ -307,7 +333,11 @@ def render_backtest_chart(
             updates["yaxis.autorange"] = false;
         }}
         busy = true;
-        Plotly.relayout(gd, updates).then(function() {{ busy = false; updateCards(); }});
+        Plotly.relayout(gd, updates).then(function() {{
+            busy = false;
+            updateCards();
+            updateShapes(); // 줌으로 y축 범위가 바뀌었으니 음영의 y0(하단)도 그에 맞춰 재계산
+        }});
     }}
     gd.on("plotly_relayout", onRelayout);
 
