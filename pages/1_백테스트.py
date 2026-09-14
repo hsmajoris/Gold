@@ -15,18 +15,28 @@ from gold_dashboard.timeutil import today_kst
 
 
 def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
-    """Render a Plotly figure so its y-axis rescales to whatever data falls
-    inside the current x-range whenever that range changes (rangeslider drag,
-    rangeselector button, or box-zoom) — Plotly does not do this on its own;
-    by default the y-axis stays fixed to the full-series range even when the
-    x-axis is zoomed in, which makes a zoomed-in view look flat. st.plotly_chart
-    renders inside an iframe Streamlit controls, with no hook for attaching a
-    custom JS listener, so this bypasses it and embeds the figure's own HTML
-    (via st.iframe, which allows script execution) with a `plotly_relayout`
-    listener attached directly:
-    on every x-range change it recomputes min/max over the now-visible points
-    of every trace and applies that as the new y-range (with a small padding),
-    and restores full y-autorange when the x-range itself resets to "전체".
+    """Render a Plotly figure with two zoom-driven behaviors Plotly doesn't
+    provide on its own, via a `plotly_relayout` listener attached to the
+    figure's own HTML (st.plotly_chart renders inside an iframe Streamlit
+    controls with no hook for custom JS, so this bypasses it using st.iframe,
+    which allows script execution):
+
+    1. Y-axis autoscale: by default the y-axis stays fixed to the full-series
+       range even when the x-axis is zoomed in (rangeslider drag, rangeselector
+       button, or box-zoom), which makes a zoomed-in view look flat. On every
+       x-range change this recomputes min/max over the now-visible points of
+       every trace and applies that as the new y-range (with a small padding),
+       restoring full y-autorange when the x-range resets to "전체".
+
+    2. X-axis year/month tick switching: the figure's own `dtick="M12"` (see
+       its `update_xaxes` call) already pins ticks to exactly one per calendar
+       year, so this isn't needed to fix duplicate year labels on its own —
+       but a fixed one-per-year tick shows *zero* ticks once zoomed in past
+       roughly a year. On every x-range change this listener also switches
+       dtick to one-per-month ("%Y-%m") when the visible span is under ~1
+       year, and back to one-per-year ("%Y") otherwise — always anchored to a
+       real calendar boundary (Jan 1 / the 1st of a month), never snapped to
+       whatever date a data point happens to fall on.
     """
     div_id = f"pyauto_{uuid.uuid4().hex}"
     plot_html = fig.to_html(
@@ -69,6 +79,30 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
         }}
         return null;
     }}
+    // Below ~1 year of visible span, a fixed one-tick-per-year axis (dtick
+    // "M12") shows zero ticks, so switch to one-tick-per-month ("M1") with a
+    // "%Y-%m" label instead — still anchored to a real calendar boundary
+    // (the 1st of a month, never snapped to the nearest data point) and
+    // still exactly one tick per unit, so labels can never repeat either way.
+    var YEAR_MS = 366 * 24 * 60 * 60 * 1000;
+    function xTickUpdates(x0, x1) {{
+        var t0 = new Date(x0);
+        var t1 = new Date(x1);
+        if ((t1.getTime() - t0.getTime()) < YEAR_MS) {{
+            var monthStart = new Date(Date.UTC(t0.getUTCFullYear(), t0.getUTCMonth(), 1));
+            return {{
+                "xaxis.dtick": "M1",
+                "xaxis.tick0": monthStart.toISOString(),
+                "xaxis.tickformat": "%Y-%m",
+            }};
+        }}
+        var jan1 = new Date(Date.UTC(t0.getUTCFullYear(), 0, 1));
+        return {{
+            "xaxis.dtick": "M12",
+            "xaxis.tick0": jan1.toISOString(),
+            "xaxis.tickformat": "%Y",
+        }};
+    }}
     function visibleYRange(x0, x1) {{
         var t0 = new Date(x0).getTime();
         var t1 = new Date(x1).getTime();
@@ -91,25 +125,46 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
         var pad = (ymax - ymin) * 0.08;
         return [ymin - pad, ymax + pad];
     }}
+    var fullXRange = null;
+    function fullXExtent() {{
+        if (fullXRange) return fullXRange;
+        var xmin = Infinity, xmax = -Infinity;
+        (gd.data || []).forEach(function(tr) {{
+            var xs = toArray(tr.x);
+            if (!xs) return;
+            for (var i = 0; i < xs.length; i++) {{
+                var xv = new Date(xs[i]).getTime();
+                if (xv < xmin) xmin = xv;
+                if (xv > xmax) xmax = xv;
+            }}
+        }});
+        fullXRange = [new Date(xmin).toISOString(), new Date(xmax).toISOString()];
+        return fullXRange;
+    }}
     function onRelayout(ev) {{
         if (busy) return;
-        if (ev["xaxis.autorange"] === true) {{
-            busy = true;
-            Plotly.relayout(gd, {{"yaxis.autorange": true}}).then(function() {{ busy = false; }});
-            return;
-        }}
         var x0 = ev["xaxis.range[0]"];
         var x1 = ev["xaxis.range[1]"];
         if ((x0 === undefined || x1 === undefined) && Array.isArray(ev["xaxis.range"])) {{
             x0 = ev["xaxis.range"][0];
             x1 = ev["xaxis.range"][1];
         }}
-        if (x0 === undefined || x1 === undefined) return;
-        var yr = visibleYRange(x0, x1);
-        if (yr) {{
+        if (ev["xaxis.autorange"] === true || x0 === undefined || x1 === undefined) {{
+            var full = fullXExtent();
+            var updates = xTickUpdates(full[0], full[1]);
+            updates["yaxis.autorange"] = true;
             busy = true;
-            Plotly.relayout(gd, {{"yaxis.range": yr, "yaxis.autorange": false}}).then(function() {{ busy = false; }});
+            Plotly.relayout(gd, updates).then(function() {{ busy = false; }});
+            return;
         }}
+        var yr = visibleYRange(x0, x1);
+        var updates = xTickUpdates(x0, x1);
+        if (yr) {{
+            updates["yaxis.range"] = yr;
+            updates["yaxis.autorange"] = false;
+        }}
+        busy = true;
+        Plotly.relayout(gd, updates).then(function() {{ busy = false; }});
     }}
     gd.on("plotly_relayout", onRelayout);
 }})();
@@ -765,8 +820,19 @@ if not marker_df.empty:
             )
         )
 
+_first_jan1 = pd.Timestamp(year=dates.min().year, month=1, day=1)
 fig.update_xaxes(
     tickformat="%Y",
+    # Fixed to exactly one tick per calendar year (never left to Plotly's
+    # automatic tick spacing) — dtick="M12" anchored at tick0 (a real Jan 1,
+    # not snapped to whatever date happens to have a data point) guarantees
+    # ticks land on Jan 1 of each year and are never denser than one per
+    # year, at any zoom level reachable via the buttons/box-zoom alone (the
+    # rangeslider/rangeselector-driven relayout listener below additionally
+    # switches this to month-level ticks when a zoom narrows past ~1 year,
+    # since a fixed yearly dtick would otherwise show zero ticks there).
+    dtick="M12",
+    tick0=_first_jan1.isoformat(),
     rangeslider=dict(visible=True),
     rangeselector=dict(
         buttons=list(
