@@ -15,7 +15,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-from gold_dashboard import config, signals, timeseries
+from gold_dashboard import backtest, config, regime, signals, timeseries
 from gold_dashboard.timeutil import today_kst
 
 DATA_PATH = Path(__file__).resolve().parent / "data" / "latest.json"
@@ -25,11 +25,10 @@ EARLIEST_DATE = date(1990, 1, 1)
 # its own daily close, progressively lighter for the 7/30/90-calendar-day SMAs
 # so shorter windows read closer to the raw series), gold price gets categorical
 # slot 2 (orange) so it never reads as "one more shade of the same family" on
-# its own (right-hand) axis, and reference threshold lines use a neutral gray.
+# its own (right-hand) axis.
 CHART_INDICATOR_COLOR = "#256abf"
 CHART_SMA_COLORS = {7: "#5598e7", 30: "#86b6ef", 90: "#b7d3f6"}
 CHART_GOLD_COLOR = "#eb6834"
-CHART_THRESHOLD_COLOR = "#8a8a86"
 # One consistent shading treatment for "buy signal active" across every indicator
 # (identity is already carried by line color; the shade means the same thing everywhere).
 CHART_SIGNAL_SHADE_COLOR = "#e34948"
@@ -80,6 +79,29 @@ def load_chart_data(indicator_key: str, as_of_iso: str) -> dict:
     )
 
 
+@st.cache_data(ttl=3600, show_spinner="핵심 요약의 국면별 참여율을 계산하는 중입니다...")
+def load_regime_participation(as_of_iso: str) -> dict:
+    """국면별(대세상승·상승·보합·하락·대세하락) × 신호강도(6/0·5/1·4/2) 참여율 —
+    핵심 요약 callout의 "상승장 보유 비중 X~Y%" 문구가 그대로 바인딩해서 읽는
+    단일 계산 결과(gold_dashboard/regime.py). 신호전략의 로직·파라미터가
+    바뀌거나, regime.py의 국면 구간표가 수정되거나, 새 거래일 데이터가
+    들어오면 이 함수가 다시 계산되어 문구의 숫자도 함께 자동 갱신된다 —
+    하드코딩된 값을 손으로 고치는 곳은 어디에도 없다.
+
+    백테스트 페이지 자체의 사용자 조정 슬라이더와는 별개로, 그 페이지의
+    슬라이더가 처음 시작하는 것과 동일한 기본값(regime.default_backtest_kwargs)
+    으로 항상 계산한다 — 이 요약 문구가 사용자의 세션별 설정에 따라 흔들리지
+    않는, 대시보드 전체의 하나의 고정된 기준점이 되도록 하기 위함이다."""
+    as_of = date.fromisoformat(as_of_iso)
+    signals_df = backtest.prepare_signals(
+        as_of=as_of, years=backtest.MAX_BACKTEST_YEARS, gold_price_basis=config.GOLD_PRICE_BASIS_DEFAULT
+    )
+    held_by_threshold = regime.compute_threshold_holding(
+        signals_df, **regime.default_backtest_kwargs(config.GOLD_PRICE_BASIS_DEFAULT)
+    )
+    return regime.participation_rates(signals_df.index, held_by_threshold)
+
+
 def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> None:
     try:
         chart_data = load_chart_data(indicator_key, as_of_iso)
@@ -96,19 +118,15 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         {"date": d, "value": v, "series": indicator_series_name}
         for d, v in chart_data["indicator"].items()
     ]
-    if chart_data["kind"] == "ma":
-        window_labels = {7: "7일 이동평균", 30: "30일 이동평균", 90: "90일 이동평균"}
-        for window in (7, 30, 90):
-            sma_series = chart_data["smas"][window]
-            left_rows.extend(
-                {"date": d, "value": v, "series": window_labels[window]}
-                for d, v in sma_series.items()
-            )
-        left_domain = [indicator_series_name, "7일 이동평균", "30일 이동평균", "90일 이동평균"]
-        left_range = [CHART_INDICATOR_COLOR, CHART_SMA_COLORS[7], CHART_SMA_COLORS[30], CHART_SMA_COLORS[90]]
-    else:
-        left_domain = [indicator_series_name]
-        left_range = [CHART_INDICATOR_COLOR]
+    window_labels = {7: "7일 이동평균", 30: "30일 이동평균", 90: "90일 이동평균"}
+    for window in (7, 30, 90):
+        sma_series = chart_data["smas"][window]
+        left_rows.extend(
+            {"date": d, "value": v, "series": window_labels[window]}
+            for d, v in sma_series.items()
+        )
+    left_domain = [indicator_series_name, "7일 이동평균", "30일 이동평균", "90일 이동평균"]
+    left_range = [CHART_INDICATOR_COLOR, CHART_SMA_COLORS[7], CHART_SMA_COLORS[30], CHART_SMA_COLORS[90]]
 
     combined_domain = left_domain + [gold_series_name]
     combined_range = left_range + [CHART_GOLD_COLOR]
@@ -142,26 +160,19 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
     # Buy-signal-active shading: only for indicators that actually feed a real
     # buy/sell trigger. real_rate/dxy use the green_count condition (all 3 MA
     # windows simultaneously gold-friendly, a stricter single-indicator view of
-    # the same comparison green_count sums); gold/silver ratio uses the same
-    # >= threshold as its own immediate-buy trigger (unrelated to any moving
-    # average). WTI and VIX are reference-only — never used in any buy/sell
-    # trigger — so they get no shading at all, regardless of what their own
-    # chart might otherwise suggest. Both real cases call gold_dashboard/signals.py
-    # — the same module build_table.py's highlighting and backtest.py's
-    # green_count/ratio triggers use — so the shading can never silently
-    # diverge from the actual signal definitions.
-    if chart_data["kind"] == "ma":
-        signal_flag = (
-            signals.all_windows_gold_friendly_for(
-                indicator_key, chart_data["indicator"], chart_data["smas"]
-            )
-            if indicator_key in config.GREEN_COUNT_SIGNAL_INDICATORS
-            else None
+    # the same comparison green_count sums). WTI and VIX are reference-only —
+    # never used in any buy/sell trigger — so they get no shading at all,
+    # regardless of what their own chart might otherwise suggest. Calls
+    # gold_dashboard/signals.py — the same module build_table.py's
+    # highlighting and backtest.py's green_count use — so the shading can
+    # never silently diverge from the actual signal definition.
+    signal_flag = (
+        signals.all_windows_gold_friendly_for(
+            indicator_key, chart_data["indicator"], chart_data["smas"]
         )
-    else:
-        signal_flag = signals.ratio_threshold_active(
-            chart_data["indicator"], config.DEFAULT_GS_RATIO_BUY_THRESHOLD, "ge"
-        )
+        if indicator_key in config.GREEN_COUNT_SIGNAL_INDICATORS
+        else None
+    )
 
     shade_ranges = _boolean_series_to_ranges(signal_flag) if signal_flag is not None else []
     layers = []
@@ -179,18 +190,6 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
         )
 
     layers.append(left_chart)
-    if chart_data["kind"] == "ratio":
-        threshold_df = pd.DataFrame(
-            {
-                "y": [80, config.DEFAULT_GS_RATIO_SELL_THRESHOLD],
-                "label": ["학술적 관행 임계값 80", f"매도신호 임계값 {config.DEFAULT_GS_RATIO_SELL_THRESHOLD:g}"],
-            }
-        )
-        layers.append(
-            alt.Chart(threshold_df)
-            .mark_rule(strokeDash=[4, 4], strokeWidth=1.5, color=CHART_THRESHOLD_COLOR)
-            .encode(y="y:Q", tooltip=[alt.Tooltip("label:N", title="기준선")])
-        )
 
     gold_df = pd.DataFrame(
         {"date": d, "value": v, "series": gold_series_name} for d, v in chart_data["gold"].items()
@@ -220,32 +219,21 @@ def render_indicator_chart(indicator_key: str, label: str, as_of_iso: str) -> No
     )
     st.altair_chart(combined_chart, use_container_width=True)
 
-    if chart_data["kind"] == "ratio":
+    st.caption(
+        f"🔵 진한 파랑 = {label} 종가, 옅어질수록 5→30→60일 이동평균(왼쪽 축) · "
+        "🟠 금 가격(오른쪽 축, $)"
+    )
+    if indicator_key in config.GREEN_COUNT_SIGNAL_INDICATORS:
         st.caption(
-            f"🔵 {label}(왼쪽 축) · 🟠 금 가격(오른쪽 축, $) · 회색 점선 = 기준선 "
-            f"(학술적 관행값 80, 유효성 검증 페이지의 매도신호 임계값 기본값 "
-            f"{config.DEFAULT_GS_RATIO_SELL_THRESHOLD:g}) — 절대적 기준은 아님"
-        )
-        st.caption(
-            f"🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 "
-            f"(금/은비율 ≥ {config.DEFAULT_GS_RATIO_BUY_THRESHOLD:g}, 백테스트 매수 임계값의 기본값 기준)"
+            "🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 (7·30·90일 이평선 3개 모두 동시에 "
+            "만족하는 날). 실제 매매 신호의 green_count는 이 조건을 실질금리·달러인덱스 두 지표에서 "
+            "합산하므로, 이 지표 하나만으로 3개를 모두 만족하지 못해도 다른 지표 쪽에서 green_count≥5가 "
+            "채워져 매수가 발생할 수 있습니다."
         )
     else:
         st.caption(
-            f"🔵 진한 파랑 = {label} 종가, 옅어질수록 5→30→60일 이동평균(왼쪽 축) · "
-            "🟠 금 가격(오른쪽 축, $)"
+            f"{label}는 실제 매수·매도 신호에 사용되지 않는 참고용 지표라 음영 표시가 없습니다."
         )
-        if indicator_key in config.GREEN_COUNT_SIGNAL_INDICATORS:
-            st.caption(
-                "🟥 음영 구간 = 해당 지표 기준 매수신호 활성 구간 (7·30·90일 이평선 3개 모두 동시에 "
-                "만족하는 날). 실제 매매 신호의 green_count는 이 조건을 실질금리·달러인덱스 두 지표에서 "
-                "합산하므로, 이 지표 하나만으로 3개를 모두 만족하지 못해도 다른 지표 쪽에서 green_count≥5가 "
-                "채워져 매수가 발생할 수 있습니다."
-            )
-        else:
-            st.caption(
-                f"{label}는 실제 매수·매도 신호에 사용되지 않는 참고용 지표라 음영 표시가 없습니다."
-            )
 
 
 _KEY_TAKEAWAYS_PERIODS = [
@@ -265,31 +253,54 @@ _KEY_TAKEAWAYS_PERIODS = [
 
 
 def _render_key_takeaways() -> None:
-    """Fixed "핵심 요약" callout pinned above the correlation table, plus a
-    collapsed-by-default expander with the period-by-period R² backing it up.
-    Static content (not derived from data/latest.json) — see World Gold
-    Council / Erb & Harvey / RBC Wealth Management sourcing in the caption."""
+    """"핵심 요약" callout pinned above the correlation table (분석 개요/분석
+    결과/유의사항 세 섹션), plus a collapsed-by-default expander with the
+    period-by-period R² backing up "분석 결과"의 11개 구간 논의. 참여율 범위
+    ([상승장_참여율_최소]~[최대]%, [하락장_참여율_최소]~[최대]%)만 매 실행마다
+    load_regime_participation()(gold_dashboard/regime.py 위임)에서 동적으로
+    계산해 바인딩하고, 나머지 서술은 고정 텍스트다 — World Gold Council /
+    Erb & Harvey / RBC Wealth Management sourcing은 아래 expander의 caption 참고."""
+    try:
+        rates = load_regime_participation(today_kst().isoformat())
+        bull_lo, bull_hi = regime.participation_rate_range(rates, "상승장")
+        bear_lo, bear_hi = regime.participation_rate_range(rates, "하락장")
+        participation_html = (
+            f"상승장 보유 비중은 <strong>{bull_lo:.1f}~{bull_hi:.1f}%</strong>, 하락장은 "
+            f"<strong>{bear_lo:.1f}~{bear_hi:.1f}%</strong>로"
+        )
+    except Exception as exc:
+        participation_html = "상승장/하락장 보유 비중 계산에 실패했습니다"
+        st.warning(f"참여율 계산 중 오류가 발생해 핵심 요약의 수치를 표시하지 못했습니다: {exc}")
+
     st.markdown(
-        """
+        f"""
 <div style="background-color:#fff8e1;border-left:6px solid #f5a623;
 border-radius:8px;padding:16px 20px;margin-bottom:4px">
 <div style="font-size:17px;font-weight:600;margin-bottom:8px">💡 핵심 요약</div>
+<p style="margin:0 0 4px 0;font-weight:600">[분석 개요]</p>
 <p style="margin:0 0 10px 0;line-height:1.6">
-실질금리는 정책 개입기(QE·팬데믹)에, 달러인덱스는 위기 연쇄기·최근 구간에 강하게 작동합니다.
-2005년 이후 11개 구간 중 10개 구간에서 최소 한 팩터는 강한 상관성을 보였습니다 —
-둘을 같이 보면 대부분의 시기를 커버할 수 있습니다.
+금 가격에 영향을 미치는 요인은 다양하나, 금 ETF 수요나 중앙은행 매입은 실질금리·달러인덱스가
+복합 반영된 결과치 성격이 강해 별도 변수로 다루지 않았다. 대신 금 가격과의 연관성이 널리 확인된
+미국 실질금리와 달러인덱스(DXY)를 중심으로 상관관계를 검토하였다.
+</p>
+<p style="margin:0 0 4px 0;font-weight:600">[분석 결과]</p>
+<p style="margin:0 0 10px 0;line-height:1.6">
+2005년 이후 11개 구간으로 나눠 검토한 결과, 실질금리는 QE·팬데믹 등 정책 개입기에, 달러인덱스는
+위기 전이 국면 및 최근 구간에서 강한 상관성을 보였다. 두 변수를 병행하면 11개 중 10개 구간에서
+유의한 상관성이 확인되어, 대부분의 시기를 설명할 수 있었다. 특히 장기 상승장의 추세 추종, 장기
+하락장의 안전자산 회피 수요라는 측면에서 설명력이 유의미했다.
 </p>
 <p style="margin:0 0 12px 0;line-height:1.6">
-다만 최근에는 각국 중앙은행의 금 수요로 인해 실질금리·달러인덱스의 상관성이 유효하지 않을 수
-있음을 보임 — 2021년 이후 실질금리는 계속 약하게 나타나고 있습니다. 이는 중국·폴란드·인도·터키 등
-신흥국 중앙은행(미국 연준 아님)이 주도하는 매입으로, 2022년 러시아 외환보유고 동결을 계기로
-촉발된 탈달러화(de-dollarization) 흐름과 맞물려 있습니다.
+이는 신호전략의 국면별 참여율에서도 확인된다. 지난 15년간 분석 결과 신호 강도(6/0·5/1·4/2)를
+불문하고 {participation_html} — 오르는 장은 매수하고, 내리는 장은 보유일수를 줄이는 일관된
+경향이 나타났다.
 </p>
 <div style="background-color:#fdecea;border-left:4px solid #d32f2f;
-border-radius:6px;padding:10px 14px;font-weight:600;color:#611a15;line-height:1.6">
-⚠️ 본 대시보드는 역사적 상관성이 확인된 실시간 수치를 기반으로 하기 때문에, 각국 중앙은행의
-매입 정도는 반영하지 못하는 한계가 있습니다. 이는 별도 확인이 꼭 필요합니다.
-<span style="font-weight:400">(중앙은행 매입은 분기 단위로만 발표되어 실시간 반영 불가)</span>
+border-radius:6px;padding:10px 14px;line-height:1.6">
+<span style="font-weight:600">[유의사항]</span><br>
+신흥국 중앙은행 매입·탈달러화로 실질금리 상관성이 약화되고 있으며, 중앙은행 매입은 분기 단위로만
+공표되어 실시간 반영이 불가능하고, ETF·중앙은행 수요는 독립변수가 아닌 결과치임 → 금 투자의
+보조 지표로만 활용할 것을 권장함.
 </div>
 </div>
 """,
@@ -380,7 +391,7 @@ def render_dashboard() -> None:
     st.session_state[config.GOLD_PRICE_BASIS_STATE_KEY] = gold_price_basis
     if gold_price_basis == config.GOLD_PRICE_BASIS_KRX:
         st.caption(
-            "ℹ️ 아래 표의 실질금리·달러인덱스·금/은비율·WTI·VIX는 국제 시세 기준 참고 지표이며 "
+            "ℹ️ 아래 표의 실질금리·달러인덱스·WTI·VIX는 국제 시세 기준 참고 지표이며 "
             "KRX 금현물과 직접 대응되지 않습니다. 이 설정은 유효성 검증 페이지의 백테스트에만 "
             "적용됩니다."
         )
@@ -429,9 +440,7 @@ def render_dashboard() -> None:
     st.caption(
         "🟢 옅은 녹색 배경 = 실제 매수·매도 신호에 쓰이는 지표에서, 그 신호가 현재 금값에 "
         "우호적인 방향인 셀입니다. 역방향 지표(실질금리·달러인덱스)는 종가가 이평선 아래일 때 "
-        "초록색으로 표시되며(green_count에 사용), 금/은비율은 이평선과 무관하게 종가가 "
-        f"{config.DEFAULT_GS_RATIO_BUY_THRESHOLD:g} 이상일 때만 세 이평선 행 모두 초록색으로 "
-        "표시됩니다(백테스트의 매수 임계값과 동일). WTI·VIX는 참고용 지표라 실제 매수·매도 "
+        "초록색으로 표시됩니다(green_count에 사용). WTI·VIX는 참고용 지표라 실제 매수·매도 "
         "신호에 쓰이지 않으므로 이평선을 돌파해도 녹색으로 표시되지 않습니다. "
         "셀에 보이는 '상향 돌파/이평선 아래' 문구는 하이라이트 색과 무관한, 종가와 이평선의 기술적 위치입니다. "
         "각 셀 하단의 작은 글씨는 그 상향 돌파가 며칠째 지속 중인지를 나타내는 보조 정보입니다."

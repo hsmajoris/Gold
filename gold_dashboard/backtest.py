@@ -200,10 +200,10 @@ def fetch_raw_data(
     years: int = BACKTEST_YEARS,
     gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
 ) -> pd.DataFrame:
-    """Fetch real_rate/dxy/gold/gold_intl/silver as one date-aligned, forward-
-    filled frame covering `years` + BUFFER_DAYS of history ending at `as_of`
-    (default today, KST). Thin wrapper around the shared fetcher in
-    timeseries.py. See fetch_backtest_frame for what `gold_price_basis` does."""
+    """Fetch real_rate/dxy/gold as one date-aligned, forward-filled frame
+    covering `years` + BUFFER_DAYS of history ending at `as_of` (default
+    today, KST). Thin wrapper around the shared fetcher in timeseries.py.
+    See fetch_backtest_frame for what `gold_price_basis` does."""
     return ts.fetch_backtest_frame(
         as_of, years=years, buffer_days=BUFFER_DAYS, gold_price_basis=gold_price_basis
     )

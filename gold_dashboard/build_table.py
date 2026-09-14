@@ -25,8 +25,6 @@ def _fetch_series(key: str, start_date: date, as_of_date: date, yf_end_date: dat
         return ds.fetch_yfinance_close(
             ["DX-Y.NYB", "^DXY", "DX=F"], start=start_date, end=yf_end_date
         )
-    if key == "gold_silver_ratio":
-        return ds.fetch_gold_silver_ratio(start=start_date, end=yf_end_date)
     if key == "wti":
         return ds.fetch_fred_series("DCOILWTICO", end=as_of_date)
     if key == "vix":
@@ -65,21 +63,11 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
 
     # Row highlighting answers "is this signal actually used in a real buy/sell
     # trigger, and currently gold-friendly?" — not just "close vs. its own MA".
-    # Only real_rate/dxy (green_count) and gold_silver_ratio (its own fixed
-    # threshold, unrelated to any MA) ever highlight; WTI/VIX are
+    # Only real_rate/dxy (green_count) ever highlight; WTI/VIX are
     # reference-only and never highlight, matching the main dashboard's
     # per-indicator chart shading (app.py) and the backtest's real trigger
     # logic (config.GREEN_COUNT_SIGNAL_INDICATORS is the single shared source
     # of truth for which indicators feed a real trigger).
-    ratio_gold_friendly = None
-    if key == "gold_silver_ratio":
-        ratio_flag_series = signals.ratio_threshold_active(
-            series, config.DEFAULT_GS_RATIO_BUY_THRESHOLD, "ge"
-        )
-        ratio_gold_friendly = (
-            bool(ratio_flag_series.iloc[-1]) if not ratio_flag_series.empty else False
-        )
-
     sma_info = {}
     for window in config.MA_WINDOWS:
         ma = metrics.compute_sma(series, window)
@@ -93,9 +81,7 @@ def build_indicator(key: str, as_of: date | None = None) -> dict:
         )
         status_text = "상향 돌파" if breakout else "이평선 아래"
 
-        if key == "gold_silver_ratio":
-            gold_friendly = ratio_gold_friendly
-        elif key not in config.GREEN_COUNT_SIGNAL_INDICATORS:
+        if key not in config.GREEN_COUNT_SIGNAL_INDICATORS:
             gold_friendly = False
         else:
             # Delegates to the single shared comparison in signals.py so this can

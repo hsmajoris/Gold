@@ -121,14 +121,6 @@ def fetch_yfinance_close(tickers, start=None, end=None) -> pd.Series:
     )
 
 
-def fetch_gold_silver_ratio(start=None, end=None) -> pd.Series:
-    """Daily gold/silver ratio computed from GC=F and SI=F closes."""
-    gold = fetch_yfinance_close("GC=F", start=start, end=end)
-    silver = fetch_yfinance_close("SI=F", start=start, end=end)
-    df = pd.concat([gold, silver], axis=1, keys=["gold", "silver"]).dropna()
-    return (df["gold"] / df["silver"]).rename("gold_silver_ratio")
-
-
 @_retry_network_call
 def _download_krx_gold_page(page: int, page_size: int = NAVER_METALS_MAX_PAGE_SIZE) -> list:
     resp = requests.get(
