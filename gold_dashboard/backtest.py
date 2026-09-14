@@ -30,6 +30,7 @@ delay/lag setting for any trigger.
 from datetime import date, timedelta
 
 import pandas as pd
+import streamlit as st
 
 from . import config
 from . import metrics
@@ -859,6 +860,33 @@ def yearly_returns(equity_curve: pd.Series, bh_equity_curve: pd.Series) -> pd.Da
     return pd.DataFrame(rows)
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _cached_max_window_signals(as_of_iso: str, gold_price_basis: str) -> pd.DataFrame:
+    """fetch + compute_signals over the WIDEST window the "분석 기간(N년)"
+    slider can ever request (MAX_BACKTEST_YEARS + BUFFER_DAYS), cached only on
+    (as_of, gold_price_basis) — deliberately NOT on `years`. prepare_signals()
+    below trims this down to whatever narrower `years` was actually asked
+    for, entirely in memory.
+
+    This is why changing just the "분석 기간" slider no longer triggers a
+    fresh network fetch: every rolling-window computation in compute_signals
+    (SMAs, the 52-week high/low) is strictly backward-looking (never uses a
+    future row), so trimming a wider, already-computed result down to a
+    narrower window produces byte-for-byte the same values as computing that
+    narrower window directly — the extra leading history only ever adds
+    *more* warmup context, never less, since BUFFER_DAYS(430) already covers
+    the 52-week (365-day) window on top of any requested `years`. The
+    expensive part this actually saves is the KRX gold-spot fetch
+    (`data_sources.fetch_krx_gold_krw_per_gram`), which always re-pages
+    through its *entire* history from Naver's API regardless of how narrow a
+    window is requested — previously that full re-fetch fired on every single
+    "years" change; now it fires once per (as_of, gold_price_basis) per hour.
+    """
+    as_of = date.fromisoformat(as_of_iso)
+    raw = fetch_raw_data(as_of, years=MAX_BACKTEST_YEARS, gold_price_basis=gold_price_basis)
+    return compute_signals(raw)
+
+
 def prepare_signals(
     as_of: date | None = None,
     years: int = BACKTEST_YEARS,
@@ -867,10 +895,14 @@ def prepare_signals(
     """The network-bound half of the pipeline: fetch + compute signals + trim
     to the backtest window. Independent of the buy/sell delay settings, so
     callers can cache this and re-run `simulate()` cheaply when only the
-    delay changes."""
-    raw = fetch_raw_data(as_of, years=years, gold_price_basis=gold_price_basis)
-    signals = compute_signals(raw)
-    return trim_to_backtest_window(signals, as_of, years=years)
+    delay changes. The fetch+compute step itself is cached at the widest
+    possible window (see _cached_max_window_signals) so that changing only
+    `years` — the common case, e.g. the 유효성 검증 page's "분석 기간" slider —
+    never re-hits the network; only a change in `as_of` or `gold_price_basis`
+    does."""
+    as_of_date = as_of if as_of is not None else today_kst()
+    full_signals = _cached_max_window_signals(as_of_date.isoformat(), gold_price_basis)
+    return trim_to_backtest_window(full_signals, as_of_date, years=years)
 
 
 def simulate(
