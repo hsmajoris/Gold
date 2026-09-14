@@ -1,6 +1,7 @@
 """Backtest page: real-rate/DXY MA breakout signal + gold/silver-ratio threshold
 strategy vs. a same-period Buy & Hold benchmark."""
 
+import json
 import uuid
 from datetime import date, timedelta
 
@@ -14,29 +15,51 @@ from gold_dashboard import timeseries
 from gold_dashboard.timeutil import today_kst
 
 
-def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
-    """Render a Plotly figure with two zoom-driven behaviors Plotly doesn't
-    provide on its own, via a `plotly_relayout` listener attached to the
-    figure's own HTML (st.plotly_chart renders inside an iframe Streamlit
-    controls with no hook for custom JS, so this bypasses it using st.iframe,
-    which allows script execution):
+def render_backtest_chart(
+    fig: go.Figure,
+    regime_payload: dict,
+    base_shapes: list,
+    height: int = 460,
+) -> None:
+    """Render the 누적수익률 chart with all of its zoom-driven and
+    control-driven interactivity. st.plotly_chart renders inside an iframe
+    Streamlit controls, with no hook for attaching custom JS, so this
+    bypasses it via st.iframe (which allows script execution) and embeds the
+    figure's own HTML together with:
 
-    1. Y-axis autoscale: by default the y-axis stays fixed to the full-series
-       range even when the x-axis is zoomed in (rangeslider drag, rangeselector
-       button, or box-zoom), which makes a zoomed-in view look flat. On every
-       x-range change this recomputes min/max over the now-visible points of
-       every trace and applies that as the new y-range (with a small padding),
-       restoring full y-autorange when the x-range resets to "전체".
+    1. Y-axis autoscale on zoom: by default the y-axis stays fixed to the
+       full-series range even when the x-axis is zoomed in (rangeslider drag,
+       rangeselector button, or box-zoom), which makes a zoomed-in view look
+       flat. On every x-range change this recomputes min/max over the
+       now-visible points of every currently-visible trace and applies that
+       as the new y-range (with a small padding), restoring full y-autorange
+       when the x-range resets to "전체".
 
     2. X-axis year/month tick switching: the figure's own `dtick="M12"` (see
-       its `update_xaxes` call) already pins ticks to exactly one per calendar
-       year, so this isn't needed to fix duplicate year labels on its own —
-       but a fixed one-per-year tick shows *zero* ticks once zoomed in past
-       roughly a year. On every x-range change this listener also switches
-       dtick to one-per-month ("%Y-%m") when the visible span is under ~1
-       year, and back to one-per-year ("%Y") otherwise — always anchored to a
-       real calendar boundary (Jan 1 / the 1st of a month), never snapped to
+       its `update_xaxes` call) already pins ticks to exactly one per
+       calendar year, but that alone shows *zero* ticks once zoomed in past
+       roughly a year. On every x-range change this also switches dtick to
+       one-per-month ("%Y-%m") when the visible span is under ~1 year, and
+       back to one-per-year ("%Y") otherwise — always anchored to a real
+       calendar boundary (Jan 1 / the 1st of a month), never snapped to
        whatever date a data point happens to fall on.
+
+    3. 국면 음영 라디오 ("표시 안함"/"장기 국면"/"일반 국면", 서로 배타적): 선택된
+       세트의 구간을 옅은 하늘색(상승 계열)·핑크색(하락 계열)으로 칠한다. Plotly가
+       shape을 현재 보이는 x축 구간에 맞춰 자동으로 잘라 그려주므로, 줌이 바뀔
+       때마다 shape 좌표를 다시 계산할 필요는 없다 — 라디오 선택이 바뀔 때만
+       shapes를 통째로 갈아끼운다. 기존 미보유구간 회색 음영(`base_shapes`)은
+       항상 유지한 채 그 위에 얹는다.
+
+    4. 신호전략/Buy & Hold 라인 표시 체크박스: 신호전략 체크박스는 보유·미보유
+       라인 2개와 매수·매도 마커까지 함께 숨긴다 — 각 트레이스에 심어둔 `meta`
+       태그("line_bh"/"line_strategy"/"marker_strategy")로 구분한다.
+
+    5. 신호강도(6/0·5/1·4/2) 드롭다운 + 5개 국면(대세상승/상승/보합/하락/대세하락)
+       참여율 카드: `regime_payload`로 넘어온 일별 국면 라벨과 임계값별 보유
+       배열(둘 다 파이썬에서 미리 계산해 그대로 임베드)을 가지고, 현재 보이는
+       x축 구간(줌 상태)에 맞춰 서버 왕복 없이 그 자리에서 재계산한다. 음영
+       라디오 상태와는 무관하게 항상 5개 국면 전부를 보여준다(요구사항).
     """
     div_id = f"pyauto_{uuid.uuid4().hex}"
     plot_html = fig.to_html(
@@ -45,12 +68,68 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
         div_id=div_id,
         config={"responsive": True},
     )
+    payload_id = f"{div_id}_payload"
+    payload_json = json.dumps(regime_payload, ensure_ascii=False)
+    base_shapes_json = json.dumps(base_shapes, ensure_ascii=False)
+    card_labels = ["대세상승장", "상승장", "보합장", "하락장", "대세하락장"]
+
+    controls_top = f"""
+<div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;
+     font-size:14px;margin-bottom:6px;font-family:inherit;">
+  <div>
+    <span style="font-weight:600;margin-right:6px;">국면 표시</span>
+    <label style="margin-right:10px;"><input type="radio" name="regimeSet_{div_id}"
+        class="regimeSetRadio_{div_id}" value="none" checked> 표시 안함</label>
+    <label style="margin-right:10px;"><input type="radio" name="regimeSet_{div_id}"
+        class="regimeSetRadio_{div_id}" value="A"> 장기 국면 표시</label>
+    <label><input type="radio" name="regimeSet_{div_id}"
+        class="regimeSetRadio_{div_id}" value="B"> 일반 국면 표시</label>
+  </div>
+  <div>
+    <label style="margin-right:10px;"><input type="checkbox" id="chkStrategy_{div_id}"
+        checked> 신호전략(기대수익률 포함)</label>
+    <label><input type="checkbox" id="chkBH_{div_id}" checked> Buy &amp; Hold</label>
+  </div>
+</div>
+"""
+
+    cards_html = "".join(
+        f"""<div style="border:1px solid #d8dbe0;border-radius:8px;padding:8px 14px;
+             min-width:88px;text-align:center;">
+          <div style="font-size:12px;color:#666;">{lbl}</div>
+          <div id="card_{div_id}_{i}" style="font-size:18px;font-weight:700;">–</div>
+        </div>"""
+        for i, lbl in enumerate(card_labels)
+    )
+    controls_bottom = f"""
+<div style="margin-top:10px;font-size:14px;font-family:inherit;">
+  <div style="margin-bottom:8px;">
+    <span style="font-weight:600;margin-right:6px;">신호강도</span>
+    <select id="selThreshold_{div_id}">
+      <option value="6/0" selected>6/0</option>
+      <option value="5/1">5/1</option>
+      <option value="4/2">4/2</option>
+    </select>
+    <span style="color:#888;margin-left:8px;">국면 참여율(선택된 신호강도가 해당
+      국면의 거래일 중 보유 상태였던 비율 · 현재 보이는 기간 기준)</span>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">{cards_html}</div>
+</div>
+"""
+
     script = f"""
+<script type="application/json" id="{payload_id}">{payload_json}</script>
 <script>
 (function() {{
     var gd = document.getElementById("{div_id}");
     if (!gd) return;
     var busy = false;
+    var regimeData = JSON.parse(document.getElementById("{payload_id}").textContent);
+    var baseShapes = {base_shapes_json};
+    var cardLabels = {json.dumps(card_labels, ensure_ascii=False)};
+    var currentRegimeSet = "none";
+    var currentThreshold = "6/0";
+
     // Plotly.py's default JSON encoder writes numeric arrays in a compact
     // {{dtype, bdata}} (base64) wire format instead of a plain JSON array.
     // plotly.js does NOT decode this back into a plain/typed array on
@@ -79,6 +158,31 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
         }}
         return null;
     }}
+
+    function visibleYRange(x0, x1) {{
+        var t0 = new Date(x0).getTime();
+        var t1 = new Date(x1).getTime();
+        var ymin = Infinity, ymax = -Infinity;
+        (gd.data || []).forEach(function(tr) {{
+            if (tr.visible === false || tr.visible === "legendonly") return;
+            var xs = toArray(tr.x), ys = toArray(tr.y);
+            if (!xs || !ys) return;
+            for (var i = 0; i < xs.length; i++) {{
+                var xv = new Date(xs[i]).getTime();
+                var yv = ys[i];
+                if (yv === null || yv === undefined || isNaN(yv)) continue;
+                if (xv >= t0 && xv <= t1) {{
+                    if (yv < ymin) ymin = yv;
+                    if (yv > ymax) ymax = yv;
+                }}
+            }}
+        }});
+        if (!isFinite(ymin) || !isFinite(ymax)) return null;
+        if (ymin === ymax) {{ ymin -= 0.01; ymax += 0.01; }}
+        var pad = (ymax - ymin) * 0.08;
+        return [ymin - pad, ymax + pad];
+    }}
+
     // Below ~1 year of visible span, a fixed one-tick-per-year axis (dtick
     // "M12") shows zero ticks, so switch to one-tick-per-month ("M1") with a
     // "%Y-%m" label instead — still anchored to a real calendar boundary
@@ -103,28 +207,7 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
             "xaxis.tickformat": "%Y",
         }};
     }}
-    function visibleYRange(x0, x1) {{
-        var t0 = new Date(x0).getTime();
-        var t1 = new Date(x1).getTime();
-        var ymin = Infinity, ymax = -Infinity;
-        (gd.data || []).forEach(function(tr) {{
-            var xs = toArray(tr.x), ys = toArray(tr.y);
-            if (!xs || !ys) return;
-            for (var i = 0; i < xs.length; i++) {{
-                var xv = new Date(xs[i]).getTime();
-                var yv = ys[i];
-                if (yv === null || yv === undefined || isNaN(yv)) continue;
-                if (xv >= t0 && xv <= t1) {{
-                    if (yv < ymin) ymin = yv;
-                    if (yv > ymax) ymax = yv;
-                }}
-            }}
-        }});
-        if (!isFinite(ymin) || !isFinite(ymax)) return null;
-        if (ymin === ymax) {{ ymin -= 0.01; ymax += 0.01; }}
-        var pad = (ymax - ymin) * 0.08;
-        return [ymin - pad, ymax + pad];
-    }}
+
     var fullXRange = null;
     function fullXExtent() {{
         if (fullXRange) return fullXRange;
@@ -141,6 +224,66 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
         fullXRange = [new Date(xmin).toISOString(), new Date(xmax).toISOString()];
         return fullXRange;
     }}
+
+    // ---- 국면 참여율 카드: 현재 보이는 x축 구간(줌 상태) 안의 날짜만, 선택된
+    // 신호강도의 보유 배열과 5국면 라벨 배열을 이용해 그 자리에서 재계산 ----
+    function updateCards() {{
+        var xr = (gd.layout.xaxis && gd.layout.xaxis.range) ? gd.layout.xaxis.range : fullXExtent();
+        var t0 = new Date(xr[0]).getTime();
+        var t1 = new Date(xr[1]).getTime();
+        var dates = regimeData.dates;
+        var labels = regimeData.regime5;
+        var held = regimeData.held[currentThreshold] || [];
+        var sums = {{}}, counts = {{}};
+        cardLabels.forEach(function(l) {{ sums[l] = 0; counts[l] = 0; }});
+        for (var i = 0; i < dates.length; i++) {{
+            var tv = new Date(dates[i]).getTime();
+            if (tv < t0 || tv > t1) continue;
+            var lbl = labels[i];
+            if (!(lbl in counts)) continue;
+            counts[lbl] += 1;
+            sums[lbl] += held[i];
+        }}
+        cardLabels.forEach(function(l, i) {{
+            var el = document.getElementById("card_{div_id}_" + i);
+            if (!el) return;
+            el.textContent = counts[l] > 0 ? (sums[l] / counts[l] * 100).toFixed(1) + "%" : "–";
+        }});
+    }}
+
+    // ---- 국면 음영 shapes: 기존(회색 미보유구간) shapes는 항상 유지하고, 그
+    // 위에 라디오로 선택된 세트(A/B/없음)의 shapes만 갈아끼운다 ----
+    function shapeDictsFor(setName) {{
+        if (setName === "none") return [];
+        var list = setName === "A" ? regimeData.shapesA : regimeData.shapesB;
+        return list.map(function(s) {{
+            return {{
+                type: "rect", xref: "x", yref: "paper",
+                x0: s.x0, x1: s.x1, y0: 0, y1: 1,
+                fillcolor: s.kind === "up" ? "rgba(135,206,250,0.15)" : "rgba(255,182,193,0.15)",
+                line: {{width: 0}}, layer: "below",
+            }};
+        }});
+    }}
+    function updateShapes() {{
+        Plotly.relayout(gd, {{shapes: baseShapes.concat(shapeDictsFor(currentRegimeSet))}});
+    }}
+
+    // ---- 신호전략/Buy&Hold 라인 표시 체크박스 (신호전략은 마커까지 함께) ----
+    function indicesForMeta(tag) {{
+        var idx = [];
+        (gd.data || []).forEach(function(tr, i) {{ if (tr.meta === tag) idx.push(i); }});
+        return idx;
+    }}
+    function updateLineVisibility() {{
+        var showStrategy = document.getElementById("chkStrategy_{div_id}").checked;
+        var showBH = document.getElementById("chkBH_{div_id}").checked;
+        var stratIdx = indicesForMeta("line_strategy").concat(indicesForMeta("marker_strategy"));
+        var bhIdx = indicesForMeta("line_bh");
+        if (stratIdx.length) Plotly.restyle(gd, {{visible: showStrategy}}, stratIdx);
+        if (bhIdx.length) Plotly.restyle(gd, {{visible: showBH}}, bhIdx);
+    }}
+
     function onRelayout(ev) {{
         if (busy) return;
         var x0 = ev["xaxis.range[0]"];
@@ -154,7 +297,7 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
             var updates = xTickUpdates(full[0], full[1]);
             updates["yaxis.autorange"] = true;
             busy = true;
-            Plotly.relayout(gd, updates).then(function() {{ busy = false; }});
+            Plotly.relayout(gd, updates).then(function() {{ busy = false; updateCards(); }});
             return;
         }}
         var yr = visibleYRange(x0, x1);
@@ -164,13 +307,27 @@ def render_plotly_with_y_autoscale(fig: go.Figure, height: int = 460) -> None:
             updates["yaxis.autorange"] = false;
         }}
         busy = true;
-        Plotly.relayout(gd, updates).then(function() {{ busy = false; }});
+        Plotly.relayout(gd, updates).then(function() {{ busy = false; updateCards(); }});
     }}
     gd.on("plotly_relayout", onRelayout);
+
+    document.querySelectorAll(".regimeSetRadio_{div_id}").forEach(function(r) {{
+        r.addEventListener("change", function() {{
+            if (this.checked) {{ currentRegimeSet = this.value; updateShapes(); }}
+        }});
+    }});
+    document.getElementById("chkStrategy_{div_id}").addEventListener("change", updateLineVisibility);
+    document.getElementById("chkBH_{div_id}").addEventListener("change", updateLineVisibility);
+    document.getElementById("selThreshold_{div_id}").addEventListener("change", function() {{
+        currentThreshold = this.value;
+        updateCards();
+    }});
+
+    updateCards();
 }})();
 </script>
 """
-    st.iframe(plot_html + script, height=height + 100)
+    st.iframe(controls_top + plot_html + controls_bottom + script, height=height + 260)
 
 # Page config (title/layout) is centralized in app.py's main(), since
 # st.navigation there replaces the classic pages/-folder auto-discovery this
@@ -194,6 +351,98 @@ STRATEGY_HYBRID_NONHOLDING_COLOR = "#c9bfe0"
 NONHOLDING_BAND_COLOR = "#9aa0a6"  # neutral gray background shading, not red/pink
 STRATEGY_LABEL = "신호전략"
 BH_LABEL = "Buy & Hold"
+
+# ---- 누적수익률 차트의 국면 음영/참여율 카드 기능이 쓰는, 수동으로 확정된 시장
+# 국면 구간표 (차트를 보고 직접 지정한 값 — 어떤 공식으로 도출된 게 아님).
+# "대세"(장기) 구간은 "일반" 구간과 겹칠 수 있고, 그 경우 국면별 참여율 계산에서는
+# 대세 쪽 라벨을 우선 적용한다. 이 네 리스트에 안 걸리는 나머지 기간은 전부
+# 보합장으로 취급. 차트 상단의 "국면 표시" 라디오는 이 표를 "장기 국면"
+# (REGIME_SECULAR_UP/DOWN만) 세트와 "일반 국면"(REGIME_UPTREND/DOWNTREND만)
+# 세트로 나눠서 보여주는 것일 뿐, 서로 독립된 2개의 3단계(상승/보합/하락)
+# 구분이다 — 아래 참여율 카드처럼 5단계로 합쳐서 우선순위를 매기지 않는다.
+REGIME_UPTREND = [
+    ("2014-06-05", "2014-08-08"), ("2014-11-07", "2015-01-21"),
+    ("2015-12-03", "2016-02-26"), ("2016-04-19", "2016-07-06"),
+    ("2016-12-16", "2017-04-20"), ("2017-07-14", "2017-09-08"),
+    ("2017-12-13", "2018-02-06"), ("2018-09-28", "2019-08-13"),
+    ("2019-11-12", "2020-07-28"), ("2021-11-04", "2022-03-09"),
+    ("2023-03-13", "2023-04-07"), ("2024-03-04", "2024-10-23"),
+    ("2024-11-15", "2025-02-14"), ("2025-08-20", "2025-10-15"),
+    ("2025-10-28", "2026-01-29"),
+]
+REGIME_DOWNTREND = [
+    ("2014-03-24", "2014-06-05"), ("2014-08-08", "2014-11-07"),
+    ("2015-01-21", "2015-04-27"), ("2015-08-24", "2015-11-30"),
+    ("2016-07-06", "2016-12-16"), ("2017-04-20", "2017-05-16"),
+    ("2017-09-08", "2017-12-13"), ("2018-06-15", "2018-09-28"),
+    ("2020-07-28", "2020-11-30"), ("2021-01-06", "2021-03-05"),
+    ("2025-02-14", "2025-02-27"), ("2025-10-15", "2025-10-28"),
+    ("2026-01-29", "2026-07-30"),
+]
+REGIME_SECULAR_UP = [
+    ("2015-11-30", "2016-07-06"), ("2019-11-12", "2020-07-28"),
+    ("2024-03-04", "2025-02-14"), ("2025-08-20", "2025-10-15"),
+]
+REGIME_SECULAR_DOWN = [
+    ("2015-01-21", "2015-11-30"), ("2020-07-28", "2020-11-30"),
+    ("2026-01-29", "2026-07-30"),
+]
+
+
+def _regime_ts_ranges(pairs):
+    return [(pd.Timestamp(a), pd.Timestamp(b)) for a, b in pairs]
+
+
+def _in_any_range(d, ranges):
+    return any(a <= d <= b for a, b in ranges)
+
+
+def classify_regime_5way(dates_index):
+    """Per-day label in {대세상승장, 상승장, 보합장, 하락장, 대세하락장} for every
+    date in `dates_index`, giving REGIME_SECULAR_* priority over REGIME_UPTREND/
+    DOWNTREND wherever they overlap; anything covered by none of the four
+    ranges is 보합장. Used only by the participation-rate cards (always all 5
+    labels, independent of the shading radio's A/B/none choice)."""
+    up, down = _regime_ts_ranges(REGIME_UPTREND), _regime_ts_ranges(REGIME_DOWNTREND)
+    sec_up, sec_down = _regime_ts_ranges(REGIME_SECULAR_UP), _regime_ts_ranges(REGIME_SECULAR_DOWN)
+    labels = []
+    for d in dates_index:
+        d = pd.Timestamp(d)
+        if _in_any_range(d, sec_up):
+            labels.append("대세상승장")
+        elif _in_any_range(d, sec_down):
+            labels.append("대세하락장")
+        elif _in_any_range(d, up):
+            labels.append("상승장")
+        elif _in_any_range(d, down):
+            labels.append("하락장")
+        else:
+            labels.append("보합장")
+    return labels
+
+
+def _clip_ranges(pairs, lo, hi):
+    out = []
+    for a, b in pairs:
+        a, b = pd.Timestamp(a), pd.Timestamp(b)
+        s, e = max(a, lo), min(b, hi)
+        if s <= e:
+            out.append((s, e))
+    return out
+
+
+def regime_shading_shapes(up_pairs, down_pairs, lo, hi):
+    """{x0,x1,kind} dicts (kind='up'|'down') for the given pair of range
+    lists, clipped to [lo, hi] — the shading-radio's A/B set, not the 5-way
+    participation labels. JS turns these into full Plotly shape dicts (color,
+    y0/y1 in paper coords) since the color choice/z-order belong to rendering,
+    not to this data-prep step."""
+    shapes = [{"x0": a.isoformat(), "x1": b.isoformat(), "kind": "up"}
+              for a, b in _clip_ranges(up_pairs, lo, hi)]
+    shapes += [{"x0": a.isoformat(), "x1": b.isoformat(), "kind": "down"}
+               for a, b in _clip_ranges(down_pairs, lo, hi)]
+    return shapes
+
 
 DEFAULTS = {
     "bt_years": backtest.BACKTEST_YEARS,
@@ -602,6 +851,31 @@ hybrid_equity = result["hybrid_equity_curve"]
 yearly = result["yearly_returns"]
 trades = result["trades"]
 
+# 누적수익률 차트의 "신호강도(6/0·5/1·4/2)" 드롭다운 + 국면별 참여율 카드용 —
+# 현재 페이지의 다른 모든 설정(재진입·52주 트리거·매도노이즈필터 등)은 그대로 두고
+# green_count 매수/매도 임계값만 세 조합으로 바꿔가며 같은 signals에 다시 돌린다.
+_THRESHOLD_PAIRS = [(6, 0), (5, 1), (4, 2)]
+_threshold_holding = {}
+for _bg, _sg in _THRESHOLD_PAIRS:
+    _tres = backtest.simulate(
+        signals,
+        use_reentry_trigger=use_reentry_trigger,
+        use_reentry_freq_limit=use_reentry_freq_limit,
+        reentry_freq_limit_days=int(reentry_freq_limit_days),
+        long_trend_buffer_pct=float(long_trend_buffer_pct),
+        use_new_high_trigger=use_new_high_trigger,
+        use_new_low_trigger=use_new_low_trigger,
+        buy_green_count=_bg,
+        sell_green_count=_sg,
+        min_holding_days=int(min_holding_days),
+        bond_annual_yield=float(bond_yield_pct) / 100.0,
+        use_sell_noise_filter=use_sell_noise_filter,
+        use_daily_band_confirmation=use_daily_band_confirmation,
+        sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
+        gold_holding_fee_annual_pct=effective_holding_fee_pct,
+    )
+    _threshold_holding[f"{_bg}/{_sg}"] = _tres["holding_curve"]
+
 start_date = equity.index[0].date()
 end_date = equity.index[-1].date()
 st.caption(
@@ -675,6 +949,23 @@ STRAT_HYBRID_LABEL = f"{STRATEGY_LABEL}(기대수익률 포함)"
 
 # 신호전략(보유기간만)은 이 차트에서 제외 — Buy & Hold와 신호전략(기대수익률 포함) 둘만 표시.
 dates = equity.index
+
+# 국면 음영(요구사항1)/참여율 카드(요구사항3)에 쓸 데이터를 JS로 그대로 넘기기 위한
+# 준비 — 전부 파이썬에서 한 번만 계산해 JSON으로 임베드하고, 줌 구간 필터링·비율
+# 재계산 자체는 서버 왕복 없이 JS가 그 자리에서 한다.
+_regime5_labels = classify_regime_5way(dates)
+_held_by_threshold = {
+    key: hc.reindex(dates).fillna(False).astype(int).tolist()
+    for key, hc in _threshold_holding.items()
+}
+_regime_payload = {
+    "dates": [d.isoformat() for d in dates],
+    "regime5": _regime5_labels,
+    "held": _held_by_threshold,
+    "shapesA": regime_shading_shapes(REGIME_SECULAR_UP, REGIME_SECULAR_DOWN, dates.min(), dates.max()),
+    "shapesB": regime_shading_shapes(REGIME_UPTREND, REGIME_DOWNTREND, dates.min(), dates.max()),
+}
+
 bh_returns = bh_equity.reindex(equity.index).to_numpy() - 1.0
 hybrid_returns = hybrid_equity.reindex(equity.index).to_numpy() - 1.0
 holding_bool = holding_curve.reindex(equity.index).fillna(False).to_numpy()
@@ -726,6 +1017,7 @@ fig.add_trace(
         y=bh_returns,
         mode="lines",
         name=BH_LABEL,
+        meta="line_bh",
         line=dict(color=BH_COLOR, width=2),
         hovertemplate="%{x|%Y-%m-%d}<br>" + BH_LABEL + ": %{y:.1%}<extra></extra>",
     )
@@ -740,6 +1032,7 @@ fig.add_trace(
         y=np.where(point_in_holding, hybrid_returns, np.nan),
         mode="lines",
         name=STRAT_HYBRID_LABEL,
+        meta="line_strategy",
         connectgaps=False,
         line=dict(color=STRATEGY_HYBRID_COLOR, width=2),
         hovertemplate="%{x|%Y-%m-%d}<br>" + STRAT_HYBRID_LABEL + ": %{y:.1%}<extra></extra>",
@@ -754,6 +1047,7 @@ fig.add_trace(
         y=np.where(point_in_nonholding, hybrid_returns, np.nan),
         mode="lines",
         name=STRAT_HYBRID_LABEL,
+        meta="line_strategy",
         showlegend=False,
         connectgaps=False,
         line=dict(color=STRATEGY_HYBRID_NONHOLDING_COLOR, width=2, dash="dash"),
@@ -806,6 +1100,7 @@ if not marker_df.empty:
                 y=sub["return"],
                 mode="markers",
                 name=label,
+                meta="marker_strategy",
                 marker=dict(symbol=symbol, color=color, size=11, line=dict(width=0)),
                 customdata=np.stack([sub["가격"].to_numpy(), sub["사유"].to_numpy()], axis=-1),
                 hovertemplate=(
@@ -853,11 +1148,26 @@ fig.update_layout(
     legend=dict(orientation="h", yanchor="bottom", y=1.2, xanchor="left", x=0),
 )
 
-render_plotly_with_y_autoscale(fig, height=460)
+# 기존 미보유구간 회색 음영(위에서 fig.add_vrect로 이미 추가됨)을 그대로 보존해
+# JS로 넘김 — "국면 표시" 라디오가 그 위에 A/B 세트를 얹거나 뗄 뿐, 이 회색 음영
+# 자체는 라디오 상태와 무관하게 항상 유지된다. to_plotly_json()은 add_vrect에
+# 원래 넘긴 pandas Timestamp를 x0/x1에 그대로 남겨두므로(JSON 직렬화 불가) 문자열로
+# 변환해야 한다.
+_base_shapes = []
+for _s in fig.layout.shapes:
+    _sd = _s.to_plotly_json()
+    for _k in ("x0", "x1"):
+        if hasattr(_sd.get(_k), "isoformat"):
+            _sd[_k] = _sd[_k].isoformat()
+    _base_shapes.append(_sd)
+
+render_backtest_chart(fig, _regime_payload, _base_shapes, height=460)
 st.caption(
     "▲ 파란색 = 매수 시점, ▼ 빨간색 = 매도 시점 (거래 내역 표 참고) · "
     f"{STRAT_HYBRID_LABEL}의 점선·회색 음영 구간 = 미보유(현금) 기간에 기대수익률을 "
-    "가정 적용한 부분 · 하단 슬라이더로 구간을 드래그해 확대, 상단 버튼으로 빠른 기간 이동 가능"
+    "가정 적용한 부분 · 하단 슬라이더로 구간을 드래그해 확대, 상단 버튼으로 빠른 기간 이동 가능 · "
+    "상단 체크박스로 국면 음영(장기/일반)과 라인 표시를, 하단 드롭다운으로 신호강도별 "
+    "국면 참여율을 확인할 수 있습니다"
 )
 
 # ---- 3. 연도별 연환산수익률 막대그래프 ----
