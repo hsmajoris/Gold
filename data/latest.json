@@ -1,11 +1,10 @@
 {
-  "generated_at": "2026-09-14T07:08:17.533905+09:00",
+  "generated_at": "2026-09-15T07:08:27.301759+09:00",
   "requested_as_of": null,
-  "as_of": "2026-09-11",
+  "as_of": "2026-09-14",
   "indicator_order": [
     "real_rate",
     "dxy",
-    "gold_silver_ratio",
     "wti",
     "vix"
   ],
@@ -13,40 +12,40 @@
     "real_rate": {
       "label": "실질금리",
       "source": "FRED DFII10",
-      "as_of": "2026-09-10",
+      "as_of": "2026-09-11",
       "prev_close": {
-        "value": 2.55,
-        "display": "2.55%"
+        "value": 2.6,
+        "display": "2.60%"
       },
       "sma": {
         "90": {
-          "ma_value": 2.3533,
-          "ma_display": "2.35%",
+          "ma_value": 2.3573,
+          "ma_display": "2.36%",
           "status_text": "상향 돌파",
-          "display": "2.35% (종가 2.55% → 상향 돌파)",
-          "streak": 95,
+          "display": "2.36% (종가 2.60% → 상향 돌파)",
+          "streak": 96,
           "breakout": true,
-          "streak_display": "95일째",
+          "streak_display": "96일째",
           "gold_friendly": false
         },
         "30": {
-          "ma_value": 2.409,
-          "ma_display": "2.41%",
+          "ma_value": 2.4176,
+          "ma_display": "2.42%",
           "status_text": "상향 돌파",
-          "display": "2.41% (종가 2.55% → 상향 돌파)",
-          "streak": 9,
+          "display": "2.42% (종가 2.60% → 상향 돌파)",
+          "streak": 10,
           "breakout": true,
-          "streak_display": "9일째",
+          "streak_display": "10일째",
           "gold_friendly": false
         },
         "7": {
-          "ma_value": 2.4675,
-          "ma_display": "2.47%",
+          "ma_value": 2.51,
+          "ma_display": "2.51%",
           "status_text": "상향 돌파",
-          "display": "2.47% (종가 2.55% → 상향 돌파)",
-          "streak": 2,
+          "display": "2.51% (종가 2.60% → 상향 돌파)",
+          "streak": 3,
           "breakout": true,
-          "streak_display": "2일째",
+          "streak_display": "3일째",
           "gold_friendly": false
         }
       }
@@ -54,81 +53,40 @@
     "dxy": {
       "label": "달러인덱스",
       "source": "Yahoo Finance (DX-Y.NYB)",
-      "as_of": "2026-09-11",
+      "as_of": "2026-09-14",
       "prev_close": {
-        "value": 99.12,
-        "display": "99.12"
+        "value": 99.462,
+        "display": "99.46"
       },
       "sma": {
         "90": {
-          "ma_value": 100.2119,
-          "ma_display": "100.21",
+          "ma_value": 100.2202,
+          "ma_display": "100.22",
           "status_text": "이평선 아래",
-          "display": "100.21 (종가 99.12 → 이평선 아래)",
+          "display": "100.22 (종가 99.46 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
           "streak_display": "",
           "gold_friendly": true
         },
         "30": {
-          "ma_value": 99.24,
-          "ma_display": "99.24",
-          "status_text": "이평선 아래",
-          "display": "99.24 (종가 99.12 → 이평선 아래)",
-          "streak": 0,
-          "breakout": false,
-          "streak_display": "",
-          "gold_friendly": true
-        },
-        "7": {
-          "ma_value": 98.955,
-          "ma_display": "98.95",
+          "ma_value": 99.1936,
+          "ma_display": "99.19",
           "status_text": "상향 돌파",
-          "display": "98.95 (종가 99.12 → 상향 돌파)",
-          "streak": 2,
+          "display": "99.19 (종가 99.46 → 상향 돌파)",
+          "streak": 1,
           "breakout": true,
-          "streak_display": "2일째",
-          "gold_friendly": false
-        }
-      }
-    },
-    "gold_silver_ratio": {
-      "label": "금/은비율",
-      "source": "yfinance GC=F / SI=F",
-      "as_of": "2026-09-11",
-      "prev_close": {
-        "value": 67.6336,
-        "display": "67.6"
-      },
-      "sma": {
-        "90": {
-          "ma_value": 67.8514,
-          "ma_display": "67.9",
-          "status_text": "이평선 아래",
-          "display": "67.9 (종가 67.6 → 이평선 아래)",
-          "streak": 0,
-          "breakout": false,
-          "streak_display": "",
-          "gold_friendly": false
-        },
-        "30": {
-          "ma_value": 67.1318,
-          "ma_display": "67.1",
-          "status_text": "상향 돌파",
-          "display": "67.1 (종가 67.6 → 상향 돌파)",
-          "streak": 2,
-          "breakout": true,
-          "streak_display": "2일째",
+          "streak_display": "1일째",
           "gold_friendly": false
         },
         "7": {
-          "ma_value": 66.7001,
-          "ma_display": "66.7",
+          "ma_value": 99.0564,
+          "ma_display": "99.06",
           "status_text": "상향 돌파",
-          "display": "66.7 (종가 67.6 → 상향 돌파)",
-          "streak": 2,
+          "display": "99.06 (종가 99.46 → 상향 돌파)",
+          "streak": 3,
           "breakout": true,
-          "streak_display": "2일째",
+          "streak_display": "3일째",
           "gold_friendly": false
         }
       }
@@ -177,40 +135,40 @@
     "vix": {
       "label": "VIX",
       "source": "Yahoo Finance (^VIX)",
-      "as_of": "2026-09-11",
+      "as_of": "2026-09-14",
       "prev_close": {
-        "value": 15.84,
-        "display": "15.84"
+        "value": 17.1,
+        "display": "17.10"
       },
       "sma": {
         "90": {
-          "ma_value": 16.3952,
-          "ma_display": "16.40",
-          "status_text": "이평선 아래",
-          "display": "16.40 (종가 15.84 → 이평선 아래)",
-          "streak": 0,
-          "breakout": false,
-          "streak_display": "",
+          "ma_value": 16.4095,
+          "ma_display": "16.41",
+          "status_text": "상향 돌파",
+          "display": "16.41 (종가 17.10 → 상향 돌파)",
+          "streak": 1,
+          "breakout": true,
+          "streak_display": "1일째",
           "gold_friendly": false
         },
         "30": {
-          "ma_value": 15.3573,
-          "ma_display": "15.36",
+          "ma_value": 15.5276,
+          "ma_display": "15.53",
           "status_text": "상향 돌파",
-          "display": "15.36 (종가 15.84 → 상향 돌파)",
-          "streak": 5,
+          "display": "15.53 (종가 17.10 → 상향 돌파)",
+          "streak": 6,
           "breakout": true,
-          "streak_display": "5일째",
+          "streak_display": "6일째",
           "gold_friendly": false
         },
         "7": {
-          "ma_value": 16.232,
-          "ma_display": "16.23",
-          "status_text": "이평선 아래",
-          "display": "16.23 (종가 15.84 → 이평선 아래)",
-          "streak": 0,
-          "breakout": false,
-          "streak_display": "",
+          "ma_value": 16.592,
+          "ma_display": "16.59",
+          "status_text": "상향 돌파",
+          "display": "16.59 (종가 17.10 → 상향 돌파)",
+          "streak": 1,
+          "breakout": true,
+          "streak_display": "1일째",
           "gold_friendly": false
         }
       }
@@ -220,21 +178,18 @@
     "구조": {
       "real_rate": "미국 10년 국채금리 − 10년 예상 물가상승률",
       "dxy": "6개국 통화 바스켓 내 달러 비율",
-      "gold_silver_ratio": "금가격 / 은가격 비율",
       "wti": "WTI 가격",
       "vix": "S&P500 옵션 내재변동성지수"
     },
     "의미": {
       "real_rate": "금 보유의 기회비용을 결정하는 핵심 변수 — 실질금리 상승 시 무이자자산인 금의 상대적 매력이 감소함",
       "dxy": "달러 표시 자산인 금의 역내 구매력에 영향 — 달러 강세 시 비달러권의 실물 수요가 위축되는 경로로 작용함",
-      "gold_silver_ratio": "은은 금 대비 산업재 수요 민감도가 높아 하락 국면에서 상대 변동성이 확대됨",
       "wti": "원자재발 인플레이션 기대를 매개로 금의 인플레이션 헤지 수요에 영향을 미침",
       "vix": "시장의 위험회피 심리를 나타내는 변동성 지표로, 금의 안전자산 수요와 연동되는 경향이 있음"
     },
     "상관관계 방향": {
       "real_rate": "역상관 (기회비용 가설)",
       "dxy": "역상관 (구조적 음(-)의 상관)",
-      "gold_silver_ratio": "임계값(80) 초과 시 하락 반전 가능성 — 기술적 신호로, 통계적 인과관계는 아님. 참고: 본 대시보드의 매수신호 임계값(100)은 위 학술적 관행값(80)보다 보수적으로 설정된 값으로, 서로 다른 목적의 수치입니다.",
       "wti": "정상관 (단기 효과 중심)",
       "vix": "약한 정상관 — 조건부이며 최근 표본에서 효과 약화 추세"
     }
@@ -252,7 +207,6 @@
   "footnotes": {
     "real_rate": "Erb & Harvey (2013), <i>The Golden Dilemma</i>, Financial Analysts Journal — 저자들은 표본 기간에 따라 이 상관관계가 약해질 수 있음을 명시함.",
     "dxy": "World Gold Council 분석 자료 — 구조적 역상관 관계(상관계수 약 -0.5~-0.8 수준)로 보고됨.",
-    "gold_silver_ratio": "Solt & Swanson (1981); CME Group Research (2021) — 80은 경험적 기술적 임계값이며 절대적 기준은 아님.",
     "wti": "Sari, Hammoudeh & Soytas (2010), <i>Energy Economics</i> — 단기 정(+)의 효과만 확인되었고, 장기 공적분 관계는 발견되지 않음 (신뢰도 낮음).",
     "vix": "Baur & Lucey (2010) — 최근 연구에서는 금의 안전자산 효과가 약화되는 추세로 지적됨."
   }
