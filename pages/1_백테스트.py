@@ -757,14 +757,6 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
             "끄면: 아래 '매도 확인 하락률'을 사용하는 기존 방식(D0+7일 고정 시점 확인)으로 "
             "동작합니다.",
         )
-        min_holding_days = st.number_input(
-            "매수 후 최소 보유일수 (일, 역일 기준)",
-            min_value=0, max_value=1825, step=1, key="bt_min_holding_days",
-            help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count·52주 신저가 갱신 "
-            "모두)을 아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다. "
-            "주말·공휴일과 무관하게 매수일로부터의 달력일 차이(date2 - date1)로 계산됩니다.",
-        )
-        st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
         sell_noise_filter_drop_pct = st.number_input(
             "매도 확인 하락률 (%, D0 대비 D0+7일 — 위 2시그마 밴드가 꺼져 있을 때만 사용)",
             min_value=0.0, max_value=50.0, step=0.5, key="bt_sell_noise_filter_drop_pct",
@@ -775,6 +767,14 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
             "관찰모드를 해제해 계속 보유). 0으로 두면 이전처럼 '조금이라도 낮으면 매도'와 "
             "동일해집니다.",
         )
+        min_holding_days = st.number_input(
+            "매수 후 최소 보유일수 (일, 역일 기준)",
+            min_value=0, max_value=1825, step=1, key="bt_min_holding_days",
+            help="매수 이후 이 일수가 지나기 전까지는 매도 조건(green_count·52주 신저가 갱신 "
+            "모두)을 아예 확인하지 않습니다. 단기 트레이딩이 아닌 전략에 적합합니다. "
+            "주말·공휴일과 무관하게 매수일로부터의 달력일 차이(date2 - date1)로 계산됩니다.",
+        )
+        st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
     st.markdown("**수수료** (② KRX 금현물 선택 시에만 적용 — ① 국제 금 시세는 실물이 아닌 "
                 "참고 가격이라 적용되지 않음)")
