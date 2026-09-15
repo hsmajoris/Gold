@@ -1,6 +1,5 @@
 """Backtest page: real-rate/DXY MA breakout signal (green_count) + 52-week
-new-high/new-low and reentry triggers, vs. a same-period Buy & Hold
-benchmark."""
+new-high/new-low triggers, vs. a same-period Buy & Hold benchmark."""
 
 import functools
 import json
@@ -471,10 +470,6 @@ DEFAULTS = {
     "bt_asof_years_ago": 0,
     "bt_buy_green_count": backtest.BUY_GREEN_COUNT,
     "bt_sell_green_count": backtest.SELL_GREEN_COUNT,
-    "bt_use_reentry_trigger": False,
-    "bt_long_trend_buffer_pct": backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
-    "bt_use_reentry_freq_limit": True,
-    "bt_reentry_freq_limit_days": backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
     "bt_use_new_high_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
     "bt_use_new_low_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
@@ -534,34 +529,22 @@ with st.expander("전략 규칙 보기"):
     st.markdown(
         """
 - **매수** (미보유 상태일 때만): 아래 "매수 조건" 카드의 `green_count ≥ 임계값` — 지연 없이
-  **당일 즉시 매수**. **또는** (고급 설정의 **단기 재진입 로직 사용**이 켜져 있을 때만)
-  **재진입 조건**: (① 장기추세 필터, 필요조건 — 아래 두 가지를 모두 만족해야 함) 금 종가가
-  180일(역일) 이동평균보다 "장기추세 필터 버퍼" %(기본 {buffer_pct:g}%) 이상 높고, 동시에
-  180일 이동평균 자체가 30일(역일) 전보다 높아야(우상향) 하며, 그리고 (② 단기 재돌파 트리거)
-  금 종가가 30일(역일) 이동평균을 아래에서 위로 상향 돌파한 날 — 이것도 당일 즉시 매수.
-  **또는** (고급 설정의 **52주 신고가 갱신 시 매수**가 켜져 있을 때만, 기본값 ON) 금 종가가
-  직전 365일(역일) 중 최고 종가를 처음으로 넘어서는 날(52주 신고가 신규 경신일) — 이것도 당일
-  즉시 매수, 재진입 조건과는 완전히 독립적이며 자체 빈도 제한도 없음. 아무 조건이나 먼저
-  만족하면 매수합니다
+  **당일 즉시 매수**. **또는** (고급 설정의 **52주 신고가 갱신 시 매수**가 켜져 있을 때만,
+  기본값 ON) 금 종가가 직전 365일(역일) 중 최고 종가를 처음으로 넘어서는 날(52주 신고가
+  신규 경신일) — 이것도 당일 즉시 매수, 자체 빈도 제한 없음. 아무 조건이나 먼저 만족하면
+  매수합니다
 - **매도** (보유 상태일 때만): "매도 조건" 카드의 `green_count ≤ 임계값` — 지연 없이 **당일
   즉시 매도**. **또는** (고급 설정의 **52주 신저가 갱신 시 매도**가 켜져 있을 때만, 기본값 ON)
   금 종가가 직전 365일(역일) 중 최저 종가보다 낮아지는 날(52주 신저가 신규 경신일) — 이것도
   당일 즉시 매도, 자체 빈도 제한 없음. 둘 중 아무 조건이나 먼저 만족하면 매도합니다
 - 모든 매수·매도 조건은 지연 없이 신호 당일 종가에 즉시 체결됩니다(과거에 있던 지연 체결
   기능은 완전히 제거됨)
-- 고급 설정의 **단기 재진입 로직 사용** (기본값 OFF)을 켜야 재진입 조건(①②)이 적용됩니다 —
-  꺼져 있으면(기본값) 이 로직 도입 이전의 기준(green_count만)으로 동작합니다. 켜져
-  있을 때만 그 아래 **단기 재진입 빈도 제한** (기본값 ON, 이 상위 설정이 꺼져 있으면 비활성화)이
-  작동합니다 — 켜두면 재진입 조건 중 ② 단기 재돌파 트리거로 인한 매수만 최근 "단기 재진입
-  빈도 제한 일수"(기본 {freq_limit_days}일, 역일 기준) 내 최대 1회로 제한되고(① 장기추세
-  필터는 이 제한과 무관하게 항상 필요조건), 꺼두면 ①② 조건만으로 제한 없이 자유롭게
-  재진입합니다. 이 제한은 green_count 매수 조건에는 영향을 주지 않습니다
 - 고급 설정의 **최소 보유일수**(역일/달력일 기준, 주말·공휴일 관계없이 매수일로부터의 날짜
   차이로 계산)를 설정하면, 매수 후 그 일수가 지나기 전까지는 매도 조건(green_count·52주
   신저가 갱신 모두)을 아예 확인하지 않습니다 — 단기 매매가 아니라 최소 보유 기간을
   두는 전략을 시뮬레이션할 때 사용
-- 고급 설정의 **상승추세 중 매도신호 노이즈 필터** (기본값 ON, 매수 쪽 재진입 로직과는 완전히
-  별개)는 매도신호가 실제로 체결되기 직전(green_count 또는 52주 신저가 갱신)에 개입합니다.
+- 고급 설정의 **상승추세 중 매도신호 노이즈 필터** (기본값 ON)는 매도신호가 실제로
+  체결되기 직전(green_count 또는 52주 신저가 갱신)에 개입합니다.
   그날(D0) 종가가 180일(역일) 이동평균보다 5% 이상 높을 때만 작동하며
   (미만이면 이 필터 없이 항상 그대로 즉시 매도), 작동하면 D0의 매도신호는 무시하고 관찰을
   시작합니다. 관찰 중 추가로 뜨는 매도신호는 매도 여부에 전혀 영향을 주지 않으며 참고용
@@ -581,7 +564,7 @@ with st.expander("전략 규칙 보기"):
     하락률"(기본 5%) 이상 낮으면 그날 매도, 그만큼 낮지 않으면 관찰모드를 해제하고 D0의 신호는
     없었던 것으로 처리합니다
 - 고급 설정의 **하락추세 중 매수신호 노이즈 필터** (기본값 ON)는 위 매도신호 노이즈 필터를
-  방향만 반대로 완전히 대칭시킨 조건입니다. 매수신호(green_count·재진입·52주 신고가 갱신
+  방향만 반대로 완전히 대칭시킨 조건입니다. 매수신호(green_count·52주 신고가 갱신
   무엇이든)가 실제로 체결되기 직전에 개입하며, 그날(D0) 종가가 180일(역일) 이동평균보다 5%
   이상 낮을 때만 작동합니다(그 이상이면 이 필터 없이 항상 그대로 즉시 매수). 작동하면 D0의
   매수신호는 무시하고 미보유 상태를 유지하며 관찰을 시작합니다. 확인 방식도 매도 쪽과
@@ -602,8 +585,6 @@ with st.expander("전략 규칙 보기"):
         """.format(
             years=int(st.session_state["bt_years"]),
             buffer=backtest.BUFFER_DAYS,
-            buffer_pct=float(st.session_state["bt_long_trend_buffer_pct"]),
-            freq_limit_days=int(st.session_state["bt_reentry_freq_limit_days"]),
             asof_years_ago=int(st.session_state["bt_asof_years_ago"]),
         )
     )
@@ -688,54 +669,21 @@ if sell_green_count >= buy_green_count:
         "거의 바로 청산될 수 있습니다."
     )
 
-with st.expander("⚙️ 고급 설정 (최소 보유일수 · 단기 재진입 로직 — 기본값 그대로 둬도 무방)"):
+with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 그대로 둬도 무방)"):
     st.caption(
         "모든 매수·매도 조건은 지연 없이 항상 신호 당일 즉시 체결됩니다."
     )
     adv_buy_col, adv_sell_col = st.columns(2)
     with adv_buy_col:
         st.markdown("**매수 관련**")
-        use_reentry_trigger = st.checkbox(
-            "단기 재진입 로직 사용",
-            key="bt_use_reentry_trigger",
-            help="끄면 장기추세 필터(① 180일 이동평균)와 단기 재돌파 트리거(② 30일 이동평균 "
-            "상향 돌파) 조건 자체를 전혀 적용하지 않고, 이 로직 도입 이전의 재진입 기준"
-            "(green_count만)으로 되돌아갑니다. green_count 매수 조건에는 영향을 주지 않습니다.",
-        )
-        long_trend_buffer_pct = st.number_input(
-            "① 장기추세 필터 버퍼 (%)",
-            min_value=0.0, max_value=30.0, step=0.5, key="bt_long_trend_buffer_pct",
-            disabled=not use_reentry_trigger,
-            help="위 '단기 재진입 로직 사용'이 켜져 있을 때만 작동합니다. 종가가 180일 이동평균"
-            "보다 이 %만큼 이상 높아야 ① 장기추세 필터를 만족합니다(예: 5이면 180일선 대비 "
-            "+5% 이상). 180일 이동평균 자체가 30일(역일) 전보다 높아야(우상향) 한다는 조건은 "
-            "이 값과 무관하게 항상 함께 적용됩니다.",
-        )
-        use_reentry_freq_limit = st.checkbox(
-            f"단기 재진입 빈도 제한 ({int(st.session_state['bt_reentry_freq_limit_days'])}일 내 1회)",
-            key="bt_use_reentry_freq_limit",
-            disabled=not use_reentry_trigger,
-            help="위 '단기 재진입 로직 사용'이 켜져 있을 때만 작동합니다. 켜면 ② 단기 재돌파 "
-            "트리거로 인한 매수는 최근 아래 일수(역일 기준) 내 최대 1회로 제한됩니다 — "
-            "① 장기추세 필터는 이 제한과 무관하게 항상 필요조건으로 적용됩니다. 끄면 제한 없이 "
-            "조건을 만족할 때마다 재진입합니다.",
-        )
-        reentry_freq_limit_days = st.number_input(
-            "단기 재진입 빈도 제한 일수 (일)",
-            min_value=1, max_value=365, step=1, key="bt_reentry_freq_limit_days",
-            disabled=not (use_reentry_trigger and use_reentry_freq_limit),
-            help="위 '단기 재진입 빈도 제한'이 켜져 있을 때만 작동합니다. ② 단기 재돌파 트리거로 "
-            "인한 매수를 이 일수(역일 기준) 내 최대 1회로 제한합니다(기본 30일).",
-        )
         use_new_high_trigger = st.checkbox(
             "52주 신고가 갱신 시 매수",
             key="bt_use_new_high_trigger",
-            help="위 '단기 재진입 로직'과는 완전히 별개의, 독립적인 매수 조건입니다. 종가가 "
-            "직전 365일(역일) 중 최고 종가보다 높아지는 날(신규 52주 신고가 경신일, 단순히 "
-            "'지금 52주 최고가 상태'가 아니라 그날 처음 갱신된 경우만) 즉시 매수합니다"
-            "(green_count·재진입 조건과 무관하게 추가로 작동, 둘 중 아무거나 먼저 만족해도 "
-            "매수). 재진입 빈도 제한과 달리 이 트리거에는 자체 쿨다운이 없어 신고가를 "
-            "경신할 때마다(단, 이미 보유 중이면 매수를 다시 하지 않음) 작동합니다.",
+            help="종가가 직전 365일(역일) 중 최고 종가보다 높아지는 날(신규 52주 신고가 경신일, "
+            "단순히 '지금 52주 최고가 상태'가 아니라 그날 처음 갱신된 경우만) 즉시 매수합니다"
+            "(green_count와 무관하게 추가로 작동, 둘 중 아무거나 먼저 만족해도 매수). 이 "
+            "트리거에는 자체 쿨다운이 없어 신고가를 경신할 때마다(단, 이미 보유 중이면 매수를 "
+            "다시 하지 않음) 작동합니다.",
         )
         use_buy_noise_filter = st.checkbox(
             "하락추세 중 매수신호 노이즈 필터 (180일선 -5% 이하)",
@@ -935,10 +883,6 @@ effective_daily_holding_fee_pct = float(daily_holding_fee_pct) if _fees_active e
 # own three (6/0·5/1·4/2) per call — bundling them here would collide with
 # both.
 _shared_sim_kwargs = dict(
-    use_reentry_trigger=use_reentry_trigger,
-    use_reentry_freq_limit=use_reentry_freq_limit,
-    reentry_freq_limit_days=int(reentry_freq_limit_days),
-    long_trend_buffer_pct=float(long_trend_buffer_pct),
     use_new_high_trigger=use_new_high_trigger,
     use_new_low_trigger=use_new_low_trigger,
     min_holding_days=int(min_holding_days),
@@ -990,7 +934,7 @@ bh_equity_gross = result_gross["bh_equity_curve"]
 hybrid_equity_gross = result_gross["hybrid_equity_curve"]
 
 # 누적수익률 차트의 "신호강도(6/0·5/1·4/2)" 드롭다운 + 국면별 참여율 카드용 —
-# 현재 페이지의 다른 모든 설정(재진입·52주 트리거·매도노이즈필터 등)은 그대로 두고
+# 현재 페이지의 다른 모든 설정(52주 트리거·매도·매수 노이즈필터 등)은 그대로 두고
 # green_count 매수/매도 임계값만 regime.THRESHOLD_PAIRS의 세 조합으로 바꿔가며
 # 같은 signals에 다시 돌린다(gold_dashboard/regime.py — 대시보드 핵심 요약
 # 문구도 같은 함수로 참여율을 계산하는 단일 소스). 참여율은 보유 여부만 보므로

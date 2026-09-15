@@ -122,10 +122,6 @@ def default_backtest_kwargs(gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFA
     `sell_green_count` are deliberately excluded — compute_threshold_holding
     below fills those in per THRESHOLD_PAIRS entry."""
     return dict(
-        use_reentry_trigger=False,
-        use_reentry_freq_limit=True,
-        reentry_freq_limit_days=backtest.DEFAULT_REENTRY_FREQ_LIMIT_DAYS,
-        long_trend_buffer_pct=backtest.DEFAULT_LONG_TREND_BUFFER_PCT,
         use_new_high_trigger=backtest.DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
         use_new_low_trigger=backtest.DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER,
         min_holding_days=backtest.DEFAULT_MIN_HOLDING_DAYS,
