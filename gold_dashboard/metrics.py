@@ -25,19 +25,6 @@ def compute_sma(series: pd.Series, window_days: int) -> pd.Series:
     return rolled.where(elapsed_days >= window_days)
 
 
-def value_n_days_ago(series: pd.Series, days: int) -> pd.Series:
-    """The value `series` held `days` calendar days before each of its own
-    dates — i.e. the last observation on or before (date - days), not
-    necessarily an exact row `days` positions back (that would be a
-    trading-day shift, not a calendar-day one). NaN wherever no observation
-    exists that far back yet (mirrors plain `.shift(n)`'s leading NaNs, just
-    measured in elapsed calendar days instead of row count)."""
-    target_dates = series.index - pd.Timedelta(days=days)
-    shifted = series.reindex(target_dates, method="ffill")
-    shifted.index = series.index
-    return shifted
-
-
 def breakout_streak(price: pd.Series, ma: pd.Series) -> int:
     """Number of consecutive most-recent days where price stayed above the MA.
 
