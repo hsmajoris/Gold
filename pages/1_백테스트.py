@@ -817,46 +817,31 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
             "보유 중일 때만, Buy & Hold는 전체 기간) 발생합니다.",
         )
 
-# The actual widget for "기대수익률" is instantiated HERE, unconditionally,
-# rather than down in the ④ 신호전략(미보유기간 기대수익률 포함) group where its
-# value is displayed — because that group only renders after `simulate()`
-# (below) succeeds. A widget Streamlit doesn't instantiate in a given run has
-# its session_state entry cleared at the end of that run; if simulate() ever
-# raises (bad data, an edge-case parameter combo, a flaky refetch) and hits
-# st.stop() before reaching that group, the next successful run would find
-# the key missing and DEFAULTS.setdefault() would silently reset it back to
-# the 10% default — silently discarding whatever value the user had set,
-# with no error shown (confirmed via a Streamlit AppTest repro: forcing one
-# simulate() call to fail reverted a user-set 7.5% straight back to 10% on
-# the very next rerun, even though that rerun itself succeeded). Instantiating
-# it up here, before anything that can fail, means it always renders and its
-# value can never be silently wiped this way.
-bond_yield_pct = st.number_input(
-    "기대수익률 (연, %)",
-    min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
-    help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율로 운용했다고 "
-    "가정합니다(예: 채권 매입). 값을 바꾸면 아래 ④ 신호전략(미보유기간 기대수익률 포함) "
-    "그룹의 누적수익률·CAGR이 바로 재계산됩니다.",
-)
-bond_yield_pct = float(bond_yield_pct)
-
-refresh_label = (
-    "데이터 새로고침 (오늘 기준으로 다시 수집)"
-    if asof_years_ago == 0
-    else f"데이터 새로고침 ({as_of_date.isoformat()} 기준으로 다시 수집)"
-)
-refresh_clicked = st.button(refresh_label)
-
+# The "기대수익률" value is needed here (as simulate()'s bond_annual_yield)
+# before the widget that lets the user edit it gets rendered — that widget now
+# lives inside the ④ 신호전략(미보유기간 기대수익률 포함) group, right below its
+# CAGR metric, which only happens further down the script. Reading it out of
+# session_state directly (rather than calling st.number_input here) doesn't
+# instantiate a widget, so it has no effect on layout; it just gets this run's
+# already-current value (DEFAULTS' setdefault() above guarantees the key
+# exists). The actual st.number_input(key="bt_bond_yield_pct") call below is
+# reached on every run regardless of whether simulate() succeeds or fails
+# (see the "if result is not None" branching after the try/except) — it must
+# be, since a widget Streamlit doesn't instantiate in a given run has its
+# session_state entry cleared at the end of that run; if it were only reached
+# on the happy path and simulate() ever raised (bad data, an edge-case
+# parameter combo, a flaky refetch), the next successful run would find the
+# key missing and DEFAULTS.setdefault() would silently reset it back to the
+# 10% default (confirmed via a Streamlit AppTest repro: forcing one simulate()
+# call to fail reverted a user-set 7.5% straight back to 10% on the very next
+# rerun, even though that rerun itself succeeded).
+bond_yield_pct = float(st.session_state["bt_bond_yield_pct"])
 
 @st.cache_data(ttl=3600, show_spinner="데이터를 내려받는 중입니다...")
 def load_signals(as_of_iso: str, years: int, gold_price_basis: str) -> pd.DataFrame:
     return backtest.prepare_signals(
         as_of=date.fromisoformat(as_of_iso), years=years, gold_price_basis=gold_price_basis
     )
-
-
-if refresh_clicked:
-    st.cache_data.clear()
 
 
 def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
@@ -920,99 +905,125 @@ try:
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
-    st.stop()
+    result = None
+    result_gross = None
 
-m = result["metrics"]
-equity = result["equity_curve"]
-bh_equity = result["bh_equity_curve"]
-holding_curve = result["holding_curve"]
-hybrid_equity = result["hybrid_equity_curve"]
-yearly = result["yearly_returns"]
-trades = result["trades"]
+# `m` (and everything derived from `result`) stays None on failure rather than
+# calling st.stop() immediately — the "1. 요약 지표" section right below still
+# needs to render on every run (its ④ group hosts the "기대수익률" widget,
+# which must always be instantiated; see the comment above `bond_yield_pct`).
+# Only once that section has rendered does the page actually stop on failure
+# (see the "if result is None: st.stop()" guard right after it) — everything
+# past that point (chart, yearly bar chart, trade table) genuinely can't
+# render without `result`/`signals`.
+if result is not None:
+    m = result["metrics"]
+    equity = result["equity_curve"]
+    bh_equity = result["bh_equity_curve"]
+    holding_curve = result["holding_curve"]
+    hybrid_equity = result["hybrid_equity_curve"]
+    yearly = result["yearly_returns"]
+    trades = result["trades"]
 
-bh_equity_gross = result_gross["bh_equity_curve"]
-hybrid_equity_gross = result_gross["hybrid_equity_curve"]
+    bh_equity_gross = result_gross["bh_equity_curve"]
+    hybrid_equity_gross = result_gross["hybrid_equity_curve"]
 
-# 누적수익률 차트의 "신호강도(6/0·5/1·4/2)" 드롭다운 + 국면별 참여율 카드용 —
-# 현재 페이지의 다른 모든 설정(52주 트리거·매도·매수 노이즈필터 등)은 그대로 두고
-# green_count 매수/매도 임계값만 regime.THRESHOLD_PAIRS의 세 조합으로 바꿔가며
-# 같은 signals에 다시 돌린다(gold_dashboard/regime.py — 대시보드 핵심 요약
-# 문구도 같은 함수로 참여율을 계산하는 단일 소스). 참여율은 보유 여부만 보므로
-# 수수료 값 자체는 결과에 영향이 없다.
-_threshold_holding = regime.compute_threshold_holding(
-    signals,
-    **_shared_sim_kwargs,
-    buy_fee_pct=effective_buy_fee_pct,
-    sell_fee_pct=effective_sell_fee_pct,
-    daily_holding_fee_pct=effective_daily_holding_fee_pct,
-)
+    # 누적수익률 차트의 "신호강도(6/0·5/1·4/2)" 드롭다운 + 국면별 참여율 카드용 —
+    # 현재 페이지의 다른 모든 설정(52주 트리거·매도·매수 노이즈필터 등)은 그대로 두고
+    # green_count 매수/매도 임계값만 regime.THRESHOLD_PAIRS의 세 조합으로 바꿔가며
+    # 같은 signals에 다시 돌린다(gold_dashboard/regime.py — 대시보드 핵심 요약
+    # 문구도 같은 함수로 참여율을 계산하는 단일 소스). 참여율은 보유 여부만 보므로
+    # 수수료 값 자체는 결과에 영향이 없다.
+    _threshold_holding = regime.compute_threshold_holding(
+        signals,
+        **_shared_sim_kwargs,
+        buy_fee_pct=effective_buy_fee_pct,
+        sell_fee_pct=effective_sell_fee_pct,
+        daily_holding_fee_pct=effective_daily_holding_fee_pct,
+    )
 
-start_date = equity.index[0].date()
-end_date = equity.index[-1].date()
-st.caption(
-    f"분석 기간: **{start_date} ~ {end_date}** "
-    "(신호전략과 Buy & Hold 모두 이 기간의 첫날에 시작 — 동일 시작일 비교)"
-)
+    start_date = equity.index[0].date()
+    end_date = equity.index[-1].date()
+    st.caption(
+        f"분석 기간: **{start_date} ~ {end_date}** "
+        "(신호전략과 Buy & Hold 모두 이 기간의 첫날에 시작 — 동일 시작일 비교)"
+    )
+else:
+    m = None
 
 # ---- 1. 요약 지표 (설정 바로 아래에 배치 — 값을 바꿔가며 바로 확인) ----
 # 4개 그룹으로 묶어서 표시: ① 매매 개요 / ② Buy & Hold / ③ 신호전략(보유기간만) /
 # ④ 신호전략(미보유기간 기대수익률 포함, 기대수익률 입력도 이 그룹 안에 위치).
 st.subheader("요약 지표")
 holding_fraction = (
-    1.0 - m["non_holding_fraction"] if m["non_holding_fraction"] is not None else None
+    1.0 - m["non_holding_fraction"]
+    if m is not None and m["non_holding_fraction"] is not None
+    else None
 )
 
 overview_col, bh_col, strategy_held_col, strategy_hybrid_col = st.columns(4)
 with overview_col:
     st.markdown("###### ① 매매 개요")
-    st.metric("매매횟수", f"{m['closed_trade_count']}회")
+    st.metric("매매횟수", f"{m['closed_trade_count']}회" if m is not None else "-")
     st.metric(
         "보유기간",
         f"{holding_fraction:.1%}" if holding_fraction is not None else "-",
         help="분석 기간 전체(캘린더일 기준) 중 신호전략이 실제로 금을 보유하고 있던 기간의 비중.",
     )
-    st.metric("승률", f"{m['win_rate']:.1%}" if m["win_rate"] is not None else "-")
+    st.metric("승률", f"{m['win_rate']:.1%}" if m is not None and m["win_rate"] is not None else "-")
 with bh_col:
     st.markdown(f"###### ② {BH_LABEL}")
-    st.metric("누적수익률", f"{m['bh_total_return']:.1%}")
-    st.metric("연환산수익률(CAGR)", f"{m['bh_cagr']:.1%}")
+    st.metric("누적수익률", f"{m['bh_total_return']:.1%}" if m is not None else "-")
+    st.metric("연환산수익률(CAGR)", f"{m['bh_cagr']:.1%}" if m is not None else "-")
 with strategy_held_col:
     st.markdown(f"###### ③ {STRATEGY_LABEL} (보유기간)")
     st.metric(
         "누적수익률",
-        f"{m['strategy_total_return']:.1%}",
+        f"{m['strategy_total_return']:.1%}" if m is not None else "-",
         help="보유 기간에만 투자했다고 가정한 누적수익률(미보유 기간은 반영하지 않음).",
     )
     st.metric(
         "연환산수익률(CAGR)",
-        f"{m['strategy_cagr']:.1%}" if m["strategy_cagr"] is not None else "-",
+        f"{m['strategy_cagr']:.1%}" if m is not None and m["strategy_cagr"] is not None else "-",
         help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률(현금 보유 기간 제외).",
     )
 with strategy_hybrid_col:
     st.markdown(f"###### ④ {STRATEGY_LABEL} (미보유기간 기대수익률 포함)")
     st.metric(
         "누적수익률",
-        f"{m['hybrid_total_return']:.1%}" if m["hybrid_total_return"] is not None else "-",
+        f"{m['hybrid_total_return']:.1%}" if m is not None and m["hybrid_total_return"] is not None else "-",
         help="보유 기간엔 실제 금 수익률을, 미보유 기간엔 아래 '기대수익률'을 적용해 이어 붙인 "
         "전체 분석기간 기준 누적수익률입니다.",
     )
     st.metric(
         "연환산수익률(CAGR)",
-        f"{m['hybrid_cagr']:.1%}" if m["hybrid_cagr"] is not None else "-",
+        f"{m['hybrid_cagr']:.1%}" if m is not None and m["hybrid_cagr"] is not None else "-",
         help="위 누적수익률을 분석 기간 전체를 기준으로 연환산한 값입니다.",
     )
-    # The actual "기대수익률" widget lives above the try/except that runs
-    # simulate() (see the comment there for why) — this just echoes the value
-    # it's already set to, right next to the numbers it drives.
-    st.caption(f"기대수익률 가정: 연 {bond_yield_pct:g}% (⚙️ 고급 설정 아래에서 조정)")
-
-if m["has_open_position"]:
-    st.info(
-        "현재 포지션을 보유 중입니다. 마지막 거래는 미청산 상태이며, 위 수익률·아래 거래 내역에 "
-        "표시된 값은 오늘 종가 기준 평가손익입니다."
+    # Instantiated HERE, right below the CAGR it drives — reached on every
+    # run regardless of whether simulate() above succeeded (see the comment
+    # by this run's earlier plain session_state read of the same key, right
+    # before the try/except, for why that matters).
+    bond_yield_pct = st.number_input(
+        "기대수익률 (연, %)",
+        min_value=0.0, max_value=20.0, step=0.1, key="bt_bond_yield_pct",
+        help="신호가 없어 금을 보유하지 않는 기간 동안, 그 돈을 이 연이율로 운용했다고 "
+        "가정합니다(예: 채권 매입). 값을 바꾸면 이 그룹의 누적수익률·CAGR이 바로 "
+        "재계산됩니다.",
     )
-if m["strategy_cagr"] is None:
-    st.caption("ℹ️ 신호전략이 이 기간 동안 한 번도 매수 신호를 내지 않아 CAGR을 계산할 수 없습니다.")
+    bond_yield_pct = float(bond_yield_pct)
+
+if m is not None:
+    if m["has_open_position"]:
+        st.info(
+            "현재 포지션을 보유 중입니다. 마지막 거래는 미청산 상태이며, 위 수익률·아래 거래 내역에 "
+            "표시된 값은 오늘 종가 기준 평가손익입니다."
+        )
+    if m["strategy_cagr"] is None:
+        st.caption("ℹ️ 신호전략이 이 기간 동안 한 번도 매수 신호를 내지 않아 CAGR을 계산할 수 없습니다.")
+
+if result is None:
+    st.stop()
 
 # ---- 2. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
 st.subheader("누적수익률")
