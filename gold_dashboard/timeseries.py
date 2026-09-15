@@ -106,11 +106,32 @@ def fetch_backtest_frame(
 
     `gold_price_basis` selects what the "gold" column (used for every MA/trend
     filter/trigger/P&L computation) actually is — see fetch_gold_price_series.
+
+    Under the ② KRX basis, real_rate/dxy's date index is shifted forward one
+    calendar day before the join below (see the comment at that shift) to
+    correct a one-day look-ahead bias: FRED/Yahoo date real_rate/dxy by the US
+    trading day (session closes ~16-17:00 ET ≈ 06:00-07:00 KST the NEXT
+    calendar day), while KRX's gold-spot close is dated by the KST trading day
+    itself, which ends hours EARLIER the same day. Joining on identical date
+    labels without the shift would pair a US date-D observation with gold's
+    date-D KST close even though that US value isn't actually confirmed until
+    the morning of KST date D+1 (verified 2026-09-15 against a third-party
+    code review). Not applicable under the ① GC=F basis, since GC=F is itself
+    dated on the US trading calendar, same as real_rate/dxy — no cross-
+    timezone skew to correct there.
     """
     end_date = as_of or today_kst()
     real_rate = fetch_raw_series("real_rate", end_date, years=years, buffer_days=buffer_days)
     dxy = fetch_raw_series("dxy", end_date, years=years, buffer_days=buffer_days)
     gold = fetch_gold_price_series(end_date, years=years, buffer_days=buffer_days, basis=gold_price_basis)
+
+    if gold_price_basis == config.GOLD_PRICE_BASIS_KRX:
+        # A US date-D observation becomes usable starting KST date D+1; the
+        # ffill()-after-outer-join below then naturally carries it forward
+        # through any KST weekend/holiday gap to the next actual KST trading
+        # day, with no separate trading-calendar lookup needed.
+        real_rate = real_rate.set_axis(real_rate.index + timedelta(days=1))
+        dxy = dxy.set_axis(dxy.index + timedelta(days=1))
 
     df = pd.concat(
         [

@@ -246,11 +246,17 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
 
     df["gold_sma_long"] = metrics.compute_sma(df["gold"], LONG_TREND_WINDOW)
 
-    # shift(1) before the rolling max/min excludes today's own close from "the
-    # prior N days' high/low" — otherwise every day sitting at its own new
-    # high/low would trivially compare equal to (never above/below) that
-    # high/low, and no breakout could ever be flagged.
-    prior_52w = df["gold"].shift(1).rolling(f"{FIFTY_TWO_WEEK_WINDOW_DAYS}D", min_periods=1)
+    # closed="left" excludes today's own close from "the prior N days'
+    # high/low" — otherwise every day sitting at its own new high/low would
+    # trivially compare equal to (never above/below) that high/low, and no
+    # breakout could ever be flagged. Preferred over a plain .shift(1) before
+    # the rolling call (verified byte-identical against it on an irregular
+    # calendar) since shift(1) works in ROW-count terms before the offset
+    # window is applied, whereas closed="left" excludes exactly "today" in
+    # DATE terms directly within the same offset-window computation — no
+    # separate row-shift step whose edge behavior could in principle drift
+    # from the window's own date arithmetic.
+    prior_52w = df["gold"].rolling(f"{FIFTY_TWO_WEEK_WINDOW_DAYS}D", closed="left", min_periods=1)
     df["gold_new_52w_high"] = (df["gold"] > prior_52w.max()).fillna(False)
     df["gold_new_52w_low"] = (df["gold"] < prior_52w.min()).fillna(False)
     return df
@@ -722,6 +728,11 @@ def run_backtest(
             if exit_reason_today is not None:
                 exit_price = price
                 fee_factor = _daily_fee_decay((dt - entry_date).days, daily_holding_fee_pct)
+                # The equity level at the moment THIS trade opened (before its
+                # buy fee was deducted into equity_at_entry) — running_equity
+                # itself is never reassigned while holding, so it still holds
+                # exactly that value here, right before being overwritten below.
+                equity_before_trade = running_equity
                 # Sell-side transaction fee: an instant haircut on the
                 # proceeds, right as the position closes.
                 running_equity = (
@@ -736,7 +747,15 @@ def run_backtest(
                         "exit_price": exit_price,
                         "exit_reason": exit_reason_today,
                         "hold_days": (dt - entry_date).days,
-                        "period_return": exit_price / entry_price - 1.0,
+                        # Pure price-change return, ignoring every fee —
+                        # kept for anyone who wants the fee-free comparison.
+                        "gross_period_return": exit_price / entry_price - 1.0,
+                        # This trade's actual contribution to the equity curve
+                        # (buy fee + holding-fee decay + sell fee all
+                        # included) — win_rate below is computed from this,
+                        # not gross_period_return, so it matches what really
+                        # happened to the money.
+                        "net_period_return": running_equity / equity_before_trade - 1.0,
                         "open": False,
                     }
                 )
@@ -756,6 +775,7 @@ def run_backtest(
     if holding:
         last_dt = dates[-1]
         last_price = float(gold_arr[-1])
+        fee_factor = _daily_fee_decay((last_dt - entry_date).days, daily_holding_fee_pct)
         trades.append(
             {
                 "entry_date": entry_date,
@@ -765,10 +785,23 @@ def run_backtest(
                 "exit_price": last_price,
                 "exit_reason": None,
                 "hold_days": (last_dt - entry_date).days,
-                "period_return": last_price / entry_price - 1.0,
+                "gross_period_return": last_price / entry_price - 1.0,
+                # No sell fee here — unlike equity_values[-1] below (adjusted
+                # for metrics purposes only), this dict describes the actual,
+                # still-open position, which hasn't paid one.
+                "net_period_return": (equity_at_entry / running_equity) * (last_price / entry_price) * fee_factor
+                - 1.0,
                 "open": True,
             }
         )
+        # Metrics-only (strategy_total_return/strategy_cagr/MDD): treat an
+        # open position as if it were sold at this window's last close, the
+        # same "assume sold here" treatment already applied to Buy & Hold's
+        # own final value below — otherwise an open position looks
+        # artificially better than a closed one purely because it never paid
+        # an exit fee. Deliberately NOT reflected in the trade dict above
+        # (open/exit_date stay as the real, still-open state).
+        equity_values[-1] *= 1.0 - sell_fee_pct / 100.0
 
     if sell_noise_state is not None:
         # The backtest window ended before the episode ever resolved (sold or
@@ -844,12 +877,23 @@ def compute_metrics(trades: list[dict], equity_curve: pd.Series, bh_equity_curve
     bh_total_return = bh_final_equity - 1.0
     bh_cagr = bh_final_equity ** (365.25 / total_days) - 1.0 if total_days > 0 else None
 
-    running_max = equity_curve.cummax()
+    # .clip(lower=1.0): the running peak used for drawdown must never read
+    # below the true starting principal (1.0, before any fee), even before
+    # the realized curve first climbs back above it — otherwise a buy on the
+    # very first day (equity_curve.iloc[0] already net of the buy fee) makes
+    # cummax() start below 1.0, silently hiding that first-day fee-driven dip
+    # from the true principal as a drawdown. Once the curve legitimately
+    # exceeds 1.0, its own cummax() already exceeds this floor, so the clip
+    # is then a no-op.
+    running_max = equity_curve.cummax().clip(lower=1.0)
     drawdown = equity_curve / running_max - 1.0
     max_drawdown = float(drawdown.min())
 
+    # Based on net_period_return (fees included), not the pure price-change
+    # gross_period_return — a trade that "wins" on price but loses money
+    # once its buy/sell/holding fees are counted shouldn't count as a win.
     win_rate = (
-        sum(1 for t in closed_trades if t["period_return"] > 0) / len(closed_trades)
+        sum(1 for t in closed_trades if t["net_period_return"] > 0) / len(closed_trades)
         if closed_trades
         else None
     )
@@ -940,6 +984,15 @@ def compute_hybrid_cagr(
                 factor *= 1.0 - buy_fee_pct / 100.0
         hybrid_equity *= factor
         equity_values.append(hybrid_equity)
+
+    if bool(holding_arr[-1]):
+        # Mirror run_backtest()'s own end-of-window "assume sold here" sell-
+        # fee treatment for a position still open when the window ends (see
+        # its comment) — otherwise this curve would keep the "hybrid ==
+        # equity_curve when bond_annual_yield=0" invariant documented above
+        # from that other curve alone applying it and diverging from this one.
+        hybrid_equity *= 1.0 - sell_fee_pct / 100.0
+        equity_values[-1] = hybrid_equity
 
     hybrid_total_return = hybrid_equity - 1.0
     hybrid_cagr = hybrid_equity ** (365.25 / total_days) - 1.0 if total_days > 0 else None
@@ -1092,6 +1145,20 @@ def simulate(
     )
     hybrid_equity_curve = hybrid.pop("hybrid_equity_curve")
     metrics_out.update(hybrid)
+    # A same-denominator-as-B&H comparison point independent of the
+    # user-adjustable `bond_annual_yield` assumption above: identical to the
+    # ④ hybrid calculation, except non-holding days always compound at a flat
+    # 0% instead of `bond_annual_yield` — so, unlike ③ strategy_cagr (whose
+    # denominator is invested days only), this is directly comparable to
+    # bh_cagr (both span the FULL analysis period). Only the two scalars are
+    # kept (not its own equity curve) since nothing plots this separately —
+    # see 문서 수정 5 / TRADING_LOGIC.md for why this exists (③ vs B&H alone
+    # isn't a fair comparison; their denominators differ).
+    cash0 = compute_hybrid_cagr(
+        holding_curve, signals["gold"], 0.0, buy_fee_pct, sell_fee_pct, daily_holding_fee_pct
+    )
+    metrics_out["cash0_total_return"] = cash0["hybrid_total_return"]
+    metrics_out["cash0_cagr"] = cash0["hybrid_cagr"]
     # Matches the ④ 신호전략(기대수익률 포함) summary metric, not ③ — a year
     # spent entirely out of the market shows bond_annual_yield, not 0%. The
     # 유효성 검증 page's yearly bar chart can recompute this with the plain
