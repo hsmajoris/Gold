@@ -1145,20 +1145,6 @@ def simulate(
     )
     hybrid_equity_curve = hybrid.pop("hybrid_equity_curve")
     metrics_out.update(hybrid)
-    # A same-denominator-as-B&H comparison point independent of the
-    # user-adjustable `bond_annual_yield` assumption above: identical to the
-    # ④ hybrid calculation, except non-holding days always compound at a flat
-    # 0% instead of `bond_annual_yield` — so, unlike ③ strategy_cagr (whose
-    # denominator is invested days only), this is directly comparable to
-    # bh_cagr (both span the FULL analysis period). Only the two scalars are
-    # kept (not its own equity curve) since nothing plots this separately —
-    # see 문서 수정 5 / TRADING_LOGIC.md for why this exists (③ vs B&H alone
-    # isn't a fair comparison; their denominators differ).
-    cash0 = compute_hybrid_cagr(
-        holding_curve, signals["gold"], 0.0, buy_fee_pct, sell_fee_pct, daily_holding_fee_pct
-    )
-    metrics_out["cash0_total_return"] = cash0["hybrid_total_return"]
-    metrics_out["cash0_cagr"] = cash0["hybrid_cagr"]
     # Matches the ④ 신호전략(기대수익률 포함) summary metric, not ③ — a year
     # spent entirely out of the market shows bond_annual_yield, not 0%. The
     # 유효성 검증 page's yearly bar chart can recompute this with the plain

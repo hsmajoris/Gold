@@ -986,17 +986,7 @@ with strategy_held_col:
         "연환산수익률(CAGR)",
         f"{m['strategy_cagr']:.1%}" if m is not None and m["strategy_cagr"] is not None else "-",
         help="실제로 금을 보유했던 기간의 일수만 분모로 사용한 연환산수익률(현금 보유 기간 제외) "
-        "— 분모가 달라 Buy & Hold의 CAGR과 직접 비교할 수 없습니다. 같은 분모(분석 기간 전체)로 "
-        "비교하려면 바로 아래 'CAGR(전체기간, 미보유 0%)'를 참고하세요.",
-    )
-    st.metric(
-        "CAGR(전체기간, 미보유 0%)",
-        f"{m['cash0_cagr']:.1%}" if m is not None and m["cash0_cagr"] is not None else "-",
-        help="미보유 기간을 어떤 자산으로도 굴리지 않고 그냥 현금 0%로 둔, 분석 기간 전체를 "
-        "분모로 쓴 연환산수익률입니다 — Buy & Hold와 분모가 같아 그대로 나란히 비교할 수 있는 "
-        "값입니다. ④(기대수익률 포함)와는 미보유 기간에 대한 가정(0% vs 연 X%)만 다를 뿐, "
-        "어느 쪽이 더 보수적이라고 서열을 매기기보다는 서로 다른 질문에 답하는 별개의 수치로 "
-        "함께 참고하세요.",
+        "— 분모가 달라 Buy & Hold의 CAGR과 직접 비교할 수 없습니다.",
     )
 with strategy_hybrid_col:
     st.markdown(f"###### ④ {STRATEGY_LABEL} (미보유기간 기대수익률 포함)")
