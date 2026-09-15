@@ -465,6 +465,41 @@ BH_LABEL = "Buy & Hold"
 # 참여율 자동 계산 요구사항)와 공유하는 단일 소스로 관리한다 — 아래
 # `regime.REGIME_UPTREND` 등으로 참조.
 
+# The fee section's three inputs (매수/매도/보관) have different presets per
+# 종목 — KRX 금현물의 거래수수료·보관수수료(일률)는 backtest.py의 실측
+# 기본값 그대로이고, TIGER KRX금현물(ETF)은 거래소 매매수수료가 없는 대신(펀드
+# 안에서 실물을 사고파는 비용은 총보수에 녹아 있음) 매수/매도 수수료는 0%,
+# 보관수수료 자리에는 연 0.15% 총보수(펀드 보수)를 대신 입력받는다 — 이
+# 입력값은 연율이므로 simulate()에 넘기기 전에 일할 환산한다(아래 "종목"
+# 위젯 근처의 변환 로직 참고).
+GOLD_PRODUCT_KRX_SPOT = "KRX 금현물"
+GOLD_PRODUCT_TIGER_ETF = "TIGER KRX금현물(ETF)"
+GOLD_PRODUCT_OPTIONS = [GOLD_PRODUCT_KRX_SPOT, GOLD_PRODUCT_TIGER_ETF]
+PRODUCT_FEE_DEFAULTS = {
+    GOLD_PRODUCT_KRX_SPOT: dict(
+        buy_fee_pct=backtest.DEFAULT_BUY_FEE_PCT,
+        sell_fee_pct=backtest.DEFAULT_SELL_FEE_PCT,
+        holding_fee_input_pct=backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
+    ),
+    GOLD_PRODUCT_TIGER_ETF: dict(
+        buy_fee_pct=0.0,
+        sell_fee_pct=0.0,
+        holding_fee_input_pct=0.15,
+    ),
+}
+
+
+def _apply_gold_product_fee_defaults():
+    """on_change callback for the "종목" selectbox — resets the three fee
+    inputs to the newly-selected product's preset every time the selection
+    changes (callbacks run before the rerun that would otherwise instantiate
+    those number_input widgets with their now-stale session_state values)."""
+    defaults = PRODUCT_FEE_DEFAULTS[st.session_state["bt_gold_product"]]
+    st.session_state["bt_buy_fee_pct"] = defaults["buy_fee_pct"]
+    st.session_state["bt_sell_fee_pct"] = defaults["sell_fee_pct"]
+    st.session_state["bt_daily_holding_fee_pct"] = defaults["holding_fee_input_pct"]
+
+
 DEFAULTS = {
     "bt_years": backtest.BACKTEST_YEARS,
     "bt_asof_years_ago": 0,
@@ -481,6 +516,7 @@ DEFAULTS = {
     "bt_use_buy_daily_band_confirmation": backtest.DEFAULT_BUY_NOISE_USE_DAILY_BAND,
     "bt_buy_noise_filter_rise_pct": backtest.DEFAULT_BUY_NOISE_FILTER_RISE_PCT,
     "bt_apply_fees": True,
+    "bt_gold_product": GOLD_PRODUCT_KRX_SPOT,
     "bt_buy_fee_pct": backtest.DEFAULT_BUY_FEE_PCT,
     "bt_sell_fee_pct": backtest.DEFAULT_SELL_FEE_PCT,
     "bt_daily_holding_fee_pct": backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
@@ -572,11 +608,14 @@ with st.expander("전략 규칙 보기"):
   +6.05% ~ 21거래일차 +9.80%) 또는 D0+7일 고정 시점("매수 확인 상승률", 기본 5%) 중 하나로
   전환할 수 있습니다.
 - 고급 설정의 **수수료**(② KRX 금현물 선택 시에만 적용, ① 국제 금 시세에는 적용되지 않음)는
-  세 가지로 나뉩니다: **매수/매도 수수료**(각 기본 0.165%, 편도)는 매수·매도 체결이 일어날
-  때마다 그 시점에 1회성으로 차감되어 매매 횟수에 비례해 총액이 늘어나고, **보관수수료**
-  (기본 0.00022%, 일률)는 보유 잔량에 매일 누적됩니다(신호전략은 실제 보유 중일 때만, Buy &
-  Hold는 전체 기간). "수수료 반영" 체크박스로 전부 껐다 켤 수 있고, 차트에서는 이 값과
-  별개로 수수료 반영/미반영 곡선을 토글로 비교할 수 있습니다
+  **종목**(KRX 금현물 / TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의 기본값이 달라집니다.
+  KRX 금현물은 **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도 체결이 일어날 때마다
+  1회성으로 차감되어 매매 횟수에 비례해 총액이 늘어남)와 **보관수수료**(기본 0.00022%,
+  일률 — 보유 잔량에 매일 누적, 신호전략은 실제 보유 중일 때만·Buy & Hold는 전체 기간)로
+  나뉩니다. TIGER KRX금현물(ETF)은 거래소 매매수수료가 없다고 보아 매수/매도 수수료가
+  0%이고, 그 대신 같은 자리에 펀드의 **총보수**(기본 0.15%, 연율)를 입력받아 일할 복리
+  환산해 매일 잔량에 누적 적용합니다. "수수료 반영" 체크박스로 전부 껐다 켤 수 있고,
+  차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을 토글로 비교할 수 있습니다
 - 분석 기간: **{years}년** (1~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
   데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
   N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
@@ -778,6 +817,20 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
 
     st.markdown("**수수료** (② KRX 금현물 선택 시에만 적용 — ① 국제 금 시세는 실물이 아닌 "
                 "참고 가격이라 적용되지 않음)")
+    gold_product = st.selectbox(
+        "종목",
+        GOLD_PRODUCT_OPTIONS,
+        key="bt_gold_product",
+        on_change=_apply_gold_product_fee_defaults,
+        disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
+        help="KRX 금현물은 매수/매도 시 미래에셋증권 매매수수료(각 0.165%)와 보유 잔량에 "
+        "대한 일할 보관수수료가 부과됩니다. TIGER KRX금현물(ETF)은 거래소 매매수수료가 "
+        "없는 대신(펀드가 실물을 대신 사고파는 비용은 총보수에 이미 녹아 있음) 매수/매도 "
+        "수수료는 0%로, 보관수수료 자리에는 펀드의 연 총보수(기본값 0.15%)를 입력받아 "
+        "일할 환산해 반영합니다. 종목을 바꾸면 아래 세 수수료 입력값이 그 종목의 기본값으로 "
+        "재설정됩니다.",
+    )
+    _is_tiger_etf = gold_product == GOLD_PRODUCT_TIGER_ETF
     apply_fees = st.checkbox(
         "수수료 반영",
         key="bt_apply_fees",
@@ -792,30 +845,44 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
             "매수 수수료 (%, 편도)",
             min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_buy_fee_pct",
             disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-            help="매수 체결 시마다 그날 매수금액에 부과되는 1회성 수수료입니다(기본값 "
-            "0.165%, 미래에셋증권 KRX 금현물 매매수수료 기준). 보유기간과 무관하게 매수할 "
-            "때마다 매번 발생하므로, 매매 횟수가 많은 신호강도일수록 총액도 커집니다.",
+            help="매수 체결 시마다 그날 매수금액에 부과되는 1회성 수수료입니다(KRX 금현물 "
+            "기본값 0.165%, 미래에셋증권 KRX 금현물 매매수수료 기준 / TIGER KRX금현물(ETF) "
+            "기본값 0%, 거래소 매매수수료 없이 펀드 총보수로 대체). 보유기간과 무관하게 "
+            "매수할 때마다 매번 발생하므로, 매매 횟수가 많은 신호강도일수록 총액도 커집니다.",
         )
     with fee_sell_col:
         sell_fee_pct = st.number_input(
             "매도 수수료 (%, 편도)",
             min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_sell_fee_pct",
             disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-            help="매도 체결 시마다 그날 매도금액에 부과되는 1회성 수수료입니다(기본값 "
-            "0.165%). Buy & Hold는 분석기간 종료 시점에 전량 매도한다고 가정해 이 수수료를 "
-            "마지막 날 1회 반영합니다.",
+            help="매도 체결 시마다 그날 매도금액에 부과되는 1회성 수수료입니다(KRX 금현물 "
+            "기본값 0.165% / TIGER KRX금현물(ETF) 기본값 0%). Buy & Hold는 분석기간 종료 "
+            "시점에 전량 매도한다고 가정해 이 수수료를 마지막 날 1회 반영합니다.",
         )
     with fee_holding_col:
-        daily_holding_fee_pct = st.number_input(
-            "보관수수료 (%, 일률)",
-            min_value=0.0, max_value=1.0, step=0.00001, format="%.5f", key="bt_daily_holding_fee_pct",
-            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-            help="보유 잔량에 매일 부과되는 수수료입니다(기본값 0.00022%, 부가세 포함 추정치 "
-            "— 연율이 아니라 하루 치 요율입니다). 정확한 산정 주기(일할 계산 후 월초 청구 "
-            "vs. 월말 잔량 기준 월 1회 부과)가 아직 확인되지 않아, 우선 '매일 이 %만큼 "
-            "누적'으로 가정해 계산합니다. 매수/매도 수수료와 달리 실제 보유 기간에만(신호전략은 "
-            "보유 중일 때만, Buy & Hold는 전체 기간) 발생합니다.",
-        )
+        if _is_tiger_etf:
+            holding_fee_input_pct = st.number_input(
+                "총보수 (%, 연율)",
+                min_value=0.0, max_value=5.0, step=0.001, format="%.3f",
+                key="bt_daily_holding_fee_pct",
+                disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+                help="TIGER KRX금현물(ETF)의 연간 총보수입니다(기본값 0.15%). 매수/매도 "
+                "수수료와 달리 실제 보유 기간에만(신호전략은 보유 중일 때만, Buy & Hold는 "
+                "전체 기간) 발생하며, 계산 시에는 이 연율을 일할 복리 환산 "
+                "((1+연율)^(1/365)-1)해 하루 치 요율로 바꿔 매일 잔량에 누적 적용합니다.",
+            )
+        else:
+            holding_fee_input_pct = st.number_input(
+                "보관수수료 (%, 일률)",
+                min_value=0.0, max_value=1.0, step=0.00001, format="%.5f",
+                key="bt_daily_holding_fee_pct",
+                disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+                help="보유 잔량에 매일 부과되는 수수료입니다(기본값 0.00022%, 부가세 포함 "
+                "추정치 — 연율이 아니라 하루 치 요율입니다). 정확한 산정 주기(일할 계산 후 "
+                "월초 청구 vs. 월말 잔량 기준 월 1회 부과)가 아직 확인되지 않아, 우선 '매일 "
+                "이 %만큼 누적'으로 가정해 계산합니다. 매수/매도 수수료와 달리 실제 보유 "
+                "기간에만(신호전략은 보유 중일 때만, Buy & Hold는 전체 기간) 발생합니다.",
+            )
 
 # The "기대수익률" value is needed here (as simulate()'s bond_annual_yield)
 # before the widget that lets the user edit it gets rendered — that widget now
@@ -856,7 +923,14 @@ def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
 _fees_active = apply_fees and gold_price_basis == config.GOLD_PRICE_BASIS_KRX
 effective_buy_fee_pct = float(buy_fee_pct) if _fees_active else 0.0
 effective_sell_fee_pct = float(sell_fee_pct) if _fees_active else 0.0
-effective_daily_holding_fee_pct = float(daily_holding_fee_pct) if _fees_active else 0.0
+# TIGER KRX금현물(ETF)의 "총보수" 입력값은 연율이지만 backtest.simulate()의
+# daily_holding_fee_pct는 하루 치 요율이라는 계약이므로, 여기서만 일할 복리
+# 환산한다((1+연율)^(1/365)-1) — KRX 금현물은 원래부터 일률 입력이라 그대로 쓴다.
+if _is_tiger_etf:
+    _daily_holding_fee_pct = ((1.0 + float(holding_fee_input_pct) / 100.0) ** (1.0 / 365.0) - 1.0) * 100.0
+else:
+    _daily_holding_fee_pct = float(holding_fee_input_pct)
+effective_daily_holding_fee_pct = _daily_holding_fee_pct if _fees_active else 0.0
 
 # Shared by both the fee-adjusted ("net") and always-zero-fee ("gross") runs
 # below, AND by _threshold_holding's per-threshold reruns further down —
