@@ -482,6 +482,9 @@ DEFAULTS = {
     "bt_use_sell_noise_filter": True,
     "bt_use_daily_band_confirmation": backtest.DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     "bt_sell_noise_filter_drop_pct": backtest.DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
+    "bt_use_buy_noise_filter": True,
+    "bt_use_buy_daily_band_confirmation": backtest.DEFAULT_BUY_NOISE_USE_DAILY_BAND,
+    "bt_buy_noise_filter_rise_pct": backtest.DEFAULT_BUY_NOISE_FILTER_RISE_PCT,
     "bt_apply_fees": True,
     "bt_buy_fee_pct": backtest.DEFAULT_BUY_FEE_PCT,
     "bt_sell_fee_pct": backtest.DEFAULT_SELL_FEE_PCT,
@@ -577,6 +580,14 @@ with st.expander("전략 규칙 보기"):
   - **꺼짐**: D0+7일(역일 기준) 고정 시점의 종가만을 D0 종가와 비교합니다 — "매도 확인
     하락률"(기본 5%) 이상 낮으면 그날 매도, 그만큼 낮지 않으면 관찰모드를 해제하고 D0의 신호는
     없었던 것으로 처리합니다
+- 고급 설정의 **하락추세 중 매수신호 노이즈 필터** (기본값 ON)는 위 매도신호 노이즈 필터를
+  방향만 반대로 완전히 대칭시킨 조건입니다. 매수신호(green_count·재진입·52주 신고가 갱신
+  무엇이든)가 실제로 체결되기 직전에 개입하며, 그날(D0) 종가가 180일(역일) 이동평균보다 5%
+  이상 낮을 때만 작동합니다(그 이상이면 이 필터 없이 항상 그대로 즉시 매수). 작동하면 D0의
+  매수신호는 무시하고 미보유 상태를 유지하며 관찰을 시작합니다. 확인 방식도 매도 쪽과
+  동일하게 **매수 확인 - 매일 갱신 2시그마 밴드**(기본 ON, 하락 대신 상승 기준 — 8거래일차
+  +6.05% ~ 21거래일차 +9.80%) 또는 D0+7일 고정 시점("매수 확인 상승률", 기본 5%) 중 하나로
+  전환할 수 있습니다.
 - 고급 설정의 **수수료**(② KRX 금현물 선택 시에만 적용, ① 국제 금 시세에는 적용되지 않음)는
   세 가지로 나뉩니다: **매수/매도 수수료**(각 기본 0.165%, 편도)는 매수·매도 체결이 일어날
   때마다 그 시점에 1회성으로 차감되어 매매 횟수에 비례해 총액이 늘어나고, **보관수수료**
@@ -725,6 +736,40 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 · 단기 재진입 
             "(green_count·재진입 조건과 무관하게 추가로 작동, 둘 중 아무거나 먼저 만족해도 "
             "매수). 재진입 빈도 제한과 달리 이 트리거에는 자체 쿨다운이 없어 신고가를 "
             "경신할 때마다(단, 이미 보유 중이면 매수를 다시 하지 않음) 작동합니다.",
+        )
+        use_buy_noise_filter = st.checkbox(
+            "하락추세 중 매수신호 노이즈 필터 (180일선 -5% 이하)",
+            key="bt_use_buy_noise_filter",
+            help="아래 '상승추세 중 매도신호 노이즈 필터'를 매수 쪽에 그대로 대칭시킨 조건입니다. "
+            "매수신호가 발생한 날(D0) 종가가 180일 이동평균보다 "
+            f"{backtest.DEFAULT_BUY_NOISE_FILTER_BUFFER_PCT:g}% 이상 낮을 때만 작동합니다(그 이상이면 "
+            "이 필터와 무관하게 항상 즉시 매수). 켜두면: D0의 매수신호는 무시하고 미보유를 유지하며, "
+            "아래 '매수 확인 - 매일 갱신 2시그마 밴드' 설정에 따라 매일 확대되는 밴드(기본) 또는 "
+            f"D0+{backtest.BUY_NOISE_FILTER_WINDOW_DAYS}일(역일 기준) 고정 시점(끄면) 방식으로 매수 "
+            "여부를 확인합니다. 관찰 기간 중 추가로 뜨는 매수신호는 매수 여부에 전혀 영향을 주지 "
+            "않고 참고 기록으로만 남습니다. 끄면 매수 신호가 뜨는 즉시 항상 매수합니다.",
+        )
+        use_buy_daily_band_confirmation = st.checkbox(
+            "매수 확인 - 매일 갱신 2시그마 밴드",
+            key="bt_use_buy_daily_band_confirmation",
+            disabled=not use_buy_noise_filter,
+            help="켜두면(기본값): 관찰 시작(D0) 후 1~7거래일은 상승폭과 무관하게 무조건 보류합니다"
+            "(며칠 새 등락은 랜덤워크 노이즈일 확률이 커서 판단하지 않음). 8~21거래일차(3주)까지는 "
+            "매일, 그날까지 경과한 거래일수의 제곱근에 비례해 넓어지는 확인 밴드(√t 법칙, 2시그마 "
+            "— 매도 필터와 동일한 공식·수치)를 계산해, D0 종가 대비 그날의 밴드만큼(또는 그 이상) "
+            "상승한 첫날 즉시 매수합니다. 21거래일 동안 한 번도 밴드에 도달하지 못하면 관찰을 "
+            "종료하고 D0의 신호는 없었던 것으로 처리합니다. 끄면: 아래 '매수 확인 상승률'을 사용하는 "
+            "기존 방식(D0+7일 고정 시점 확인)으로 동작합니다.",
+        )
+        buy_noise_filter_rise_pct = st.number_input(
+            "매수 확인 상승률 (%, D0 대비 D0+7일 — 위 2시그마 밴드가 꺼져 있을 때만 사용)",
+            min_value=0.0, max_value=50.0, step=0.5, key="bt_buy_noise_filter_rise_pct",
+            disabled=not use_buy_noise_filter or use_buy_daily_band_confirmation,
+            help="위 '매수 확인 - 매일 갱신 2시그마 밴드'가 꺼져 있을 때만 작동하는 고정 방식 "
+            "설정입니다. D0+7일 종가가 D0 종가보다 이 %만큼(또는 그 이상) 높아야만 매수를 "
+            "실행합니다(예: 5이면 5% 이상 상승해야 매수, 살짝만 오른 경우는 대세 하락장으로 보고 "
+            "관찰모드를 해제해 계속 미보유). 0으로 두면 이전처럼 '조금이라도 높으면 매수'와 "
+            "동일해집니다.",
         )
 
     with adv_sell_col:
@@ -901,6 +946,9 @@ _shared_sim_kwargs = dict(
     use_sell_noise_filter=use_sell_noise_filter,
     use_daily_band_confirmation=use_daily_band_confirmation,
     sell_noise_filter_drop_pct=float(sell_noise_filter_drop_pct),
+    use_buy_noise_filter=use_buy_noise_filter,
+    use_buy_daily_band_confirmation=use_buy_daily_band_confirmation,
+    buy_noise_filter_rise_pct=float(buy_noise_filter_rise_pct),
 )
 
 try:
