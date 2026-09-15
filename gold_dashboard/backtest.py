@@ -120,11 +120,28 @@ DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER = True
 # of selling immediately.
 DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT = 5.0
 
-# Exit confirmation, method ① (default) — "매일 갱신 2시그마 밴드": every
+# Buy-signal noise filter — the exact mirror image of the sell-signal filter
+# above, direction flipped: while gold is well BELOW its LONG_TREND_WINDOW-day
+# (calendar) SMA (a possible sign a buy signal is a bounce in an ongoing
+# downtrend rather than a genuine reversal), a qualifying buy signal is
+# ignored and a 7-calendar-day "wait and see" period starts instead of buying
+# immediately. Shares the exact same √t-band derivation as the sell filter
+# (see NOISE_BAND_* below) — only the confirmation direction (a further RISE
+# instead of a further drop) differs. See run_backtest's docstring for the
+# exact mechanism.
+# Entry gate: how far below the LONG_TREND_WINDOW-day SMA gold's close must
+# be (on the day a buy signal fires) for the filter to engage at all instead
+# of buying immediately.
+DEFAULT_BUY_NOISE_FILTER_BUFFER_PCT = 5.0
+
+# Exit/entry confirmation, method ① (default) — "매일 갱신 2시그마 밴드": every
 # trading day of the observation window gets its OWN, wider confirmation
 # threshold instead of one fixed checkpoint, because a real multi-week
-# decline should be allowed to clear a wider band the longer it's had to
+# move should be allowed to clear a wider band the longer it's had to
 # develop, while a single-day air-pocket has to clear a much tighter one.
+# Shared, direction-agnostic math for BOTH the sell- and buy-signal noise
+# filters (only the comparison direction differs — see noise_band_pct and
+# run_backtest).
 #
 # Derivation (√t rule for a random walk's cumulative volatility):
 #   daily_vol   = monthly_vol / sqrt(trading_days_per_month)
@@ -139,41 +156,48 @@ DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT = 5.0
 #   band(14) = 2 * 1.0694% * sqrt(14) =  8.00%
 #   band(21) = 2 * 1.0694% * sqrt(21) =  9.80%  (= 2 * monthly_vol exactly,
 #              since sqrt(21) cancels the /sqrt(21) above)
-# A sell actually executes the first day the close is at or below
-# `d0_close * (1 - band(t))`. If no day in 1..SELL_NOISE_BAND_MAX_TRADING_DAYS
-# reaches its own band, the episode is released unsold (D0 is discarded, as
-# if that first candidate never happened).
+# A sell/buy actually executes the first day the close is at or beyond
+# `d0_close * (1 -/+ band(t))`. If no day in 1..NOISE_BAND_MAX_TRADING_DAYS
+# reaches its own band, the episode is released (D0 is discarded, as if that
+# first candidate never happened).
 #
-# The band is never even checked for the first SELL_NOISE_BAND_MIN_CHECK_DAY-1
+# The band is never even checked for the first NOISE_BAND_MIN_CHECK_DAY-1
 # trading days: over a handful of days, plain random-walk noise has a
-# non-trivial chance of producing a drop that looks significant purely by
+# non-trivial chance of producing a move that looks significant purely by
 # chance, so days 1..(MIN_CHECK_DAY-1) hold unconditionally no matter how far
 # price has moved, and only day MIN_CHECK_DAY through MAX_TRADING_DAYS are
 # actually evaluated against their band.
 DEFAULT_SELL_NOISE_USE_DAILY_BAND = True
-SELL_NOISE_BAND_SIGMA_MULTIPLIER = 2.0
-SELL_NOISE_BAND_MONTHLY_VOL_PCT = 4.9  # gold's ~30-year historical monthly volatility
-SELL_NOISE_BAND_TRADING_DAYS_PER_MONTH = 21
-SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS = 8  # first day the band is actually checked
-SELL_NOISE_BAND_MAX_TRADING_DAYS = 21  # observation window cap (~3 weeks)
+DEFAULT_BUY_NOISE_USE_DAILY_BAND = True
+NOISE_BAND_SIGMA_MULTIPLIER = 2.0
+NOISE_BAND_MONTHLY_VOL_PCT = 4.9  # gold's ~30-year historical monthly volatility
+NOISE_BAND_TRADING_DAYS_PER_MONTH = 21
+NOISE_BAND_MIN_CHECK_TRADING_DAYS = 8  # first day the band is actually checked
+NOISE_BAND_MAX_TRADING_DAYS = 21  # observation window cap (~3 weeks)
 
-# Exit confirmation, method ② (legacy, used when the checkbox above is OFF)
-# — a single fixed checkpoint at D0+7 calendar days, sell only if the close
-# then is at least DEFAULT_SELL_NOISE_FILTER_DROP_PCT% below D0's close.
+# Confirmation, method ② (legacy, used when the checkbox above is OFF) — a
+# single fixed checkpoint at D0+7 calendar days: sell only if the close then
+# is at least DEFAULT_SELL_NOISE_FILTER_DROP_PCT% below D0's close, or (buy
+# side) buy only if it's at least DEFAULT_BUY_NOISE_FILTER_RISE_PCT% above
+# D0's close.
 SELL_NOISE_FILTER_WINDOW_DAYS = 7
+BUY_NOISE_FILTER_WINDOW_DAYS = 7
 DEFAULT_SELL_NOISE_FILTER_DROP_PCT = 5.0
+DEFAULT_BUY_NOISE_FILTER_RISE_PCT = 5.0
 
 
-def sell_noise_band_pct(elapsed_trading_days: int) -> float:
+def noise_band_pct(elapsed_trading_days: int) -> float:
     """The method-① confirmation threshold (as a fraction, e.g. 0.0214 for
     2.14%) for a D0+`elapsed_trading_days`-trading-day check — see the
-    derivation above DEFAULT_SELL_NOISE_USE_DAILY_BAND. `elapsed_trading_days`
-    counts trading days (rows in the signal frame), not calendar days: the
-    30-year monthly volatility was itself de-annualized by
-    sqrt(SELL_NOISE_BAND_TRADING_DAYS_PER_MONTH), so scaling by calendar days
+    derivation above DEFAULT_SELL_NOISE_USE_DAILY_BAND. Shared by both the
+    sell- and buy-signal noise filters (identical math; only the direction
+    the caller compares against differs). `elapsed_trading_days` counts
+    trading days (rows in the signal frame), not calendar days: the 30-year
+    monthly volatility was itself de-annualized by
+    sqrt(NOISE_BAND_TRADING_DAYS_PER_MONTH), so scaling by calendar days
     (which include non-trading weekends) would overstate the band."""
-    daily_vol_pct = SELL_NOISE_BAND_MONTHLY_VOL_PCT / (SELL_NOISE_BAND_TRADING_DAYS_PER_MONTH ** 0.5)
-    return SELL_NOISE_BAND_SIGMA_MULTIPLIER * daily_vol_pct * (elapsed_trading_days ** 0.5) / 100.0
+    daily_vol_pct = NOISE_BAND_MONTHLY_VOL_PCT / (NOISE_BAND_TRADING_DAYS_PER_MONTH ** 0.5)
+    return NOISE_BAND_SIGMA_MULTIPLIER * daily_vol_pct * (elapsed_trading_days ** 0.5) / 100.0
 
 # Default assumed annual yield for the "미보유기간 채권투자 가정" hybrid CAGR
 # below. Adjustable per-run via simulate()'s bond_annual_yield argument.
@@ -372,10 +396,14 @@ def run_backtest(
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
+    use_buy_noise_filter: bool = True,
+    buy_noise_filter_buffer_pct: float = DEFAULT_BUY_NOISE_FILTER_BUFFER_PCT,
+    use_buy_daily_band_confirmation: bool = DEFAULT_BUY_NOISE_USE_DAILY_BAND,
+    buy_noise_filter_rise_pct: float = DEFAULT_BUY_NOISE_FILTER_RISE_PCT,
     buy_fee_pct: float = 0.0,
     sell_fee_pct: float = 0.0,
     daily_holding_fee_pct: float = 0.0,
-) -> tuple[list[dict], pd.Series, pd.Series, pd.Series, list[dict]]:
+) -> tuple[list[dict], pd.Series, pd.Series, pd.Series, list[dict], list[dict]]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
     Every trigger fills immediately at its own signal day's close — there is
@@ -431,14 +459,14 @@ def run_backtest(
     change or restart D0. Confirmation happens one of two ways:
 
     - **Method ① — daily band, `use_daily_band_confirmation=True` (default)**:
-      days t = 1..`SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS - 1` after D0 are
+      days t = 1..`NOISE_BAND_MIN_CHECK_TRADING_DAYS - 1` after D0 are
       never checked at all (too short a window for a drop to mean anything
       beyond random-walk noise) — the position just holds regardless of price.
-      From t = `SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS` through
-      `SELL_NOISE_BAND_MAX_TRADING_DAYS`, every trading day's close is compared
+      From t = `NOISE_BAND_MIN_CHECK_TRADING_DAYS` through
+      `NOISE_BAND_MAX_TRADING_DAYS`, every trading day's close is compared
       against a confirmation band that widens with `sqrt(t)` — see
-      `sell_noise_band_pct()` for the exact derivation. The first day the
-      close is at or below `d0_close * (1 - sell_noise_band_pct(t))`, the
+      `noise_band_pct()` for the exact derivation. The first day the
+      close is at or below `d0_close * (1 - noise_band_pct(t))`, the
       position sells that day. If no day through the window's end reaches its
       own band, the episode is released unsold and D0 is discarded, as if
       that first candidate never happened — the next qualifying signal starts
@@ -455,6 +483,37 @@ def run_backtest(
     during the episode, D0 included) as a reference-only stat that never
     affects the sell decision itself.
 
+    Buy-signal noise filter (`use_buy_noise_filter`, on by default,
+    independent of everything above): the EXACT mirror of the sell-signal
+    noise filter, direction flipped — applies to any buy signal (green_count,
+    reentry, or 52-week new-high) that fires on a day gold's close (D0) is
+    more than `buy_noise_filter_buffer_pct`% BELOW its LONG_TREND_WINDOW-day
+    calendar SMA (`gold_sma_long`) — i.e. still in a clear downtrend, where an
+    isolated buy signal is more likely a dead-cat bounce than a genuine
+    reversal. Below that buffer (i.e. not deep enough under the SMA), every
+    buy signal executes immediately exactly as if this filter didn't exist.
+    Beyond it, the signal is ignored (stays flat) and an observation episode
+    starts, recording D0's date and close price. New qualifying buy signals
+    that fire while an episode is already open are recorded for reference
+    only — they never change or restart D0. Confirmation mirrors the sell
+    side exactly, just checking for a RISE instead of a drop:
+
+    - **Method ① — daily band, `use_buy_daily_band_confirmation=True`
+      (default)**: same `NOISE_BAND_MIN_CHECK_TRADING_DAYS`/
+      `NOISE_BAND_MAX_TRADING_DAYS` window and `noise_band_pct()` band widths
+      as the sell side. The first day the close is at or above
+      `d0_close * (1 + noise_band_pct(t))`, the position buys that day. If no
+      day through the window's end reaches its own band, the episode is
+      released unbought and D0 is discarded.
+    - **Method ② — fixed D0+7, `use_buy_daily_band_confirmation=False`**: a
+      single checkpoint at D0+`BUY_NOISE_FILTER_WINDOW_DAYS` calendar days.
+      Buys there only if that close is at least `buy_noise_filter_rise_pct`%
+      above D0's close; otherwise released unbought, same as method ①.
+
+    Every completed buy-filter episode is recorded in the returned
+    `buy_noise_log`, in the same shape as `sell_noise_log` (see its return-
+    value description below, with "sold"/"drop" replaced by "bought"/"rise").
+
     `buy_fee_pct`/`sell_fee_pct`: a one-time % of the traded notional charged
     exactly at the moment of that fill — `buy_fee_pct` is applied to
     `equity_at_entry` the instant a position opens (so it also covers a
@@ -470,20 +529,23 @@ def run_backtest(
     reproduces pre-fee behavior exactly.
 
     Returns (trades, equity_curve, bh_equity_curve, holding_curve,
-    sell_noise_log). Both equity curves start at 1.0 on the first date. The
-    strategy curve is flat (1.0x, i.e. 0% return) while in cash and compounds
-    only through held periods (net of the holding fee, if any); the Buy &
-    Hold curve is always invested from that same first date (also net of the
-    holding fee). holding_curve is a same-index boolean Series (True =
-    holding gold that day), used by compute_hybrid_cagr() to build the
-    "미보유기간 채권투자 가정" hybrid equity curve. sell_noise_log is a list of
-    dicts, one per completed/released noise-filter episode: {d0_date,
+    sell_noise_log, buy_noise_log). Both equity curves start at 1.0 on the
+    first date. The strategy curve is flat (1.0x, i.e. 0% return) while in
+    cash and compounds only through held periods (net of the holding fee, if
+    any); the Buy & Hold curve is always invested from that same first date
+    (also net of the holding fee). holding_curve is a same-index boolean
+    Series (True = holding gold that day), used by compute_hybrid_cagr() to
+    build the "미보유기간 채권투자 가정" hybrid equity curve. sell_noise_log is a
+    list of dicts, one per completed/released noise-filter episode: {d0_date,
     d0_price, check_date (the resolving trading day, once known),
     check_price (None until resolved), elapsed_trading_days (None under
     method ②), band_pct (the method-① confirmation threshold that applied at
     resolution, None under method ②), occurrence_count (signals within the
     episode, D0 included), outcome ("sold_on_drop" | "released_no_drop" |
-    "unresolved_at_window_end"), sold_date (None unless sold)}.
+    "unresolved_at_window_end"), sold_date (None unless sold)}. buy_noise_log
+    is the exact same shape, for the buy-side filter, with the corresponding
+    fields named "bought_date" and outcomes "bought_on_rise" |
+    "released_no_rise" | "unresolved_at_window_end".
     """
     dates = signals.index
     gold = signals["gold"]
@@ -516,6 +578,10 @@ def run_backtest(
     # (method ② fixed checkpoint)} while an episode is open, else None.
     sell_noise_state = None
     sell_noise_log: list[dict] = []
+    # Exact mirror of sell_noise_state/sell_noise_log for the buy side (see
+    # the buy-signal noise filter section of this function's docstring).
+    buy_noise_state = None
+    buy_noise_log: list[dict] = []
     trades: list[dict] = []
     equity_values = []
     holding_values = []
@@ -538,17 +604,125 @@ def run_backtest(
             # fires every time it's true and we're not already holding.
             new_high_ready = use_new_high_trigger and bool(new_high_trigger_arr[i])
 
-            entry_reason_today = None
+            raw_entry_reason_today = None
             if reentry_ready or new_high_ready or gc >= buy_green_count:
-                entry_reason_today = _buy_reason(
+                raw_entry_reason_today = _buy_reason(
                     gc,
                     buy_green_count,
                     include_reentry=reentry_ready,
                     long_trend_buffer_pct=long_trend_buffer_pct,
                     include_new_high=new_high_ready,
                 )
+                # The cooldown clock tracks when the underlying reentry
+                # condition FIRED, not when a buy actually executes — the
+                # buy-signal noise filter below may defer execution, but that
+                # shouldn't reset/extend this trigger's own cooldown.
                 if reentry_ready:
                     last_reentry_fire_date = dt
+
+            # Buy-signal noise filter. Exact mirror of the sell-signal noise
+            # filter below (see this function's docstring) — two mutually
+            # exclusive cases:
+            # - An episode is already open: today's own signal, if any, is
+            #   recorded for reference only and never affects the outcome by
+            #   itself — resolution instead follows whichever method was
+            #   locked in at "use_daily_band" when the episode opened.
+            # - No episode is open: a qualifying signal today (in the
+            #   downtrend zone) starts a fresh one instead of buying
+            #   immediately.
+            entry_reason_today = None
+            if buy_noise_state is not None:
+                if raw_entry_reason_today is not None:
+                    buy_noise_state["occurrence_dates"].append(dt)
+                # suppressed unconditionally while an episode is open
+
+                d0_date = buy_noise_state["d0_date"]
+                d0_price = buy_noise_state["d0_price"]
+                resolved = False
+                bought = False
+                band_pct = None
+                elapsed_trading_days = None
+
+                if buy_noise_state["use_daily_band"]:
+                    # Method ①: every trading day since D0 gets its own,
+                    # progressively wider confirmation band (see
+                    # noise_band_pct's derivation above), but the first
+                    # NOISE_BAND_MIN_CHECK_TRADING_DAYS-1 days are never even
+                    # checked (too short a window for a rise to mean anything
+                    # beyond random-walk noise).
+                    elapsed_trading_days = buy_noise_state["elapsed_trading_days"] + 1
+                    buy_noise_state["elapsed_trading_days"] = elapsed_trading_days
+                    if elapsed_trading_days >= NOISE_BAND_MIN_CHECK_TRADING_DAYS:
+                        band_pct = noise_band_pct(elapsed_trading_days)
+                        price_rose = price >= d0_price * (1.0 + band_pct)
+                    else:
+                        band_pct = None
+                        price_rose = False
+                    if price_rose:
+                        resolved = True
+                        bought = True
+                    elif elapsed_trading_days >= NOISE_BAND_MAX_TRADING_DAYS:
+                        resolved = True
+                        bought = False
+                else:
+                    # Method ② (legacy): a single fixed checkpoint at D0+7
+                    # calendar days, buy only if today's close cleared the
+                    # flat rise threshold.
+                    if dt >= buy_noise_state["check_date"]:
+                        resolved = True
+                        bought = price >= d0_price * (1.0 + buy_noise_filter_rise_pct / 100.0)
+
+                if resolved:
+                    occurrence_dates = buy_noise_state["occurrence_dates"]
+                    occurrence_count = len(occurrence_dates)
+                    outcome = "bought_on_rise" if bought else "released_no_rise"
+                    buy_noise_log.append(
+                        {
+                            "d0_date": d0_date,
+                            "d0_price": d0_price,
+                            "check_date": dt,
+                            "check_price": price,
+                            "elapsed_trading_days": elapsed_trading_days,
+                            "band_pct": band_pct,
+                            "occurrence_count": occurrence_count,
+                            "outcome": outcome,
+                            "bought_date": dt if bought else None,
+                        }
+                    )
+                    if bought:
+                        base_reason = _buy_reason(gc, buy_green_count) or "관찰모드 종료"
+                        rise_actual_pct = (price / d0_price - 1.0) * 100.0
+                        if band_pct is not None:
+                            entry_reason_today = (
+                                f"{base_reason} (매수노이즈필터: D0={d0_date.date()} 종가 {d0_price:g} 대비 "
+                                f"{elapsed_trading_days}거래일차 종가 {price:g}, {rise_actual_pct:.1f}% 상승"
+                                f"[{band_pct * 100:.2f}%↑ 밴드 도달] → 매수)"
+                            )
+                        else:
+                            entry_reason_today = (
+                                f"{base_reason} (매수노이즈필터: D0={d0_date.date()} 종가 {d0_price:g} 대비 "
+                                f"D0+7일 종가 {price:g}, {rise_actual_pct:.1f}% 상승[{buy_noise_filter_rise_pct:g}%"
+                                "↑ 조건 충족] → 매수)"
+                            )
+                    buy_noise_state = None
+            elif raw_entry_reason_today is not None:
+                sma_long_today = gold_sma_long_arr[i]
+                in_downtrend_zone = (
+                    use_buy_noise_filter
+                    and not pd.isna(sma_long_today)
+                    and price < sma_long_today * (1.0 - buy_noise_filter_buffer_pct / 100.0)
+                )
+                if in_downtrend_zone:
+                    buy_noise_state = {
+                        "d0_date": dt,
+                        "d0_price": price,
+                        "use_daily_band": use_buy_daily_band_confirmation,
+                        "elapsed_trading_days": 0,
+                        "check_date": dt + timedelta(days=BUY_NOISE_FILTER_WINDOW_DAYS),
+                        "occurrence_dates": [dt],
+                    }
+                else:
+                    entry_reason_today = raw_entry_reason_today
 
             if entry_reason_today is not None:
                 holding = True
@@ -597,14 +771,14 @@ def run_backtest(
                 if sell_noise_state["use_daily_band"]:
                     # Method ①: every trading day since D0 gets its own,
                     # progressively wider confirmation band (see
-                    # sell_noise_band_pct's derivation above), but the first
-                    # SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS-1 days are never
+                    # noise_band_pct's derivation above), but the first
+                    # NOISE_BAND_MIN_CHECK_TRADING_DAYS-1 days are never
                     # even checked (too short a window for a drop to mean
                     # anything beyond random-walk noise).
                     elapsed_trading_days = sell_noise_state["elapsed_trading_days"] + 1
                     sell_noise_state["elapsed_trading_days"] = elapsed_trading_days
-                    if elapsed_trading_days >= SELL_NOISE_BAND_MIN_CHECK_TRADING_DAYS:
-                        band_pct = sell_noise_band_pct(elapsed_trading_days)
+                    if elapsed_trading_days >= NOISE_BAND_MIN_CHECK_TRADING_DAYS:
+                        band_pct = noise_band_pct(elapsed_trading_days)
                         price_dropped = price <= d0_price * (1.0 - band_pct)
                     else:
                         band_pct = None
@@ -612,7 +786,7 @@ def run_backtest(
                     if price_dropped:
                         resolved = True
                         sold = True
-                    elif elapsed_trading_days >= SELL_NOISE_BAND_MAX_TRADING_DAYS:
+                    elif elapsed_trading_days >= NOISE_BAND_MAX_TRADING_DAYS:
                         resolved = True
                         sold = False
                 else:
@@ -746,6 +920,26 @@ def run_backtest(
             }
         )
 
+    if buy_noise_state is not None:
+        # Mirror of the sell_noise_state handling above: the backtest window
+        # ended before the episode ever resolved (bought or released).
+        occurrence_dates = buy_noise_state["occurrence_dates"]
+        buy_noise_log.append(
+            {
+                "d0_date": buy_noise_state["d0_date"],
+                "d0_price": buy_noise_state["d0_price"],
+                "check_date": None,
+                "check_price": None,
+                "elapsed_trading_days": (
+                    buy_noise_state["elapsed_trading_days"] if buy_noise_state["use_daily_band"] else None
+                ),
+                "band_pct": None,
+                "occurrence_count": len(occurrence_dates),
+                "outcome": "unresolved_at_window_end",
+                "bought_date": None,
+            }
+        )
+
     equity_curve = pd.Series(equity_values, index=dates, name="strategy_equity")
     # Buy & Hold holds continuously from the first date, so the holding fee
     # compounds over each row's elapsed calendar days since the very start
@@ -760,7 +954,7 @@ def run_backtest(
     bh_equity_curve = bh_equity_curve.rename("bh_equity")
     bh_equity_curve.iloc[-1] *= 1.0 - sell_fee_pct / 100.0
     holding_curve = pd.Series(holding_values, index=dates, name="holding")
-    return trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log
+    return trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log, buy_noise_log
 
 
 def compute_metrics(trades: list[dict], equity_curve: pd.Series, bh_equity_curve: pd.Series) -> dict:
@@ -996,13 +1190,17 @@ def simulate(
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
+    use_buy_noise_filter: bool = True,
+    buy_noise_filter_buffer_pct: float = DEFAULT_BUY_NOISE_FILTER_BUFFER_PCT,
+    use_buy_daily_band_confirmation: bool = DEFAULT_BUY_NOISE_USE_DAILY_BAND,
+    buy_noise_filter_rise_pct: float = DEFAULT_BUY_NOISE_FILTER_RISE_PCT,
     buy_fee_pct: float = 0.0,
     sell_fee_pct: float = 0.0,
     daily_holding_fee_pct: float = 0.0,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
     prepared signals and derive trades/equity curves/metrics/yearly returns."""
-    trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log = run_backtest(
+    trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log, buy_noise_log = run_backtest(
         signals,
         use_reentry_trigger=use_reentry_trigger,
         use_reentry_freq_limit=use_reentry_freq_limit,
@@ -1017,6 +1215,10 @@ def simulate(
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
         use_daily_band_confirmation=use_daily_band_confirmation,
         sell_noise_filter_drop_pct=sell_noise_filter_drop_pct,
+        use_buy_noise_filter=use_buy_noise_filter,
+        buy_noise_filter_buffer_pct=buy_noise_filter_buffer_pct,
+        use_buy_daily_band_confirmation=use_buy_daily_band_confirmation,
+        buy_noise_filter_rise_pct=buy_noise_filter_rise_pct,
         buy_fee_pct=buy_fee_pct,
         sell_fee_pct=sell_fee_pct,
         daily_holding_fee_pct=daily_holding_fee_pct,
@@ -1041,6 +1243,7 @@ def simulate(
         "metrics": metrics_out,
         "yearly_returns": yearly,
         "sell_noise_log": sell_noise_log,
+        "buy_noise_log": buy_noise_log,
     }
 
 
@@ -1062,6 +1265,10 @@ def run(
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
     sell_noise_filter_drop_pct: float = DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
+    use_buy_noise_filter: bool = True,
+    buy_noise_filter_buffer_pct: float = DEFAULT_BUY_NOISE_FILTER_BUFFER_PCT,
+    use_buy_daily_band_confirmation: bool = DEFAULT_BUY_NOISE_USE_DAILY_BAND,
+    buy_noise_filter_rise_pct: float = DEFAULT_BUY_NOISE_FILTER_RISE_PCT,
     buy_fee_pct: float = 0.0,
     sell_fee_pct: float = 0.0,
     daily_holding_fee_pct: float = 0.0,
@@ -1083,6 +1290,10 @@ def run(
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
         use_daily_band_confirmation=use_daily_band_confirmation,
         sell_noise_filter_drop_pct=sell_noise_filter_drop_pct,
+        use_buy_noise_filter=use_buy_noise_filter,
+        buy_noise_filter_buffer_pct=buy_noise_filter_buffer_pct,
+        use_buy_daily_band_confirmation=use_buy_daily_band_confirmation,
+        buy_noise_filter_rise_pct=buy_noise_filter_rise_pct,
         buy_fee_pct=buy_fee_pct,
         sell_fee_pct=sell_fee_pct,
         daily_holding_fee_pct=daily_holding_fee_pct,

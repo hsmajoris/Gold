@@ -133,6 +133,9 @@ def default_backtest_kwargs(gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFA
         use_sell_noise_filter=True,
         use_daily_band_confirmation=backtest.DEFAULT_SELL_NOISE_USE_DAILY_BAND,
         sell_noise_filter_drop_pct=backtest.DEFAULT_SELL_NOISE_FILTER_DROP_PCT,
+        use_buy_noise_filter=True,
+        use_buy_daily_band_confirmation=backtest.DEFAULT_BUY_NOISE_USE_DAILY_BAND,
+        buy_noise_filter_rise_pct=backtest.DEFAULT_BUY_NOISE_FILTER_RISE_PCT,
         # 참여율 계산은 holding_curve(보유 여부)만 쓰므로 수수료 값 자체는 결과에
         # 영향이 없지만, simulate()의 새 파라미터 이름과는 맞춰둬야 한다.
         buy_fee_pct=(
