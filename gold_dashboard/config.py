@@ -9,7 +9,7 @@ INDICATOR_ORDER = ["real_rate", "dxy", "wti", "vix"]
 # averages every observation within the trailing N calendar days, whatever
 # number of trading days that happens to contain. Standardized to the
 # 일주일(week)/한달(month)/세달(quarter) units used throughout this project.
-MA_WINDOWS = [90, 30, 7]
+MA_WINDOWS = [90, 20, 7]
 
 # Indicators that actually feed a real buy/sell trigger (the real_rate+dxy
 # green_count condition). WTI and VIX are reference-only — never used in any
