@@ -690,7 +690,7 @@ with buy_card:
         buy_green_count = st.number_input(
             "green_count 임계값 (이상)",
             min_value=0, max_value=6, step=1, key="bt_buy_green_count",
-            help="실질금리·달러인덱스 × 7/20/90일(역일) 이평선, 총 6개 셀 중 금값에 우호적인 셀 수가 "
+            help="실질금리·달러인덱스 × 7/20/60일(역일) 이평선, 총 6개 셀 중 금값에 우호적인 셀 수가 "
             "이 값 이상이면 그날 즉시 매수 신호.",
         )
 with sell_card:
