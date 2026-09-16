@@ -27,7 +27,7 @@ EARLIEST_DATE = date(1990, 1, 1)
 # price gets categorical slot 2 (orange) so it never reads as "one more shade
 # of the same family" on its own (right-hand) axis.
 CHART_INDICATOR_COLOR = "#256abf"
-CHART_SMA_COLORS = {7: "#5598e7", 20: "#86b6ef", 90: "#b7d3f6"}
+CHART_SMA_COLORS = {7: "#5598e7", 20: "#86b6ef", 60: "#b7d3f6"}
 CHART_GOLD_COLOR = "#eb6834"
 # One consistent shading treatment for "buy signal active" across every indicator
 # (identity is already carried by line color; the shade means the same thing everywhere).
