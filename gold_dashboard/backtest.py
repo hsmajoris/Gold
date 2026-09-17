@@ -426,7 +426,7 @@ def run_backtest(
     reproduces pre-fee behavior exactly.
 
     `dividend_yield_series` (same index as `signals`, optional — only ever
-    non-None for the ③ 고려아연 basis, see timeseries.fetch_dividend_yield_series):
+    non-None for a ③④ KOSPI 대리 자산 basis, see timeseries.fetch_dividend_yield_series):
     a per-day yield (0.0 except on an ex-dividend date) added to a held
     position's return. Applied via a cumulative-product factor computed once
     up front (`cum_dividend_factor`) and divided by its value at the position's
@@ -1186,7 +1186,7 @@ def simulate(
     prepared signals and derive trades/equity curves/metrics/yearly returns.
 
     `dividend_yield_series`: see run_backtest()'s own docstring — only ever
-    populated for the ③ 고려아연 basis (timeseries.fetch_dividend_yield_series);
+    populated for a ③④ KOSPI 대리 자산 basis (timeseries.fetch_dividend_yield_series);
     None (default) for every other basis, reproducing pre-dividend behavior
     exactly."""
     trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log, buy_noise_log = run_backtest(

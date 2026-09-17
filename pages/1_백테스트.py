@@ -520,10 +520,10 @@ DEFAULTS = {
     "bt_buy_fee_pct": backtest.DEFAULT_BUY_FEE_PCT,
     "bt_sell_fee_pct": backtest.DEFAULT_SELL_FEE_PCT,
     "bt_daily_holding_fee_pct": backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
-    "bt_zinc_brokerage_fee_pct": config.KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT,
-    "bt_zinc_transaction_tax_pct": config.KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT,
-    "bt_zinc_apply_dividends": True,
-    "bt_zinc_dividend_tax_toggle": False,
+    "bt_kospi_brokerage_fee_pct": config.KOREA_STOCK_DEFAULT_BROKERAGE_FEE_PCT,
+    "bt_kospi_transaction_tax_pct": config.KOREA_STOCK_SECURITIES_TRANSACTION_TAX_PCT,
+    "bt_kospi_apply_dividends": True,
+    "bt_kospi_dividend_tax_toggle": False,
 }
 for _key, _default in DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -549,6 +549,7 @@ _gold_basis_options = [
     config.GOLD_PRICE_BASIS_INTL,
     config.GOLD_PRICE_BASIS_KRX,
     config.GOLD_PRICE_BASIS_KOREA_ZINC,
+    config.GOLD_PRICE_BASIS_MIRAE_ASSET,
 ]
 st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
 gold_price_basis = st.radio(
@@ -568,12 +569,19 @@ st.caption(
     "실제 국내 시세(KRW/g)를 그대로 사용합니다(출처: Naver 증권). ② 선택 시 최초 데이터 수집에 "
     "1분 내외 걸릴 수 있습니다(이후 캐시되어 즉시 표시)."
 )
-if gold_price_basis == config.GOLD_PRICE_BASIS_KOREA_ZINC:
+if gold_price_basis in config.KOREA_STOCK_PROXY_TICKERS:
+    _basis_label = config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]
     st.caption(
-        "③ 고려아연은 금이 아닙니다 — green_count·52주 신고가/신저가·노이즈 필터 등 매수·매도 "
+        f"{_basis_label}은 금이 아닙니다 — green_count·52주 신고가/신저가·노이즈 필터 등 매수·매도 "
         "신호 로직은 기존과 완전히 동일하게(실질금리·달러인덱스 기반) 작동하되, 그 신호에 따라 "
-        "실제로 사고파는 대상 가격만 고려아연(010130.KS) 종가로 치환한 것입니다 — 즉 '금 신호가 "
-        "고려아연 주식 매매에도 통하는가'를 검증하는 용도입니다."
+        f"실제로 사고파는 대상 가격만 이 종목(티커: {config.KOREA_STOCK_PROXY_TICKERS[gold_price_basis]}) "
+        "종가로 치환한 것입니다 — 즉 '금 신호가 이 종목 매매에도 통하는가'를 검증하는 용도입니다."
+        + (
+            " 미래에셋증권은 금 시세와 아무 연관 없는 금융업종을 일부러 골라, 신호 자체가 "
+            "아무 종목에나 '그럴듯하게' 통하는 우연에 불과한지 대조해보는 placebo 대조군입니다."
+            if gold_price_basis == config.GOLD_PRICE_BASIS_MIRAE_ASSET
+            else ""
+        )
     )
 
 with st.expander("전략 규칙 보기"):
@@ -622,19 +630,19 @@ with st.expander("전략 규칙 보기"):
   동일하게 **매수 확인 - 매일 갱신 2시그마 밴드**(기본 ON, 하락 대신 상승 기준 — 8거래일차
   +6.05% ~ 21거래일차 +9.80%) 또는 D0+7일 고정 시점("매수 확인 상승률", 기본 5%) 중 하나로
   전환할 수 있습니다.
-- 고급 설정의 **수수료**(② KRX 금현물·③ 고려아연 선택 시에만 적용, ① 국제 금 시세에는
-  적용되지 않음)는 기준에 따라 구조 자체가 다릅니다. ② KRX 금현물은 **종목**(KRX 금현물 /
-  TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의 기본값이 달라집니다 — KRX 금현물은
-  **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도 체결이 일어날 때마다 1회성으로
-  차감)와 **보관수수료**(기본 0.00022%, 일률 — 보유 잔량에 매일 누적)로 나뉘고, TIGER
+- 고급 설정의 **수수료**(② KRX 금현물·③ 고려아연·④ 미래에셋증권 선택 시에만 적용, ① 국제
+  금 시세에는 적용되지 않음)는 기준에 따라 구조 자체가 다릅니다. ② KRX 금현물은 **종목**
+  (KRX 금현물 / TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의 기본값이 달라집니다 — KRX
+  금현물은 **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도 체결이 일어날 때마다 1회성
+  으로 차감)와 **보관수수료**(기본 0.00022%, 일률 — 보유 잔량에 매일 누적)로 나뉘고, TIGER
   KRX금현물(ETF)은 매수/매도 수수료 0%에 그 자리에 펀드의 **총보수**(기본 0.15%, 연율,
-  일할 복리 환산)를 대신 입력받습니다. ③ 고려아연은 코스피 상장주식이라 완전히 다른 구조
-  — **매매수수료**(기본 0.015%, 매수·매도 각각 부과)에 **매도 시에만** 붙는 **증권거래세+
-  농특세**(기본 0.2%)가 별도로 더해지고, 보관수수료는 없는 대신(주식이라 실물 보관 개념
-  자체가 없음) **배당금**(보유 중 배당 기준일이 지나가면 배당수익률만큼 가산, 기본
-  세전·옵션으로 배당소득세 15.4% 차감 가능)이 반영됩니다. "수수료 반영" 체크박스로 전부
-  껐다 켤 수 있고, 차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을 토글로 비교할 수
-  있습니다
+  일할 복리 환산)를 대신 입력받습니다. ③ 고려아연·④ 미래에셋증권은 둘 다 코스피 상장주식
+  이라 완전히 다른 구조 — **매매수수료**(기본 0.015%, 매수·매도 각각 부과)에 **매도 시에만**
+  붙는 **증권거래세+농특세**(기본 0.2%)가 별도로 더해지고, 보관수수료는 없는 대신(주식이라
+  실물 보관 개념 자체가 없음) **배당금**(보유 중 배당 기준일이 지나가면 배당수익률만큼
+  가산, 기본 세전·옵션으로 배당소득세 15.4% 차감 가능)이 반영됩니다. "수수료 반영" 체크박스
+  로 전부 껐다 켤 수 있고, 차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을 토글로 비교할
+  수 있습니다
 - 분석 기간: **{years}년** (1~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
   데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
   N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
@@ -834,58 +842,59 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
-    _is_korea_zinc = gold_price_basis == config.GOLD_PRICE_BASIS_KOREA_ZINC
-    st.markdown("**수수료** (② KRX 금현물·③ 고려아연 선택 시에만 적용 — ① 국제 금 시세는 "
-                "실물이 아닌 참고 가격이라 적용되지 않음)")
+    _is_kospi_stock_proxy = gold_price_basis in config.KOREA_STOCK_PROXY_TICKERS
+    st.markdown("**수수료** (② KRX 금현물·③ 고려아연·④ 미래에셋증권 선택 시에만 적용 — ① 국제 "
+                "금 시세는 실물이 아닌 참고 가격이라 적용되지 않음)")
 
-    if _is_korea_zinc:
+    if _is_kospi_stock_proxy:
+        _kospi_label = config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]
         apply_fees = st.checkbox(
             "수수료 반영",
             key="bt_apply_fees",
             help="체크를 해제하면 아래 매매수수료·증권거래세 입력값과 무관하게 전부 0으로 두고 "
             "계산합니다(입력값 자체는 남아있어 다시 체크하면 복원됩니다).",
         )
-        zinc_brokerage_col, zinc_tax_col, zinc_holding_col = st.columns(3)
-        with zinc_brokerage_col:
-            zinc_brokerage_fee_pct = st.number_input(
+        kospi_brokerage_col, kospi_tax_col, kospi_holding_col = st.columns(3)
+        with kospi_brokerage_col:
+            kospi_brokerage_fee_pct = st.number_input(
                 "매매수수료 (%, 매수·매도 각각)",
                 min_value=0.0, max_value=5.0, step=0.001, format="%.3f",
-                key="bt_zinc_brokerage_fee_pct",
+                key="bt_kospi_brokerage_fee_pct",
                 disabled=not apply_fees,
                 help="증권사 위탁수수료입니다(기본값 0.015%, 온라인 기준 낮은 요율 — 증권사마다 "
                 "다르니 직접 조정 가능). 매수·매도 체결 시마다 각각 부과됩니다.",
             )
-        with zinc_tax_col:
-            zinc_transaction_tax_pct = st.number_input(
+        with kospi_tax_col:
+            kospi_transaction_tax_pct = st.number_input(
                 "증권거래세+농특세 (%, 매도 시에만)",
                 min_value=0.0, max_value=5.0, step=0.01, format="%.2f",
-                key="bt_zinc_transaction_tax_pct",
+                key="bt_kospi_transaction_tax_pct",
                 disabled=not apply_fees,
                 help="코스피 상장주식은 매도 체결 시에만 증권거래세+농어촌특별세가 부과됩니다"
-                f"(기본값 {config.KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT:g}%, 2026-01 기준 "
+                f"(기본값 {config.KOREA_STOCK_SECURITIES_TRANSACTION_TAX_PCT:g}%, 2026-01 기준 "
                 "거래세 0.05%+농특세 0.15% — 세법 개정 시 바뀔 수 있어 config.py 상수 하나로 "
                 "관리됩니다). 매수 시에는 부과되지 않으며, 매도 수수료 계산 시 위 매매수수료와 "
                 "합산됩니다.",
             )
-        with zinc_holding_col:
+        with kospi_holding_col:
             st.text_input(
                 "보관수수료", value="해당 없음 (주식)", disabled=True,
-                help="고려아연은 KRX 금현물과 달리 실물 보관 개념이 없는 상장주식이라 보관수수료가 "
-                "없습니다(항상 0으로 계산).",
+                help=f"{_kospi_label}은 KRX 금현물과 달리 실물 보관 개념이 없는 상장주식이라 "
+                "보관수수료가 없습니다(항상 0으로 계산).",
             )
         st.markdown("**배당금**")
-        zinc_apply_dividends = st.checkbox(
+        kospi_apply_dividends = st.checkbox(
             "배당금 반영",
-            value=True, key="bt_zinc_apply_dividends",
+            value=True, key="bt_kospi_apply_dividends",
             help="보유 기간 중 배당 기준일(ex-dividend date)이 지나가면, 그날의 주당 배당액을 "
             "그날 종가 대비 수익률(배당수익률)로 환산해 수익률에 더합니다. Buy & Hold도 "
             "분석기간 전체에 걸쳐 발생한 모든 배당을 똑같이 받는다고 가정합니다. 신호전략은 "
             "실제로 보유 중이었던 배당만 받습니다(미보유 기간에 지나간 배당은 받지 못함).",
         )
-        zinc_dividend_tax_toggle = st.checkbox(
+        kospi_dividend_tax_toggle = st.checkbox(
             "배당소득세(15.4%) 차감",
-            value=False, key="bt_zinc_dividend_tax_toggle",
-            disabled=not zinc_apply_dividends,
+            value=False, key="bt_kospi_dividend_tax_toggle",
+            disabled=not kospi_apply_dividends,
             help=f"기본은 세전 배당금을 그대로 가산합니다. 체크하면 배당소득세 "
             f"{config.DIVIDEND_INCOME_TAX_PCT:g}%(소득세+지방소득세)를 뗀 세후 배당금을 대신 "
             "가산합니다.",
@@ -986,22 +995,22 @@ def load_signals(as_of_iso: str, years: int, gold_price_basis: str) -> pd.DataFr
 
 
 def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
-    if basis in (config.GOLD_PRICE_BASIS_KRX, config.GOLD_PRICE_BASIS_KOREA_ZINC):
+    if basis == config.GOLD_PRICE_BASIS_KRX or basis in config.KOREA_STOCK_PROXY_TICKERS:
         return f"{value:,.0f}원"
     return f"${value:,.2f}"
 
 
-# Meaningless (and not applied) unless a fee-bearing basis (② KRX 또는 ③
-# 고려아연) is active AND "수수료 반영" is checked — the inputs stay
+# Meaningless (and not applied) unless a fee-bearing basis (② KRX 또는 ③④
+# KOSPI 대리 자산) is active AND "수수료 반영" is checked — the inputs stay
 # enabled-looking with their defaults either way, but only actually reach the
 # simulation when relevant.
-if _is_korea_zinc:
+if _is_kospi_stock_proxy:
     _fees_active = apply_fees
-    effective_buy_fee_pct = float(zinc_brokerage_fee_pct) if _fees_active else 0.0
+    effective_buy_fee_pct = float(kospi_brokerage_fee_pct) if _fees_active else 0.0
     # 매도 시에만: 매매수수료 + 증권거래세(농특세 포함) 합산 — 매수 쪽엔 세금이
     # 붙지 않는 코스피 상장주식의 실제 수수료 구조를 그대로 반영.
     effective_sell_fee_pct = (
-        float(zinc_brokerage_fee_pct) + float(zinc_transaction_tax_pct) if _fees_active else 0.0
+        float(kospi_brokerage_fee_pct) + float(kospi_transaction_tax_pct) if _fees_active else 0.0
     )
     # 상장주식은 KRX 금현물 같은 "보관수수료(일할)" 개념이 없음 — 항상 0.
     effective_daily_holding_fee_pct = 0.0
@@ -1018,10 +1027,10 @@ else:
         _daily_holding_fee_pct = float(holding_fee_input_pct)
     effective_daily_holding_fee_pct = _daily_holding_fee_pct if _fees_active else 0.0
 
-# ③ 고려아연 기준일 때만, 그리고 "배당금 반영"이 켜져 있을 때만 채워진다 — 그
-# 외 모든 기준·상황에서는 None(=배당 미반영, 기존 동작과 완전히 동일).
-# signals(아래에서 로드)가 있어야 계산 가능하므로 실제 값은 try 블록 안에서
-# 채운다.
+# ③④ KOSPI 대리 자산 기준일 때만, 그리고 "배당금 반영"이 켜져 있을 때만
+# 채워진다 — 그 외 모든 기준·상황에서는 None(=배당 미반영, 기존 동작과
+# 완전히 동일). signals(아래에서 로드)가 있어야 계산 가능하므로 실제 값은
+# try 블록 안에서 채운다.
 dividend_yield_series = None
 
 # Shared by both the fee-adjusted ("net") and always-zero-fee ("gross") runs
@@ -1052,10 +1061,10 @@ try:
     # 호출(수수료 반영/미반영) 모두에 똑같이 넘긴다 — 배당은 "비용"이 아니라
     # "이 자산을 들고 있으면 실제로 생기는 현금흐름"이라 수수료 토글이 꺼져
     # 있어도(gross 비교) 여전히 발생한다.
-    if _is_korea_zinc and zinc_apply_dividends:
-        dividend_tax_pct = config.DIVIDEND_INCOME_TAX_PCT if zinc_dividend_tax_toggle else 0.0
+    if _is_kospi_stock_proxy and kospi_apply_dividends:
+        dividend_tax_pct = config.DIVIDEND_INCOME_TAX_PCT if kospi_dividend_tax_toggle else 0.0
         dividend_yield_series = timeseries.fetch_dividend_yield_series(
-            signals["gold"], dividend_tax_pct=dividend_tax_pct
+            signals["gold"], config.KOREA_STOCK_PROXY_TICKERS[gold_price_basis], dividend_tax_pct=dividend_tax_pct
         )
     result = backtest.simulate(
         signals,
@@ -1203,23 +1212,24 @@ if m is not None:
 if result is None:
     st.stop()
 
-# ---- ①②③ 결과 비교 (버튼을 눌러야만 계산 — 세 기준 모두 각자 네트워크
+# ---- ①②③④ 결과 비교 (버튼을 눌러야만 계산 — 네 기준 모두 각자 네트워크
 # 조회가 필요해 페이지 로드 때마다 자동으로 돌리지 않음) ----
-with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 결과 비교"):
+with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 · ④ 미래에셋증권 결과 비교"):
     st.caption(
         "현재 설정된 신호 로직(green_count 임계값·52주 신고가/신저가·노이즈 필터·최소 보유일수· "
-        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 세 가지로 바꿔 각각 "
+        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 네 가지로 바꿔 각각 "
         "백테스트합니다. 수수료·배당은 각 기준의 기본값을 사용합니다(① 없음 / ② KRX 금현물 "
-        "기본 수수료 / ③ 고려아연 기본 수수료+세전 배당금 반영)."
+        "기본 수수료 / ③④ 코스피 종목 기본 수수료+세전 배당금 반영)."
     )
-    if st.button("세 가지 기준 비교 실행"):
+    if st.button("네 가지 기준 비교 실행"):
         _comparison_bases = [
             config.GOLD_PRICE_BASIS_INTL,
             config.GOLD_PRICE_BASIS_KRX,
             config.GOLD_PRICE_BASIS_KOREA_ZINC,
+            config.GOLD_PRICE_BASIS_MIRAE_ASSET,
         ]
         _comparison_rows = []
-        with st.spinner("세 기준 모두 백테스트 중입니다..."):
+        with st.spinner("네 기준 모두 백테스트 중입니다..."):
             for _basis in _comparison_bases:
                 try:
                     _basis_signals = backtest.prepare_signals(
@@ -1232,16 +1242,18 @@ with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 결�
                             daily_holding_fee_pct=backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
                         )
                         _basis_dividends = None
-                    elif _basis == config.GOLD_PRICE_BASIS_KOREA_ZINC:
+                    elif _basis in config.KOREA_STOCK_PROXY_TICKERS:
                         _basis_fee_kwargs = dict(
-                            buy_fee_pct=config.KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT,
+                            buy_fee_pct=config.KOREA_STOCK_DEFAULT_BROKERAGE_FEE_PCT,
                             sell_fee_pct=(
-                                config.KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT
-                                + config.KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT
+                                config.KOREA_STOCK_DEFAULT_BROKERAGE_FEE_PCT
+                                + config.KOREA_STOCK_SECURITIES_TRANSACTION_TAX_PCT
                             ),
                             daily_holding_fee_pct=0.0,
                         )
-                        _basis_dividends = timeseries.fetch_dividend_yield_series(_basis_signals["gold"])
+                        _basis_dividends = timeseries.fetch_dividend_yield_series(
+                            _basis_signals["gold"], config.KOREA_STOCK_PROXY_TICKERS[_basis]
+                        )
                     else:
                         _basis_fee_kwargs = dict(buy_fee_pct=0.0, sell_fee_pct=0.0, daily_holding_fee_pct=0.0)
                         _basis_dividends = None
@@ -1260,10 +1272,10 @@ with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 결�
                             "기준": config.GOLD_PRICE_BASIS_LABELS[_basis],
                             "B&H 누적수익률": f"{_bm['bh_total_return']:.1%}",
                             "B&H CAGR": f"{_bm['bh_cagr']:.1%}",
-                            "신호전략 누적수익률(④)": (
+                            "신호전략 누적수익률(하이브리드)": (
                                 f"{_bm['hybrid_total_return']:.1%}" if _bm["hybrid_total_return"] is not None else "-"
                             ),
-                            "신호전략 CAGR(④)": (
+                            "신호전략 CAGR(하이브리드)": (
                                 f"{_bm['hybrid_cagr']:.1%}" if _bm["hybrid_cagr"] is not None else "-"
                             ),
                             "MDD": f"{_bm['max_drawdown']:.1%}",
@@ -1276,8 +1288,8 @@ with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 결�
                             "기준": config.GOLD_PRICE_BASIS_LABELS[_basis],
                             "B&H 누적수익률": f"실패: {_exc}",
                             "B&H CAGR": "-",
-                            "신호전략 누적수익률(④)": "-",
-                            "신호전략 CAGR(④)": "-",
+                            "신호전략 누적수익률(하이브리드)": "-",
+                            "신호전략 CAGR(하이브리드)": "-",
                             "MDD": "-",
                             "매매횟수": "-",
                         }
@@ -1713,9 +1725,12 @@ else:
 
 st.caption(
     "⚠️ 본 백테스트는 과거 데이터에 기반한 시뮬레이션 결과이며 미래 성과를 보장하지 않습니다. "
-    "② KRX 금현물 기준일 때는 매수·매도 거래수수료와 보관수수료가 반영되지만, 세금·슬리피지는 "
-    "여전히 반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 있습니다. "
-    "'④ 신호전략 (미보유기간 기대수익률 포함)' 그룹의 기대수익률은 사용자가 입력한 "
-    "단일 연이율을 그대로 연복리 적용한 단순 가정치이며, 실제 채권 등 투자자산의 이자율 변동· "
-    "재투자·신용위험은 반영되어 있지 않습니다."
+    "② KRX 금현물 기준일 때는 매수·매도 거래수수료와 보관수수료가 반영되지만 세금은 반영되지 "
+    "않고, ③④ 고려아연·미래에셋증권 기준일 때는 매매수수료·증권거래세·배당금(옵션으로 배당"
+    "소득세)까지 반영되지만 그 외 세금은 여전히 반영되지 않습니다 — 어느 기준이든 슬리피지는 "
+    "반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 있습니다. "
+    "'④ 신호전략 (미보유기간 기대수익률 포함)' 그룹(요약 지표의 네 번째 그룹 — 위 '금 가격 "
+    "기준'의 ④ 미래에셋증권과는 무관)의 기대수익률은 사용자가 입력한 단일 연이율을 그대로 "
+    "연복리 적용한 단순 가정치이며, 실제 채권 등 투자자산의 이자율 변동·재투자·신용위험은 "
+    "반영되어 있지 않습니다."
 )

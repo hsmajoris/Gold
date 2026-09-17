@@ -88,16 +88,16 @@ def fetch_gold_price_series(
         if series.empty:
             raise RuntimeError("선택한 분석 기간에 해당하는 KRX 금현물 데이터가 없습니다.")
         return series
-    if basis == config.GOLD_PRICE_BASIS_KOREA_ZINC:
-        # 고려아연은 실제 금이 아니라 "매수·매도 대상 가격"만 대체하는 대리
-        # 자산이므로, 별도의 최저 상장일 클램프 없이 KRX 금현물과 같은 방식
-        # (fetch_start/end_date 그대로)으로 받아온다 — 코스피 상장 역사가
-        # 이 프로젝트가 요구하는 어떤 분석 기간(최대 MAX_BACKTEST_YEARS)보다도
-        # 훨씬 길어 클램핑이 실질적으로 발생할 일이 없다.
+    if basis in config.KOREA_STOCK_PROXY_TICKERS:
+        # 고려아연/미래에셋증권 등은 실제 금이 아니라 "매수·매도 대상 가격"만
+        # 대체하는 대리 자산이므로, 별도의 최저 상장일 클램프 없이 KRX 금현물과
+        # 같은 방식(fetch_start/end_date 그대로)으로 받아온다 — 코스피 상장
+        # 역사가 이 프로젝트가 요구하는 어떤 분석 기간(최대 MAX_BACKTEST_YEARS)
+        # 보다도 훨씬 길어 클램핑이 실질적으로 발생할 일이 없다.
         end_date = as_of or today_kst()
         fetch_start = gold_fetch_start(end_date, years, buffer_days)
         yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
-        return ds.fetch_yfinance_close(config.KOREA_ZINC_TICKER, start=fetch_start, end=yf_end)
+        return ds.fetch_yfinance_close(config.KOREA_STOCK_PROXY_TICKERS[basis], start=fetch_start, end=yf_end)
     return fetch_raw_series("gold", as_of, years=years, buffer_days=buffer_days)
 
 
@@ -117,16 +117,17 @@ def fetch_backtest_frame(
     `gold_price_basis` selects what the "gold" column (used for every MA/trend
     filter/trigger/P&L computation) actually is — see fetch_gold_price_series.
 
-    Under the ② KRX basis and ③ 고려아연(KOSPI 010130) basis, real_rate/dxy's
-    date index is shifted forward one calendar day before the join below (see
-    the comment at that shift) to correct a one-day look-ahead bias: FRED/Yahoo
-    date real_rate/dxy by the US trading day (session closes ~16-17:00 ET ≈
-    06:00-07:00 KST the NEXT calendar day), while both KRX's gold-spot close
-    and 고려아연's KOSPI close are dated by the KST trading day itself, which
-    ends hours EARLIER the same day. Joining on identical date labels without
-    the shift would pair a US date-D observation with gold's date-D KST close
-    even though that US value isn't actually confirmed until the morning of
-    KST date D+1 (verified 2026-09-15 against a third-party code review). Not
+    Under the ② KRX basis and any ③④ KOSPI 대리 자산 basis (see
+    config.KOREA_STOCK_PROXY_TICKERS), real_rate/dxy's date index is shifted
+    forward one calendar day before the join below (see the comment at that
+    shift) to correct a one-day look-ahead bias: FRED/Yahoo date real_rate/dxy
+    by the US trading day (session closes ~16-17:00 ET ≈ 06:00-07:00 KST the
+    NEXT calendar day), while KRX's gold-spot close and every KOSPI 대리 자산's
+    close are all dated by the KST trading day itself, which ends hours
+    EARLIER the same day. Joining on identical date labels without the shift
+    would pair a US date-D observation with gold's date-D KST close even
+    though that US value isn't actually confirmed until the morning of KST
+    date D+1 (verified 2026-09-15 against a third-party code review). Not
     applicable under the ① GC=F basis, since GC=F is itself dated on the US
     trading calendar, same as real_rate/dxy — no cross-timezone skew to
     correct there.
@@ -136,7 +137,7 @@ def fetch_backtest_frame(
     dxy = fetch_raw_series("dxy", end_date, years=years, buffer_days=buffer_days)
     gold = fetch_gold_price_series(end_date, years=years, buffer_days=buffer_days, basis=gold_price_basis)
 
-    if gold_price_basis in (config.GOLD_PRICE_BASIS_KRX, config.GOLD_PRICE_BASIS_KOREA_ZINC):
+    if gold_price_basis == config.GOLD_PRICE_BASIS_KRX or gold_price_basis in config.KOREA_STOCK_PROXY_TICKERS:
         # A US date-D observation becomes usable starting KST date D+1; the
         # ffill()-after-outer-join below then naturally carries it forward
         # through any KST weekend/holiday gap to the next actual KST trading
@@ -159,14 +160,16 @@ def fetch_backtest_frame(
     return df
 
 
-def fetch_dividend_yield_series(gold: pd.Series, dividend_tax_pct: float = 0.0) -> pd.Series:
-    """Only meaningful when `gold` is actually 고려아연's price series (③
-    GOLD_PRICE_BASIS_KOREA_ZINC) — converts its raw per-share dividend history
-    into a same-index daily yield series (0.0 on every day except an
-    ex-dividend date, where it's that day's per-share dividend divided by
-    `gold`'s own close that day, net of `dividend_tax_pct` if given). This is
-    what backtest.run_backtest()/compute_hybrid_cagr() add to a held
-    position's daily return — see their `dividend_yield_series` parameter.
+def fetch_dividend_yield_series(gold: pd.Series, ticker: str, dividend_tax_pct: float = 0.0) -> pd.Series:
+    """Only meaningful when `gold` is actually a KOSPI 대리 자산's price series
+    (③ 고려아연/④ 미래에셋증권 등 — see config.KOREA_STOCK_PROXY_TICKERS) and
+    `ticker` is that same basis's own ticker — converts its raw per-share
+    dividend history into a same-index daily yield series (0.0 on every day
+    except an ex-dividend date, where it's that day's per-share dividend
+    divided by `gold`'s own close that day, net of `dividend_tax_pct` if
+    given). This is what backtest.run_backtest()/compute_hybrid_cagr() add to
+    a held position's daily return — see their `dividend_yield_series`
+    parameter.
 
     Ex-dividend dates not present in `gold.index` (a rare source-alignment
     edge case — yfinance's dividend calendar should otherwise match its own
@@ -174,7 +177,7 @@ def fetch_dividend_yield_series(gold: pd.Series, dividend_tax_pct: float = 0.0) 
     trading day, since misattributing a dividend to the wrong day would
     silently corrupt a specific day's return.
     """
-    raw_dividends = ds.fetch_yfinance_dividends(config.KOREA_ZINC_TICKER)
+    raw_dividends = ds.fetch_yfinance_dividends(ticker)
     per_share = raw_dividends.reindex(gold.index).fillna(0.0)
     net_per_share = per_share * (1.0 - dividend_tax_pct / 100.0)
     return (net_per_share / gold).rename("dividend_yield")
