@@ -30,23 +30,29 @@ GREEN_COUNT_SIGNAL_INDICATORS = {"real_rate", "dxy"}
 # and gold_dashboard/timeseries.py.
 GOLD_PRICE_BASIS_INTL = "intl"
 GOLD_PRICE_BASIS_KRX = "krx"
-# ③④ 고려아연/미래에셋증권 — 금 자체가 아니라, 유효성 검증 페이지에서만 선택
-# 가능한 "대리 자산(proxy)" 옵션. green_count·52주 신고가/신저가·노이즈 필터 등
-# 신호 로직은 기존과 완전히 동일하게 real_rate/dxy·"gold" 컬럼만 보고 동작하므로,
-# 이 옵션들은 단지 그 "gold" 컬럼에 무엇을 채워 넣는지(매수·매도 대상 가격)만
-# 바꾼다 — 대시보드 메인 화면은 항상 GOLD_PRICE_BASIS_DEFAULT(현재 KRX)로
-# 고정 계산되므로 영향받지 않는다. 고려아연은 그나마 원자재(비철금속) 관련
-# 종목이지만, 미래에셋증권(금융업)은 금 시세와 아무 연관도 없는 종목을 일부러
-# 골라 "이 신호가 아무 종목에나 통하는 우연인지, 아니면 뭔가 더 있는지"를
-# 대조해보기 위한 순수 placebo 대조군이다.
+# ③~⑥ 고려아연/미래에셋증권/현대차/코스피200(KODEX 200 ETF) — 금 자체가 아니라,
+# 유효성 검증 페이지에서만 선택 가능한 "대리 자산(proxy)" 옵션. green_count·
+# 52주 신고가/신저가·노이즈 필터 등 신호 로직은 기존과 완전히 동일하게
+# real_rate/dxy·"gold" 컬럼만 보고 동작하므로, 이 옵션들은 단지 그 "gold"
+# 컬럼에 무엇을 채워 넣는지(매수·매도 대상 가격)만 바꾼다 — 대시보드 메인
+# 화면은 항상 GOLD_PRICE_BASIS_DEFAULT(현재 KRX)로 고정 계산되므로 영향받지
+# 않는다. 고려아연은 그나마 원자재(비철금속) 관련 종목이지만, 미래에셋증권
+# (금융업)·현대차(자동차업)는 금 시세와 아무 연관도 없는 종목을, 코스피200은
+# 개별종목이 아닌 시장 전체를 일부러 골라 "이 신호가 아무 종목·지수에나
+# 통하는 우연인지, 아니면 뭔가 더 있는지"를 대조해보기 위한 순수 placebo
+# 대조군이다.
 GOLD_PRICE_BASIS_KOREA_ZINC = "korea_zinc"
 GOLD_PRICE_BASIS_MIRAE_ASSET = "mirae_asset"
+GOLD_PRICE_BASIS_HYUNDAI_MOTOR = "hyundai_motor"
+GOLD_PRICE_BASIS_KOSPI200 = "kospi200"
 GOLD_PRICE_BASIS_STATE_KEY = "gold_price_basis"
 GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_INTL: "① 국제 금 시세 (USD/oz, GC=F)",
     GOLD_PRICE_BASIS_KRX: "② KRX 금현물 (KRW/g, 실제 국내 시세)",
     GOLD_PRICE_BASIS_KOREA_ZINC: "③ 고려아연 (KOSPI 010130, 대리 자산)",
     GOLD_PRICE_BASIS_MIRAE_ASSET: "④ 미래에셋증권 (KOSPI 006800, 무관 대조군)",
+    GOLD_PRICE_BASIS_HYUNDAI_MOTOR: "⑤ 현대차 (KOSPI 005380, 무관 대조군)",
+    GOLD_PRICE_BASIS_KOSPI200: "⑥ 코스피200 (KODEX 200 ETF, 069500, 시장 전체 대조군)",
 }
 # What a fresh session (and any caller that doesn't specify gold_price_basis
 # explicitly) starts on.
@@ -58,15 +64,37 @@ GOLD_PRICE_BASIS_DEFAULT = GOLD_PRICE_BASIS_KRX
 KRX_GOLD_TICKER = "M04020000"
 KRX_GOLD_EARLIEST_DATE = date(2014, 3, 24)
 
-# ③④의 KOSPI 상장 보통주 티커 — basis 값으로 바로 룩업할 수 있게 딕셔너리로
+# ③④⑤의 KOSPI 상장 보통주 티커 — basis 값으로 바로 룩업할 수 있게 딕셔너리로
 # 관리(timeseries.fetch_gold_price_series가 이 딕셔너리에 있는 basis는 전부
 # 동일한 방식(yfinance 종가)으로 처리하므로, 새 대리종목을 추가할 때 여기에
-# 한 줄만 더하면 된다).
+# 한 줄만 더하면 된다). 개별 보통주는 매도 시 증권거래세가 붙는다(아래 참고).
 KOREA_ZINC_TICKER = "010130.KS"
 MIRAE_ASSET_TICKER = "006800.KS"
+HYUNDAI_MOTOR_TICKER = "005380.KS"
 KOREA_STOCK_PROXY_TICKERS = {
     GOLD_PRICE_BASIS_KOREA_ZINC: KOREA_ZINC_TICKER,
     GOLD_PRICE_BASIS_MIRAE_ASSET: MIRAE_ASSET_TICKER,
+    GOLD_PRICE_BASIS_HYUNDAI_MOTOR: HYUNDAI_MOTOR_TICKER,
+}
+# ⑥ 코스피200 자체는 yfinance에 역사적 데이터가 없는 지수(^KS200, 최근 1일치만
+# 존재)라, 대신 그 지수를 그대로 추종하는 가장 오래되고 유동성 큰 ETF인
+# KODEX 200(069500, 2007년 상장)의 실제 시장가격을 쓴다 — 실제로 거래 가능한
+# 가격이라는 점에서 오히려 더 현실적이다. ETF는 국내 세법상 증권거래세가
+# 면제되므로(개별 보통주와 다름) 별도 딕셔너리로 분리했다.
+KOSPI200_ETF_TICKER = "069500.KS"
+KOREA_ETF_PROXY_TICKERS = {
+    GOLD_PRICE_BASIS_KOSPI200: KOSPI200_ETF_TICKER,
+}
+# 가격 수집·look-ahead bias 보정·배당 조회처럼 "개별주 vs ETF" 구분이 필요 없는
+# 공통 로직에서 쓰는 합집합.
+ALL_KOSPI_PROXY_TICKERS = {**KOREA_STOCK_PROXY_TICKERS, **KOREA_ETF_PROXY_TICKERS}
+# 금과 의도적으로 무관한 종목/지수만 모은 부분집합(고려아연은 그나마 원자재
+# 관련이라 제외) — UI가 "이건 순수 placebo 대조군입니다" 문구를 추가로 보여줄
+# 대상을 판단하는 데만 쓰인다.
+GOLD_PRICE_BASIS_PLACEBO_SET = {
+    GOLD_PRICE_BASIS_MIRAE_ASSET,
+    GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
+    GOLD_PRICE_BASIS_KOSPI200,
 }
 
 # ③④ 공통 — KRX 금현물과는 완전히 다른 수수료·세금 구조(코스피 주식 매매)를
