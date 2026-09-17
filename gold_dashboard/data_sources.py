@@ -99,6 +99,24 @@ def _download_yfinance_close(ticker: str, start, end) -> pd.Series:
     return close.rename(ticker)
 
 
+@_retry_network_call
+def fetch_yfinance_dividends(ticker: str) -> pd.Series:
+    """Fetch a stock's full ex-dividend history (date -> per-share dividend
+    amount, in the stock's own trading currency) via yfinance. Unlike
+    `_download_yfinance_close`, this has no start/end window — yfinance's
+    `Ticker.dividends` always returns the whole available history, and the
+    backtest's own analysis window is applied by the caller (reindexing onto
+    whatever price series' date index it's paired with) rather than here.
+    Returns an empty Series (not an error) for a ticker with no dividend
+    history at all, since "never paid a dividend" is a legitimate state, not
+    a fetch failure."""
+    dividends = yf.Ticker(ticker).dividends
+    if dividends.index.tz is not None:
+        dividends.index = dividends.index.tz_localize(None)
+    dividends.index = dividends.index.normalize()
+    return dividends.rename(ticker)
+
+
 def fetch_yfinance_close(tickers, start=None, end=None) -> pd.Series:
     """Fetch daily close prices for the first working ticker in `tickers`.
 
