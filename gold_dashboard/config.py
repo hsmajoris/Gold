@@ -30,18 +30,23 @@ GREEN_COUNT_SIGNAL_INDICATORS = {"real_rate", "dxy"}
 # and gold_dashboard/timeseries.py.
 GOLD_PRICE_BASIS_INTL = "intl"
 GOLD_PRICE_BASIS_KRX = "krx"
-# ③ 고려아연(010130.KS) — 금 자체가 아니라, 유효성 검증 페이지에서만 선택 가능한
-# "대리 자산(proxy)" 옵션. green_count·52주 신고가/신저가·노이즈 필터 등 신호
-# 로직은 기존과 완전히 동일하게 real_rate/dxy·"gold" 컬럼만 보고 동작하므로,
-# 이 옵션은 단지 그 "gold" 컬럼에 무엇을 채워 넣는지(매수·매도 대상 가격)만
+# ③④ 고려아연/미래에셋증권 — 금 자체가 아니라, 유효성 검증 페이지에서만 선택
+# 가능한 "대리 자산(proxy)" 옵션. green_count·52주 신고가/신저가·노이즈 필터 등
+# 신호 로직은 기존과 완전히 동일하게 real_rate/dxy·"gold" 컬럼만 보고 동작하므로,
+# 이 옵션들은 단지 그 "gold" 컬럼에 무엇을 채워 넣는지(매수·매도 대상 가격)만
 # 바꾼다 — 대시보드 메인 화면은 항상 GOLD_PRICE_BASIS_DEFAULT(현재 KRX)로
-# 고정 계산되므로 영향받지 않는다.
+# 고정 계산되므로 영향받지 않는다. 고려아연은 그나마 원자재(비철금속) 관련
+# 종목이지만, 미래에셋증권(금융업)은 금 시세와 아무 연관도 없는 종목을 일부러
+# 골라 "이 신호가 아무 종목에나 통하는 우연인지, 아니면 뭔가 더 있는지"를
+# 대조해보기 위한 순수 placebo 대조군이다.
 GOLD_PRICE_BASIS_KOREA_ZINC = "korea_zinc"
+GOLD_PRICE_BASIS_MIRAE_ASSET = "mirae_asset"
 GOLD_PRICE_BASIS_STATE_KEY = "gold_price_basis"
 GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_INTL: "① 국제 금 시세 (USD/oz, GC=F)",
     GOLD_PRICE_BASIS_KRX: "② KRX 금현물 (KRW/g, 실제 국내 시세)",
     GOLD_PRICE_BASIS_KOREA_ZINC: "③ 고려아연 (KOSPI 010130, 대리 자산)",
+    GOLD_PRICE_BASIS_MIRAE_ASSET: "④ 미래에셋증권 (KOSPI 006800, 무관 대조군)",
 }
 # What a fresh session (and any caller that doesn't specify gold_price_basis
 # explicitly) starts on.
@@ -53,16 +58,27 @@ GOLD_PRICE_BASIS_DEFAULT = GOLD_PRICE_BASIS_KRX
 KRX_GOLD_TICKER = "M04020000"
 KRX_GOLD_EARLIEST_DATE = date(2014, 3, 24)
 
-# ③ 고려아연(010130.KS, KOSPI 상장 보통주) 관련 상수 — KRX 금현물과는 완전히
-# 다른 수수료·세금 구조(코스피 주식 매매)를 쓰므로 별도로 분리했다.
+# ③④의 KOSPI 상장 보통주 티커 — basis 값으로 바로 룩업할 수 있게 딕셔너리로
+# 관리(timeseries.fetch_gold_price_series가 이 딕셔너리에 있는 basis는 전부
+# 동일한 방식(yfinance 종가)으로 처리하므로, 새 대리종목을 추가할 때 여기에
+# 한 줄만 더하면 된다).
 KOREA_ZINC_TICKER = "010130.KS"
+MIRAE_ASSET_TICKER = "006800.KS"
+KOREA_STOCK_PROXY_TICKERS = {
+    GOLD_PRICE_BASIS_KOREA_ZINC: KOREA_ZINC_TICKER,
+    GOLD_PRICE_BASIS_MIRAE_ASSET: MIRAE_ASSET_TICKER,
+}
+
+# ③④ 공통 — KRX 금현물과는 완전히 다른 수수료·세금 구조(코스피 주식 매매)를
+# 쓰므로 별도로 분리했다. 고려아연·미래에셋증권 둘 다 같은 코스피 보통주라
+# 수수료 구조 자체는 동일(이 두 상수를 공유).
 # 매매수수료(위탁수수료): 매수·매도 각각 부과, 온라인 기준 낮은 요율을 기본값으로
 # 잡되 사용자가 화면에서 직접 조정 가능(증권사·거래 채널별로 차이가 큼).
-KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT = 0.015
+KOREA_STOCK_DEFAULT_BROKERAGE_FEE_PCT = 0.015
 # 증권거래세 + 농어촌특별세: 코스피 상장주식은 매도 체결 시에만 부과(매수 시엔
 # 없음). 세율은 세법 개정으로 바뀔 수 있어 이 상수 하나로만 관리 — 2026-01
 # 기준 거래세 0.05% + 농특세 0.15% = 0.2%.
-KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT = 0.2
+KOREA_STOCK_SECURITIES_TRANSACTION_TAX_PCT = 0.2
 # 배당소득세(15.4% = 소득세 14% + 지방소득세 1.4%) — 배당금 반영 옵션에서 "세후"를
 # 선택했을 때만 적용되는 별도 토글용 상수(기본은 세전 배당금 그대로 가산).
 DIVIDEND_INCOME_TAX_PCT = 15.4
