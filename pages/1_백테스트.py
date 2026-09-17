@@ -520,6 +520,10 @@ DEFAULTS = {
     "bt_buy_fee_pct": backtest.DEFAULT_BUY_FEE_PCT,
     "bt_sell_fee_pct": backtest.DEFAULT_SELL_FEE_PCT,
     "bt_daily_holding_fee_pct": backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
+    "bt_zinc_brokerage_fee_pct": config.KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT,
+    "bt_zinc_transaction_tax_pct": config.KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT,
+    "bt_zinc_apply_dividends": True,
+    "bt_zinc_dividend_tax_toggle": False,
 }
 for _key, _default in DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -541,7 +545,11 @@ st.caption(
 # `index=`, writing the widget's result straight back after every rerun.
 # Deliberately NOT part of DEFAULTS above: it's a data-source choice, not a
 # backtest tuning parameter, so "기본값으로 초기화" leaves it untouched.
-_gold_basis_options = [config.GOLD_PRICE_BASIS_INTL, config.GOLD_PRICE_BASIS_KRX]
+_gold_basis_options = [
+    config.GOLD_PRICE_BASIS_INTL,
+    config.GOLD_PRICE_BASIS_KRX,
+    config.GOLD_PRICE_BASIS_KOREA_ZINC,
+]
 st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
 gold_price_basis = st.radio(
     "금 가격 기준",
@@ -560,6 +568,13 @@ st.caption(
     "실제 국내 시세(KRW/g)를 그대로 사용합니다(출처: Naver 증권). ② 선택 시 최초 데이터 수집에 "
     "1분 내외 걸릴 수 있습니다(이후 캐시되어 즉시 표시)."
 )
+if gold_price_basis == config.GOLD_PRICE_BASIS_KOREA_ZINC:
+    st.caption(
+        "③ 고려아연은 금이 아닙니다 — green_count·52주 신고가/신저가·노이즈 필터 등 매수·매도 "
+        "신호 로직은 기존과 완전히 동일하게(실질금리·달러인덱스 기반) 작동하되, 그 신호에 따라 "
+        "실제로 사고파는 대상 가격만 고려아연(010130.KS) 종가로 치환한 것입니다 — 즉 '금 신호가 "
+        "고려아연 주식 매매에도 통하는가'를 검증하는 용도입니다."
+    )
 
 with st.expander("전략 규칙 보기"):
     st.markdown(
@@ -607,15 +622,19 @@ with st.expander("전략 규칙 보기"):
   동일하게 **매수 확인 - 매일 갱신 2시그마 밴드**(기본 ON, 하락 대신 상승 기준 — 8거래일차
   +6.05% ~ 21거래일차 +9.80%) 또는 D0+7일 고정 시점("매수 확인 상승률", 기본 5%) 중 하나로
   전환할 수 있습니다.
-- 고급 설정의 **수수료**(② KRX 금현물 선택 시에만 적용, ① 국제 금 시세에는 적용되지 않음)는
-  **종목**(KRX 금현물 / TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의 기본값이 달라집니다.
-  KRX 금현물은 **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도 체결이 일어날 때마다
-  1회성으로 차감되어 매매 횟수에 비례해 총액이 늘어남)와 **보관수수료**(기본 0.00022%,
-  일률 — 보유 잔량에 매일 누적, 신호전략은 실제 보유 중일 때만·Buy & Hold는 전체 기간)로
-  나뉩니다. TIGER KRX금현물(ETF)은 거래소 매매수수료가 없다고 보아 매수/매도 수수료가
-  0%이고, 그 대신 같은 자리에 펀드의 **총보수**(기본 0.15%, 연율)를 입력받아 일할 복리
-  환산해 매일 잔량에 누적 적용합니다. "수수료 반영" 체크박스로 전부 껐다 켤 수 있고,
-  차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을 토글로 비교할 수 있습니다
+- 고급 설정의 **수수료**(② KRX 금현물·③ 고려아연 선택 시에만 적용, ① 국제 금 시세에는
+  적용되지 않음)는 기준에 따라 구조 자체가 다릅니다. ② KRX 금현물은 **종목**(KRX 금현물 /
+  TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의 기본값이 달라집니다 — KRX 금현물은
+  **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도 체결이 일어날 때마다 1회성으로
+  차감)와 **보관수수료**(기본 0.00022%, 일률 — 보유 잔량에 매일 누적)로 나뉘고, TIGER
+  KRX금현물(ETF)은 매수/매도 수수료 0%에 그 자리에 펀드의 **총보수**(기본 0.15%, 연율,
+  일할 복리 환산)를 대신 입력받습니다. ③ 고려아연은 코스피 상장주식이라 완전히 다른 구조
+  — **매매수수료**(기본 0.015%, 매수·매도 각각 부과)에 **매도 시에만** 붙는 **증권거래세+
+  농특세**(기본 0.2%)가 별도로 더해지고, 보관수수료는 없는 대신(주식이라 실물 보관 개념
+  자체가 없음) **배당금**(보유 중 배당 기준일이 지나가면 배당수익률만큼 가산, 기본
+  세전·옵션으로 배당소득세 15.4% 차감 가능)이 반영됩니다. "수수료 반영" 체크박스로 전부
+  껐다 켤 수 있고, 차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을 토글로 비교할 수
+  있습니다
 - 분석 기간: **{years}년** (1~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
   데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
   N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
@@ -815,74 +834,129 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
-    st.markdown("**수수료** (② KRX 금현물 선택 시에만 적용 — ① 국제 금 시세는 실물이 아닌 "
-                "참고 가격이라 적용되지 않음)")
-    gold_product = st.selectbox(
-        "종목",
-        GOLD_PRODUCT_OPTIONS,
-        key="bt_gold_product",
-        on_change=_apply_gold_product_fee_defaults,
-        disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
-        help="KRX 금현물은 매수/매도 시 미래에셋증권 매매수수료(각 0.165%)와 보유 잔량에 "
-        "대한 일할 보관수수료가 부과됩니다. TIGER KRX금현물(ETF)은 거래소 매매수수료가 "
-        "없는 대신(펀드가 실물을 대신 사고파는 비용은 총보수에 이미 녹아 있음) 매수/매도 "
-        "수수료는 0%로, 보관수수료 자리에는 펀드의 연 총보수(기본값 0.15%)를 입력받아 "
-        "일할 환산해 반영합니다. 종목을 바꾸면 아래 세 수수료 입력값이 그 종목의 기본값으로 "
-        "재설정됩니다.",
-    )
-    _is_tiger_etf = gold_product == GOLD_PRODUCT_TIGER_ETF
-    apply_fees = st.checkbox(
-        "수수료 반영",
-        key="bt_apply_fees",
-        disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
-        help="체크를 해제하면 아래 세 수수료 입력값과 무관하게 전부 0으로 두고 계산합니다"
-        "(입력값 자체는 그대로 남아있어 다시 체크하면 복원됩니다). 차트에서는 이 체크박스와 "
-        "별개로 '수수료 반영/미반영' 곡선을 토글로 바로 비교해볼 수 있습니다(줌 상태 유지).",
-    )
-    fee_buy_col, fee_sell_col, fee_holding_col = st.columns(3)
-    with fee_buy_col:
-        buy_fee_pct = st.number_input(
-            "매수 수수료 (%, 편도)",
-            min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_buy_fee_pct",
-            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-            help="매수 체결 시마다 그날 매수금액에 부과되는 1회성 수수료입니다(KRX 금현물 "
-            "기본값 0.165%, 미래에셋증권 KRX 금현물 매매수수료 기준 / TIGER KRX금현물(ETF) "
-            "기본값 0%, 거래소 매매수수료 없이 펀드 총보수로 대체). 보유기간과 무관하게 "
-            "매수할 때마다 매번 발생하므로, 매매 횟수가 많은 신호강도일수록 총액도 커집니다.",
+    _is_korea_zinc = gold_price_basis == config.GOLD_PRICE_BASIS_KOREA_ZINC
+    st.markdown("**수수료** (② KRX 금현물·③ 고려아연 선택 시에만 적용 — ① 국제 금 시세는 "
+                "실물이 아닌 참고 가격이라 적용되지 않음)")
+
+    if _is_korea_zinc:
+        apply_fees = st.checkbox(
+            "수수료 반영",
+            key="bt_apply_fees",
+            help="체크를 해제하면 아래 매매수수료·증권거래세 입력값과 무관하게 전부 0으로 두고 "
+            "계산합니다(입력값 자체는 남아있어 다시 체크하면 복원됩니다).",
         )
-    with fee_sell_col:
-        sell_fee_pct = st.number_input(
-            "매도 수수료 (%, 편도)",
-            min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_sell_fee_pct",
-            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-            help="매도 체결 시마다 그날 매도금액에 부과되는 1회성 수수료입니다(KRX 금현물 "
-            "기본값 0.165% / TIGER KRX금현물(ETF) 기본값 0%). Buy & Hold는 분석기간 종료 "
-            "시점에 전량 매도한다고 가정해 이 수수료를 마지막 날 1회 반영합니다.",
-        )
-    with fee_holding_col:
-        if _is_tiger_etf:
-            holding_fee_input_pct = st.number_input(
-                "총보수 (%, 연율)",
+        zinc_brokerage_col, zinc_tax_col, zinc_holding_col = st.columns(3)
+        with zinc_brokerage_col:
+            zinc_brokerage_fee_pct = st.number_input(
+                "매매수수료 (%, 매수·매도 각각)",
                 min_value=0.0, max_value=5.0, step=0.001, format="%.3f",
-                key="bt_daily_holding_fee_pct",
-                disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-                help="TIGER KRX금현물(ETF)의 연간 총보수입니다(기본값 0.15%). 매수/매도 "
-                "수수료와 달리 실제 보유 기간에만(신호전략은 보유 중일 때만, Buy & Hold는 "
-                "전체 기간) 발생하며, 계산 시에는 이 연율을 일할 복리 환산 "
-                "((1+연율)^(1/365)-1)해 하루 치 요율로 바꿔 매일 잔량에 누적 적용합니다.",
+                key="bt_zinc_brokerage_fee_pct",
+                disabled=not apply_fees,
+                help="증권사 위탁수수료입니다(기본값 0.015%, 온라인 기준 낮은 요율 — 증권사마다 "
+                "다르니 직접 조정 가능). 매수·매도 체결 시마다 각각 부과됩니다.",
             )
-        else:
-            holding_fee_input_pct = st.number_input(
-                "보관수수료 (%, 일률)",
-                min_value=0.0, max_value=1.0, step=0.00001, format="%.5f",
-                key="bt_daily_holding_fee_pct",
-                disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
-                help="보유 잔량에 매일 부과되는 수수료입니다(기본값 0.00022%, 부가세 포함 "
-                "추정치 — 연율이 아니라 하루 치 요율입니다). 정확한 산정 주기(일할 계산 후 "
-                "월초 청구 vs. 월말 잔량 기준 월 1회 부과)가 아직 확인되지 않아, 우선 '매일 "
-                "이 %만큼 누적'으로 가정해 계산합니다. 매수/매도 수수료와 달리 실제 보유 "
-                "기간에만(신호전략은 보유 중일 때만, Buy & Hold는 전체 기간) 발생합니다.",
+        with zinc_tax_col:
+            zinc_transaction_tax_pct = st.number_input(
+                "증권거래세+농특세 (%, 매도 시에만)",
+                min_value=0.0, max_value=5.0, step=0.01, format="%.2f",
+                key="bt_zinc_transaction_tax_pct",
+                disabled=not apply_fees,
+                help="코스피 상장주식은 매도 체결 시에만 증권거래세+농어촌특별세가 부과됩니다"
+                f"(기본값 {config.KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT:g}%, 2026-01 기준 "
+                "거래세 0.05%+농특세 0.15% — 세법 개정 시 바뀔 수 있어 config.py 상수 하나로 "
+                "관리됩니다). 매수 시에는 부과되지 않으며, 매도 수수료 계산 시 위 매매수수료와 "
+                "합산됩니다.",
             )
+        with zinc_holding_col:
+            st.text_input(
+                "보관수수료", value="해당 없음 (주식)", disabled=True,
+                help="고려아연은 KRX 금현물과 달리 실물 보관 개념이 없는 상장주식이라 보관수수료가 "
+                "없습니다(항상 0으로 계산).",
+            )
+        st.markdown("**배당금**")
+        zinc_apply_dividends = st.checkbox(
+            "배당금 반영",
+            value=True, key="bt_zinc_apply_dividends",
+            help="보유 기간 중 배당 기준일(ex-dividend date)이 지나가면, 그날의 주당 배당액을 "
+            "그날 종가 대비 수익률(배당수익률)로 환산해 수익률에 더합니다. Buy & Hold도 "
+            "분석기간 전체에 걸쳐 발생한 모든 배당을 똑같이 받는다고 가정합니다. 신호전략은 "
+            "실제로 보유 중이었던 배당만 받습니다(미보유 기간에 지나간 배당은 받지 못함).",
+        )
+        zinc_dividend_tax_toggle = st.checkbox(
+            "배당소득세(15.4%) 차감",
+            value=False, key="bt_zinc_dividend_tax_toggle",
+            disabled=not zinc_apply_dividends,
+            help=f"기본은 세전 배당금을 그대로 가산합니다. 체크하면 배당소득세 "
+            f"{config.DIVIDEND_INCOME_TAX_PCT:g}%(소득세+지방소득세)를 뗀 세후 배당금을 대신 "
+            "가산합니다.",
+        )
+    else:
+        gold_product = st.selectbox(
+            "종목",
+            GOLD_PRODUCT_OPTIONS,
+            key="bt_gold_product",
+            on_change=_apply_gold_product_fee_defaults,
+            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
+            help="KRX 금현물은 매수/매도 시 미래에셋증권 매매수수료(각 0.165%)와 보유 잔량에 "
+            "대한 일할 보관수수료가 부과됩니다. TIGER KRX금현물(ETF)은 거래소 매매수수료가 "
+            "없는 대신(펀드가 실물을 대신 사고파는 비용은 총보수에 이미 녹아 있음) 매수/매도 "
+            "수수료는 0%로, 보관수수료 자리에는 펀드의 연 총보수(기본값 0.15%)를 입력받아 "
+            "일할 환산해 반영합니다. 종목을 바꾸면 아래 세 수수료 입력값이 그 종목의 기본값으로 "
+            "재설정됩니다.",
+        )
+        _is_tiger_etf = gold_product == GOLD_PRODUCT_TIGER_ETF
+        apply_fees = st.checkbox(
+            "수수료 반영",
+            key="bt_apply_fees",
+            disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX,
+            help="체크를 해제하면 아래 세 수수료 입력값과 무관하게 전부 0으로 두고 계산합니다"
+            "(입력값 자체는 그대로 남아있어 다시 체크하면 복원됩니다). 차트에서는 이 체크박스와 "
+            "별개로 '수수료 반영/미반영' 곡선을 토글로 바로 비교해볼 수 있습니다(줌 상태 유지).",
+        )
+        fee_buy_col, fee_sell_col, fee_holding_col = st.columns(3)
+        with fee_buy_col:
+            buy_fee_pct = st.number_input(
+                "매수 수수료 (%, 편도)",
+                min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_buy_fee_pct",
+                disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+                help="매수 체결 시마다 그날 매수금액에 부과되는 1회성 수수료입니다(KRX 금현물 "
+                "기본값 0.165%, 미래에셋증권 KRX 금현물 매매수수료 기준 / TIGER KRX금현물(ETF) "
+                "기본값 0%, 거래소 매매수수료 없이 펀드 총보수로 대체). 보유기간과 무관하게 "
+                "매수할 때마다 매번 발생하므로, 매매 횟수가 많은 신호강도일수록 총액도 커집니다.",
+            )
+        with fee_sell_col:
+            sell_fee_pct = st.number_input(
+                "매도 수수료 (%, 편도)",
+                min_value=0.0, max_value=5.0, step=0.001, format="%.3f", key="bt_sell_fee_pct",
+                disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+                help="매도 체결 시마다 그날 매도금액에 부과되는 1회성 수수료입니다(KRX 금현물 "
+                "기본값 0.165% / TIGER KRX금현물(ETF) 기본값 0%). Buy & Hold는 분석기간 종료 "
+                "시점에 전량 매도한다고 가정해 이 수수료를 마지막 날 1회 반영합니다.",
+            )
+        with fee_holding_col:
+            if _is_tiger_etf:
+                holding_fee_input_pct = st.number_input(
+                    "총보수 (%, 연율)",
+                    min_value=0.0, max_value=5.0, step=0.001, format="%.3f",
+                    key="bt_daily_holding_fee_pct",
+                    disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+                    help="TIGER KRX금현물(ETF)의 연간 총보수입니다(기본값 0.15%). 매수/매도 "
+                    "수수료와 달리 실제 보유 기간에만(신호전략은 보유 중일 때만, Buy & Hold는 "
+                    "전체 기간) 발생하며, 계산 시에는 이 연율을 일할 복리 환산 "
+                    "((1+연율)^(1/365)-1)해 하루 치 요율로 바꿔 매일 잔량에 누적 적용합니다.",
+                )
+            else:
+                holding_fee_input_pct = st.number_input(
+                    "보관수수료 (%, 일률)",
+                    min_value=0.0, max_value=1.0, step=0.00001, format="%.5f",
+                    key="bt_daily_holding_fee_pct",
+                    disabled=gold_price_basis != config.GOLD_PRICE_BASIS_KRX or not apply_fees,
+                    help="보유 잔량에 매일 부과되는 수수료입니다(기본값 0.00022%, 부가세 포함 "
+                    "추정치 — 연율이 아니라 하루 치 요율입니다). 정확한 산정 주기(일할 계산 후 "
+                    "월초 청구 vs. 월말 잔량 기준 월 1회 부과)가 아직 확인되지 않아, 우선 '매일 "
+                    "이 %만큼 누적'으로 가정해 계산합니다. 매수/매도 수수료와 달리 실제 보유 "
+                    "기간에만(신호전략은 보유 중일 때만, Buy & Hold는 전체 기간) 발생합니다.",
+                )
 
 # The "기대수익률" value is needed here (as simulate()'s bond_annual_yield)
 # before the widget that lets the user edit it gets rendered — that widget now
@@ -912,25 +986,43 @@ def load_signals(as_of_iso: str, years: int, gold_price_basis: str) -> pd.DataFr
 
 
 def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
-    if basis == config.GOLD_PRICE_BASIS_KRX:
+    if basis in (config.GOLD_PRICE_BASIS_KRX, config.GOLD_PRICE_BASIS_KOREA_ZINC):
         return f"{value:,.0f}원"
     return f"${value:,.2f}"
 
 
-# Meaningless (and not applied) unless the KRX basis is active AND "수수료
-# 반영" is checked — the three inputs stay enabled-looking with their
-# defaults either way, but only actually reach the simulation when relevant.
-_fees_active = apply_fees and gold_price_basis == config.GOLD_PRICE_BASIS_KRX
-effective_buy_fee_pct = float(buy_fee_pct) if _fees_active else 0.0
-effective_sell_fee_pct = float(sell_fee_pct) if _fees_active else 0.0
-# TIGER KRX금현물(ETF)의 "총보수" 입력값은 연율이지만 backtest.simulate()의
-# daily_holding_fee_pct는 하루 치 요율이라는 계약이므로, 여기서만 일할 복리
-# 환산한다((1+연율)^(1/365)-1) — KRX 금현물은 원래부터 일률 입력이라 그대로 쓴다.
-if _is_tiger_etf:
-    _daily_holding_fee_pct = ((1.0 + float(holding_fee_input_pct) / 100.0) ** (1.0 / 365.0) - 1.0) * 100.0
+# Meaningless (and not applied) unless a fee-bearing basis (② KRX 또는 ③
+# 고려아연) is active AND "수수료 반영" is checked — the inputs stay
+# enabled-looking with their defaults either way, but only actually reach the
+# simulation when relevant.
+if _is_korea_zinc:
+    _fees_active = apply_fees
+    effective_buy_fee_pct = float(zinc_brokerage_fee_pct) if _fees_active else 0.0
+    # 매도 시에만: 매매수수료 + 증권거래세(농특세 포함) 합산 — 매수 쪽엔 세금이
+    # 붙지 않는 코스피 상장주식의 실제 수수료 구조를 그대로 반영.
+    effective_sell_fee_pct = (
+        float(zinc_brokerage_fee_pct) + float(zinc_transaction_tax_pct) if _fees_active else 0.0
+    )
+    # 상장주식은 KRX 금현물 같은 "보관수수료(일할)" 개념이 없음 — 항상 0.
+    effective_daily_holding_fee_pct = 0.0
 else:
-    _daily_holding_fee_pct = float(holding_fee_input_pct)
-effective_daily_holding_fee_pct = _daily_holding_fee_pct if _fees_active else 0.0
+    _fees_active = apply_fees and gold_price_basis == config.GOLD_PRICE_BASIS_KRX
+    effective_buy_fee_pct = float(buy_fee_pct) if _fees_active else 0.0
+    effective_sell_fee_pct = float(sell_fee_pct) if _fees_active else 0.0
+    # TIGER KRX금현물(ETF)의 "총보수" 입력값은 연율이지만 backtest.simulate()의
+    # daily_holding_fee_pct는 하루 치 요율이라는 계약이므로, 여기서만 일할 복리
+    # 환산한다((1+연율)^(1/365)-1) — KRX 금현물은 원래부터 일률 입력이라 그대로 쓴다.
+    if _is_tiger_etf:
+        _daily_holding_fee_pct = ((1.0 + float(holding_fee_input_pct) / 100.0) ** (1.0 / 365.0) - 1.0) * 100.0
+    else:
+        _daily_holding_fee_pct = float(holding_fee_input_pct)
+    effective_daily_holding_fee_pct = _daily_holding_fee_pct if _fees_active else 0.0
+
+# ③ 고려아연 기준일 때만, 그리고 "배당금 반영"이 켜져 있을 때만 채워진다 — 그
+# 외 모든 기준·상황에서는 None(=배당 미반영, 기존 동작과 완전히 동일).
+# signals(아래에서 로드)가 있어야 계산 가능하므로 실제 값은 try 블록 안에서
+# 채운다.
+dividend_yield_series = None
 
 # Shared by both the fee-adjusted ("net") and always-zero-fee ("gross") runs
 # below, AND by _threshold_holding's per-threshold reruns further down —
@@ -956,6 +1048,15 @@ _shared_sim_kwargs = dict(
 
 try:
     signals = load_signals(as_of_date.isoformat(), int(years), gold_price_basis)
+    # 배당금은 수수료 반영 여부(apply_fees)와 무관한 별개의 축이라 두 simulate()
+    # 호출(수수료 반영/미반영) 모두에 똑같이 넘긴다 — 배당은 "비용"이 아니라
+    # "이 자산을 들고 있으면 실제로 생기는 현금흐름"이라 수수료 토글이 꺼져
+    # 있어도(gross 비교) 여전히 발생한다.
+    if _is_korea_zinc and zinc_apply_dividends:
+        dividend_tax_pct = config.DIVIDEND_INCOME_TAX_PCT if zinc_dividend_tax_toggle else 0.0
+        dividend_yield_series = timeseries.fetch_dividend_yield_series(
+            signals["gold"], dividend_tax_pct=dividend_tax_pct
+        )
     result = backtest.simulate(
         signals,
         **_shared_sim_kwargs,
@@ -964,6 +1065,7 @@ try:
         buy_fee_pct=effective_buy_fee_pct,
         sell_fee_pct=effective_sell_fee_pct,
         daily_holding_fee_pct=effective_daily_holding_fee_pct,
+        dividend_yield_series=dividend_yield_series,
     )
     # "총수익률(수수료 미반영)" — 차트의 수수료 반영/미반영 토글이 비교할 상대편.
     # trades/holding_curve는 위 result와 완전히 동일(신호 자체가 수수료와 무관)
@@ -976,6 +1078,7 @@ try:
         buy_fee_pct=0.0,
         sell_fee_pct=0.0,
         daily_holding_fee_pct=0.0,
+        dividend_yield_series=dividend_yield_series,
     )
 except Exception as exc:
     st.error(f"백테스트를 실행하지 못했습니다: {exc}")
@@ -1099,6 +1202,93 @@ if m is not None:
 
 if result is None:
     st.stop()
+
+# ---- ①②③ 결과 비교 (버튼을 눌러야만 계산 — 세 기준 모두 각자 네트워크
+# 조회가 필요해 페이지 로드 때마다 자동으로 돌리지 않음) ----
+with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 결과 비교"):
+    st.caption(
+        "현재 설정된 신호 로직(green_count 임계값·52주 신고가/신저가·노이즈 필터·최소 보유일수· "
+        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 세 가지로 바꿔 각각 "
+        "백테스트합니다. 수수료·배당은 각 기준의 기본값을 사용합니다(① 없음 / ② KRX 금현물 "
+        "기본 수수료 / ③ 고려아연 기본 수수료+세전 배당금 반영)."
+    )
+    if st.button("세 가지 기준 비교 실행"):
+        _comparison_bases = [
+            config.GOLD_PRICE_BASIS_INTL,
+            config.GOLD_PRICE_BASIS_KRX,
+            config.GOLD_PRICE_BASIS_KOREA_ZINC,
+        ]
+        _comparison_rows = []
+        with st.spinner("세 기준 모두 백테스트 중입니다..."):
+            for _basis in _comparison_bases:
+                try:
+                    _basis_signals = backtest.prepare_signals(
+                        as_of=as_of_date, years=int(years), gold_price_basis=_basis
+                    )
+                    if _basis == config.GOLD_PRICE_BASIS_KRX:
+                        _basis_fee_kwargs = dict(
+                            buy_fee_pct=backtest.DEFAULT_BUY_FEE_PCT,
+                            sell_fee_pct=backtest.DEFAULT_SELL_FEE_PCT,
+                            daily_holding_fee_pct=backtest.DEFAULT_DAILY_HOLDING_FEE_PCT,
+                        )
+                        _basis_dividends = None
+                    elif _basis == config.GOLD_PRICE_BASIS_KOREA_ZINC:
+                        _basis_fee_kwargs = dict(
+                            buy_fee_pct=config.KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT,
+                            sell_fee_pct=(
+                                config.KOREA_ZINC_DEFAULT_BROKERAGE_FEE_PCT
+                                + config.KOREA_ZINC_SECURITIES_TRANSACTION_TAX_PCT
+                            ),
+                            daily_holding_fee_pct=0.0,
+                        )
+                        _basis_dividends = timeseries.fetch_dividend_yield_series(_basis_signals["gold"])
+                    else:
+                        _basis_fee_kwargs = dict(buy_fee_pct=0.0, sell_fee_pct=0.0, daily_holding_fee_pct=0.0)
+                        _basis_dividends = None
+
+                    _basis_result = backtest.simulate(
+                        _basis_signals,
+                        **_shared_sim_kwargs,
+                        buy_green_count=int(buy_green_count),
+                        sell_green_count=int(sell_green_count),
+                        dividend_yield_series=_basis_dividends,
+                        **_basis_fee_kwargs,
+                    )
+                    _bm = _basis_result["metrics"]
+                    _comparison_rows.append(
+                        {
+                            "기준": config.GOLD_PRICE_BASIS_LABELS[_basis],
+                            "B&H 누적수익률": f"{_bm['bh_total_return']:.1%}",
+                            "B&H CAGR": f"{_bm['bh_cagr']:.1%}",
+                            "신호전략 누적수익률(④)": (
+                                f"{_bm['hybrid_total_return']:.1%}" if _bm["hybrid_total_return"] is not None else "-"
+                            ),
+                            "신호전략 CAGR(④)": (
+                                f"{_bm['hybrid_cagr']:.1%}" if _bm["hybrid_cagr"] is not None else "-"
+                            ),
+                            "MDD": f"{_bm['max_drawdown']:.1%}",
+                            "매매횟수": f"{_bm['closed_trade_count']}회",
+                        }
+                    )
+                except Exception as _exc:
+                    _comparison_rows.append(
+                        {
+                            "기준": config.GOLD_PRICE_BASIS_LABELS[_basis],
+                            "B&H 누적수익률": f"실패: {_exc}",
+                            "B&H CAGR": "-",
+                            "신호전략 누적수익률(④)": "-",
+                            "신호전략 CAGR(④)": "-",
+                            "MDD": "-",
+                            "매매횟수": "-",
+                        }
+                    )
+        st.dataframe(pd.DataFrame(_comparison_rows), hide_index=True, use_container_width=True)
+        st.caption(
+            "④(신호전략, 미보유기간 기대수익률 포함) 기준으로 비교했습니다 — 분모(CAGR 계산 "
+            "기준 일수)가 B&H와 동일해 셋을 나란히 비교하기에 가장 적합합니다. 세 기준의 "
+            "green_count·52주 신고가/신저가는 각자의 가격 시계열로 다시 계산된 값이라, 매매 "
+            "시점·횟수 자체도 서로 다를 수 있습니다."
+        )
 
 # ---- 2. 누적수익률 라인차트 (+ 매수/매도 시점 마커) ----
 st.subheader("누적수익률")

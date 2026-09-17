@@ -318,6 +318,7 @@ def run_backtest(
     buy_fee_pct: float = 0.0,
     sell_fee_pct: float = 0.0,
     daily_holding_fee_pct: float = 0.0,
+    dividend_yield_series: pd.Series | None = None,
 ) -> tuple[list[dict], pd.Series, pd.Series, pd.Series, list[dict], list[dict]]:
     """Walks the signal frame day by day applying the buy/sell rules.
 
@@ -424,6 +425,19 @@ def run_backtest(
     `(1 - daily_holding_fee_pct / 100) ** elapsed_days`. 0.0 (the default)
     reproduces pre-fee behavior exactly.
 
+    `dividend_yield_series` (same index as `signals`, optional — only ever
+    non-None for the ③ 고려아연 basis, see timeseries.fetch_dividend_yield_series):
+    a per-day yield (0.0 except on an ex-dividend date) added to a held
+    position's return. Applied via a cumulative-product factor computed once
+    up front (`cum_dividend_factor`) and divided by its value at the position's
+    own entry index — the same "recompute fresh from entry every day" pattern
+    already used for `price / entry_price` and `fee_factor` below, rather than
+    compounding incrementally, so a position's day-i equity never depends on
+    how it was computed on day i-1. The entry day itself never captures that
+    day's dividend (mirrors the existing "bought at today's close, so today's
+    price move isn't captured either" convention). None (the default)
+    reproduces pre-dividend behavior exactly.
+
     Returns (trades, equity_curve, bh_equity_curve, holding_curve,
     sell_noise_log, buy_noise_log). Both equity curves start at 1.0 on the
     first date. The strategy curve is flat (1.0x, i.e. 0% return) while in
@@ -460,11 +474,26 @@ def run_backtest(
     gold_sma_long_arr = signals["gold_sma_long"].to_numpy()
     new_high_trigger_arr = signals["gold_new_52w_high"].to_numpy()
     new_low_trigger_arr = signals["gold_new_52w_low"].to_numpy()
+    # See `dividend_yield_series`'s docstring above — cum_dividend_factor[i]
+    # is the running product of (1 + that day's yield) from day 0 through day
+    # i; dividing it by its own value at a position's entry index gives the
+    # compounded dividend return since entry, recomputed fresh each day the
+    # same way price_ratio/fee_factor are (see the `if holding:` append below).
+    if dividend_yield_series is not None:
+        cum_dividend_factor = (1.0 + dividend_yield_series.reindex(dates).fillna(0.0)).cumprod().to_numpy()
+    else:
+        cum_dividend_factor = None
+
+    def _dividend_factor(i: int, entry_idx: int) -> float:
+        if cum_dividend_factor is None:
+            return 1.0
+        return float(cum_dividend_factor[i] / cum_dividend_factor[entry_idx])
 
     holding = False
     entry_date = None
     entry_price = None
     entry_reason = None
+    entry_i = None  # integer position of entry_date within `dates`/cum_dividend_factor
     equity_at_entry = None  # strategy equity value at the moment this position was opened
     running_equity = 1.0
     # {"d0_date", "d0_price", "occurrence_dates", "use_daily_band",
@@ -606,6 +635,7 @@ def run_backtest(
                 entry_date = dt
                 entry_price = price
                 entry_reason = entry_reason_today
+                entry_i = i
                 # Buy-side transaction fee: an instant haircut on the equity
                 # just committed, right as the position opens (including a
                 # position opened on this window's very first day).
@@ -733,10 +763,15 @@ def run_backtest(
                 # itself is never reassigned while holding, so it still holds
                 # exactly that value here, right before being overwritten below.
                 equity_before_trade = running_equity
+                dividend_factor = _dividend_factor(i, entry_i)
                 # Sell-side transaction fee: an instant haircut on the
                 # proceeds, right as the position closes.
                 running_equity = (
-                    equity_at_entry * (exit_price / entry_price) * fee_factor * (1.0 - sell_fee_pct / 100.0)
+                    equity_at_entry
+                    * (exit_price / entry_price)
+                    * fee_factor
+                    * dividend_factor
+                    * (1.0 - sell_fee_pct / 100.0)
                 )
                 trades.append(
                     {
@@ -763,11 +798,13 @@ def run_backtest(
                 entry_date = None
                 entry_price = None
                 entry_reason = None
+                entry_i = None
                 equity_at_entry = None
 
         if holding:
             fee_factor = _daily_fee_decay((dt - entry_date).days, daily_holding_fee_pct)
-            equity_values.append(equity_at_entry * (price / entry_price) * fee_factor)
+            dividend_factor = _dividend_factor(i, entry_i)
+            equity_values.append(equity_at_entry * (price / entry_price) * fee_factor * dividend_factor)
         else:
             equity_values.append(running_equity)
         holding_values.append(holding)
@@ -776,6 +813,7 @@ def run_backtest(
         last_dt = dates[-1]
         last_price = float(gold_arr[-1])
         fee_factor = _daily_fee_decay((last_dt - entry_date).days, daily_holding_fee_pct)
+        dividend_factor = _dividend_factor(len(dates) - 1, entry_i)
         trades.append(
             {
                 "entry_date": entry_date,
@@ -789,7 +827,10 @@ def run_backtest(
                 # No sell fee here — unlike equity_values[-1] below (adjusted
                 # for metrics purposes only), this dict describes the actual,
                 # still-open position, which hasn't paid one.
-                "net_period_return": (equity_at_entry / running_equity) * (last_price / entry_price) * fee_factor
+                "net_period_return": (equity_at_entry / running_equity)
+                * (last_price / entry_price)
+                * fee_factor
+                * dividend_factor
                 - 1.0,
                 "open": True,
             }
@@ -854,7 +895,14 @@ def run_backtest(
     # "still open" — one sell (applied only to the final day's value).
     elapsed_since_start = (dates - dates[0]).days.to_numpy()
     bh_holding_fee_decay = (1.0 - daily_holding_fee_pct / 100.0) ** elapsed_since_start
-    bh_equity_curve = (gold / gold.iloc[0]) * bh_holding_fee_decay * (1.0 - buy_fee_pct / 100.0)
+    # Same "bought at day 0's close, so day 0's own dividend (if any) isn't
+    # captured" convention as the signal strategy's entry day — dividing by
+    # cum_dividend_factor[0] rather than starting the cumprod from 1.0 makes
+    # that explicit rather than accidental.
+    bh_dividend_factor = (
+        cum_dividend_factor / cum_dividend_factor[0] if cum_dividend_factor is not None else 1.0
+    )
+    bh_equity_curve = (gold / gold.iloc[0]) * bh_holding_fee_decay * bh_dividend_factor * (1.0 - buy_fee_pct / 100.0)
     bh_equity_curve = bh_equity_curve.rename("bh_equity")
     bh_equity_curve.iloc[-1] *= 1.0 - sell_fee_pct / 100.0
     holding_curve = pd.Series(holding_values, index=dates, name="holding")
@@ -919,6 +967,7 @@ def compute_hybrid_cagr(
     buy_fee_pct: float = 0.0,
     sell_fee_pct: float = 0.0,
     daily_holding_fee_pct: float = 0.0,
+    dividend_yield_series: pd.Series | None = None,
 ) -> dict:
     """The full-period CAGR variant that fills non-holding days with an
     assumed bond return instead of leaving them flat: holding days compound at
@@ -953,6 +1002,14 @@ def compute_hybrid_cagr(
     built by the same loop, so a chart plotting it is guaranteed to agree
     with those two scalars exactly (no separate recomputation to drift out
     of sync).
+
+    `dividend_yield_series` (optional, same index as `gold`): folded into
+    every "holding" step's factor exactly like `gold_arr[i] / gold_arr[i-1]`
+    itself, since this function already compounds step-by-step (unlike
+    run_backtest()'s per-position "recompute fresh from entry" loop, where the
+    same yield needs a cumulative-product factor instead — see that
+    function's own docstring). None (the default) reproduces pre-dividend
+    behavior exactly.
     """
     dates = holding_curve.index
     # Pre-extracted to plain numpy arrays for the same reason as run_backtest's
@@ -962,6 +1019,10 @@ def compute_hybrid_cagr(
     # share `dates`, so `*_arr[i]` is always `*.iloc[i]`).
     holding_arr = holding_curve.to_numpy()
     gold_arr = gold.to_numpy()
+    if dividend_yield_series is not None:
+        dividend_yield_arr = dividend_yield_series.reindex(dates).fillna(0.0).to_numpy()
+    else:
+        dividend_yield_arr = None
     hybrid_equity = 1.0 - buy_fee_pct / 100.0 if bool(holding_arr[0]) else 1.0
     equity_values = [hybrid_equity]
     non_holding_days = 0
@@ -975,6 +1036,8 @@ def compute_hybrid_cagr(
             factor = float(gold_arr[i] / gold_arr[i - 1]) * _daily_fee_decay(
                 elapsed_days, daily_holding_fee_pct
             )
+            if dividend_yield_arr is not None:
+                factor *= 1.0 + dividend_yield_arr[i]
             if not is_holding:  # closes exactly on day i
                 factor *= 1.0 - sell_fee_pct / 100.0
         else:
@@ -1117,9 +1180,15 @@ def simulate(
     buy_fee_pct: float = 0.0,
     sell_fee_pct: float = 0.0,
     daily_holding_fee_pct: float = 0.0,
+    dividend_yield_series: pd.Series | None = None,
 ) -> dict:
     """The pure-computation half: run the trade state machine over already-
-    prepared signals and derive trades/equity curves/metrics/yearly returns."""
+    prepared signals and derive trades/equity curves/metrics/yearly returns.
+
+    `dividend_yield_series`: see run_backtest()'s own docstring — only ever
+    populated for the ③ 고려아연 basis (timeseries.fetch_dividend_yield_series);
+    None (default) for every other basis, reproducing pre-dividend behavior
+    exactly."""
     trades, equity_curve, bh_equity_curve, holding_curve, sell_noise_log, buy_noise_log = run_backtest(
         signals,
         use_new_high_trigger=use_new_high_trigger,
@@ -1138,10 +1207,17 @@ def simulate(
         buy_fee_pct=buy_fee_pct,
         sell_fee_pct=sell_fee_pct,
         daily_holding_fee_pct=daily_holding_fee_pct,
+        dividend_yield_series=dividend_yield_series,
     )
     metrics_out = compute_metrics(trades, equity_curve, bh_equity_curve)
     hybrid = compute_hybrid_cagr(
-        holding_curve, signals["gold"], bond_annual_yield, buy_fee_pct, sell_fee_pct, daily_holding_fee_pct
+        holding_curve,
+        signals["gold"],
+        bond_annual_yield,
+        buy_fee_pct,
+        sell_fee_pct,
+        daily_holding_fee_pct,
+        dividend_yield_series=dividend_yield_series,
     )
     hybrid_equity_curve = hybrid.pop("hybrid_equity_curve")
     metrics_out.update(hybrid)
