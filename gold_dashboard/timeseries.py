@@ -88,7 +88,7 @@ def fetch_gold_price_series(
         if series.empty:
             raise RuntimeError("선택한 분석 기간에 해당하는 KRX 금현물 데이터가 없습니다.")
         return series
-    if basis in config.KOREA_STOCK_PROXY_TICKERS:
+    if basis in config.ALL_KOSPI_PROXY_TICKERS:
         # 고려아연/미래에셋증권 등은 실제 금이 아니라 "매수·매도 대상 가격"만
         # 대체하는 대리 자산이므로, 별도의 최저 상장일 클램프 없이 KRX 금현물과
         # 같은 방식(fetch_start/end_date 그대로)으로 받아온다 — 코스피 상장
@@ -97,7 +97,7 @@ def fetch_gold_price_series(
         end_date = as_of or today_kst()
         fetch_start = gold_fetch_start(end_date, years, buffer_days)
         yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
-        return ds.fetch_yfinance_close(config.KOREA_STOCK_PROXY_TICKERS[basis], start=fetch_start, end=yf_end)
+        return ds.fetch_yfinance_close(config.ALL_KOSPI_PROXY_TICKERS[basis], start=fetch_start, end=yf_end)
     return fetch_raw_series("gold", as_of, years=years, buffer_days=buffer_days)
 
 
@@ -117,8 +117,8 @@ def fetch_backtest_frame(
     `gold_price_basis` selects what the "gold" column (used for every MA/trend
     filter/trigger/P&L computation) actually is — see fetch_gold_price_series.
 
-    Under the ② KRX basis and any ③④ KOSPI 대리 자산 basis (see
-    config.KOREA_STOCK_PROXY_TICKERS), real_rate/dxy's date index is shifted
+    Under the ② KRX basis and any ③~⑥ KOSPI 대리 자산 basis (see
+    config.ALL_KOSPI_PROXY_TICKERS), real_rate/dxy's date index is shifted
     forward one calendar day before the join below (see the comment at that
     shift) to correct a one-day look-ahead bias: FRED/Yahoo date real_rate/dxy
     by the US trading day (session closes ~16-17:00 ET ≈ 06:00-07:00 KST the
@@ -137,7 +137,7 @@ def fetch_backtest_frame(
     dxy = fetch_raw_series("dxy", end_date, years=years, buffer_days=buffer_days)
     gold = fetch_gold_price_series(end_date, years=years, buffer_days=buffer_days, basis=gold_price_basis)
 
-    if gold_price_basis == config.GOLD_PRICE_BASIS_KRX or gold_price_basis in config.KOREA_STOCK_PROXY_TICKERS:
+    if gold_price_basis == config.GOLD_PRICE_BASIS_KRX or gold_price_basis in config.ALL_KOSPI_PROXY_TICKERS:
         # A US date-D observation becomes usable starting KST date D+1; the
         # ffill()-after-outer-join below then naturally carries it forward
         # through any KST weekend/holiday gap to the next actual KST trading
@@ -162,7 +162,7 @@ def fetch_backtest_frame(
 
 def fetch_dividend_yield_series(gold: pd.Series, ticker: str, dividend_tax_pct: float = 0.0) -> pd.Series:
     """Only meaningful when `gold` is actually a KOSPI 대리 자산's price series
-    (③ 고려아연/④ 미래에셋증권 등 — see config.KOREA_STOCK_PROXY_TICKERS) and
+    (③ 고려아연/④ 미래에셋증권 등 — see config.ALL_KOSPI_PROXY_TICKERS) and
     `ticker` is that same basis's own ticker — converts its raw per-share
     dividend history into a same-index daily yield series (0.0 on every day
     except an ex-dividend date, where it's that day's per-share dividend
