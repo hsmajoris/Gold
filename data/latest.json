@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-17T09:08:02.091068+09:00",
+  "generated_at": "2026-10-18T08:43:24.001356+09:00",
   "requested_as_of": null,
   "as_of": "2026-10-16",
   "indicator_order": [
@@ -55,35 +55,35 @@
       "source": "Yahoo Finance (DX-Y.NYB)",
       "as_of": "2026-10-16",
       "prev_close": {
-        "value": 101.779,
-        "display": "101.78"
+        "value": 101.84,
+        "display": "101.84"
       },
       "sma": {
         "60": {
-          "ma_value": 100.436,
+          "ma_value": 100.4374,
           "ma_display": "100.44",
           "status_text": "상향 돌파",
-          "display": "100.44 (종가 101.78 → 상향 돌파)",
+          "display": "100.44 (종가 101.84 → 상향 돌파)",
           "streak": 23,
           "breakout": true,
           "streak_display": "23일째",
           "gold_friendly": false
         },
         "20": {
-          "ma_value": 101.9819,
-          "ma_display": "101.98",
+          "ma_value": 101.986,
+          "ma_display": "101.99",
           "status_text": "이평선 아래",
-          "display": "101.98 (종가 101.78 → 이평선 아래)",
+          "display": "101.99 (종가 101.84 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
           "streak_display": "",
           "gold_friendly": true
         },
         "7": {
-          "ma_value": 102.2178,
-          "ma_display": "102.22",
+          "ma_value": 102.23,
+          "ma_display": "102.23",
           "status_text": "이평선 아래",
-          "display": "102.22 (종가 101.78 → 이평선 아래)",
+          "display": "102.23 (종가 101.84 → 이평선 아래)",
           "streak": 0,
           "breakout": false,
           "streak_display": "",
