@@ -508,6 +508,8 @@ DEFAULTS = {
     "bt_use_new_high_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER,
     "bt_use_new_low_trigger": backtest.DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER,
     "bt_min_holding_days": backtest.DEFAULT_MIN_HOLDING_DAYS,
+    "bt_use_trade_cooldown": backtest.DEFAULT_USE_TRADE_COOLDOWN,
+    "bt_trade_cooldown_days": backtest.DEFAULT_TRADE_COOLDOWN_DAYS,
     "bt_bond_yield_pct": backtest.DEFAULT_BOND_ANNUAL_YIELD * 100.0,
     "bt_use_sell_noise_filter": False,
     "bt_use_daily_band_confirmation": backtest.DEFAULT_SELL_NOISE_USE_DAILY_BAND,
@@ -844,6 +846,29 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
         )
         st.caption(f"≈ {min_holding_days / 30:.1f}개월간 매도 조건을 무시하고 무조건 보유")
 
+    st.markdown("**매매 쿨다운 (매수·매도 공통)**")
+    use_trade_cooldown = st.checkbox(
+        "매매 발생 후 일정 기간 52주 신고가/신저가 트리거 비활성화",
+        key="bt_use_trade_cooldown",
+        help="매수든 매도든 거래가 한 번 체결되면, 그 이후 아래 '쿨다운 기간' 동안은 "
+        "52주 신고가 갱신(매수)·52주 신저가 갱신(매도) 트리거를 모두 끕니다 — green_count "
+        "기반 매수·매도는 쿨다운 중에도 평소와 똑같이 작동합니다. 장기 하락장에서 "
+        "green_count가 바닥권 매수 신호를 냈는데, 매수 직후 조금 더 빠지면서 52주 신저가를 "
+        "다시 갱신해 곧바로 손절당하는 상황(장기 하락장은 바닥 매수 신호 이후에도 추가 하락이 "
+        "흔함)을 막기 위한 옵션입니다. 쿨다운은 매수·매도 상관없이 거래가 체결될 때마다 그날 "
+        "날짜로 다시 시작됩니다.",
+    )
+    trade_cooldown_days = st.number_input(
+        "쿨다운 기간 (일, 역일 기준)",
+        min_value=1, max_value=365, step=1, key="bt_trade_cooldown_days",
+        disabled=not use_trade_cooldown,
+        help="마지막 거래일로부터 이 일수가 지나기 전까지는 52주 신고가/신저가 트리거가 "
+        "비활성화됩니다. 기본값 14일(2주).",
+    )
+    if use_trade_cooldown:
+        st.caption(f"≈ 매매 체결 후 {trade_cooldown_days}일(약 {trade_cooldown_days / 7:.1f}주)간 "
+                   "52주 신고가/신저가 트리거 비활성화")
+
     _is_kospi_stock_proxy = gold_price_basis in config.ALL_KOSPI_PROXY_TICKERS
     _is_etf_proxy = gold_price_basis in config.KOREA_ETF_PROXY_TICKERS
     st.markdown("**수수료** (② KRX 금현물·③~⑥ 고려아연/미래에셋증권/현대차/코스피200 선택 시에만 "
@@ -1058,6 +1083,8 @@ _shared_sim_kwargs = dict(
     use_new_high_trigger=use_new_high_trigger,
     use_new_low_trigger=use_new_low_trigger,
     min_holding_days=int(min_holding_days),
+    use_trade_cooldown=use_trade_cooldown,
+    trade_cooldown_days=int(trade_cooldown_days),
     bond_annual_yield=float(bond_yield_pct) / 100.0,
     use_sell_noise_filter=use_sell_noise_filter,
     use_daily_band_confirmation=use_daily_band_confirmation,
