@@ -79,6 +79,17 @@ FIFTY_TWO_WEEK_WINDOW_DAYS = 365
 DEFAULT_USE_FIFTY_TWO_WEEK_HIGH_TRIGGER = True
 DEFAULT_USE_FIFTY_TWO_WEEK_LOW_TRIGGER = True
 
+# Trade cooldown (opt-in, off by default): after ANY trade executes (buy or
+# sell, whatever triggered it), the 52-week new-high/new-low triggers are
+# disabled for this many calendar days — green_count triggers are completely
+# unaffected and keep firing normally throughout. Exists to prevent exactly
+# this whipsaw: green_count fires a bottom-buy deep in a long downtrend, and
+# the position immediately gets stopped back out by a 52-week-low breakdown a
+# day or two later, even though a long downtrend can easily keep making fresh
+# 52-week lows for a while after a legitimate bottom-buy signal.
+DEFAULT_USE_TRADE_COOLDOWN = False
+DEFAULT_TRADE_COOLDOWN_DAYS = 14
+
 # Sell-signal noise filter: while gold is well above its LONG_TREND_WINDOW-day
 # (calendar) SMA (a possible sign the sell signal is a blip in an ongoing
 # uptrend rather than a genuine reversal), a qualifying sell signal is ignored and a
@@ -307,6 +318,8 @@ def run_backtest(
     buy_green_count: int = BUY_GREEN_COUNT,
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
+    use_trade_cooldown: bool = DEFAULT_USE_TRADE_COOLDOWN,
+    trade_cooldown_days: int = DEFAULT_TRADE_COOLDOWN_DAYS,
     use_sell_noise_filter: bool = True,
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
     use_daily_band_confirmation: bool = DEFAULT_SELL_NOISE_USE_DAILY_BAND,
@@ -338,6 +351,19 @@ def run_backtest(
     many calendar days have passed since entry — a minimum holding period for
     a longer-horizon strategy, not day-trading. Sell evaluation resumes
     normally once it has elapsed.
+
+    Trade cooldown (`use_trade_cooldown`, off by default): after ANY trade
+    executes (buy or sell, whatever combination of reasons triggered it), the
+    52-week new-high/new-low triggers are disabled for the next
+    `trade_cooldown_days` calendar days — green_count keeps firing normally
+    throughout, on both sides, completely unaffected. Prevents a specific
+    whipsaw: green_count fires a bottom-buy deep in a long downtrend, and the
+    very next 52-week-low breakdown (which a long downtrend can easily keep
+    making for a while after a legitimate bottom-buy) immediately stops the
+    position back out again. The cooldown window is anchored to the date of
+    the last trade (entry or exit, whichever happened most recently) and
+    re-anchors every time a new trade executes, so back-to-back trades each
+    start their own fresh cooldown.
 
     Each trade records the reason(s) that triggered its order, as of the day
     the signal fired.
@@ -508,15 +534,27 @@ def run_backtest(
     trades: list[dict] = []
     equity_values = []
     holding_values = []
+    # Date of the most recently executed trade (entry or exit, whichever came
+    # last) — None until the first trade. Only consulted when
+    # use_trade_cooldown is on; see run_backtest's docstring.
+    last_trade_date = None
 
     for i, dt in enumerate(dates):
         gc = int(green_count_arr[i])
         price = float(gold_arr[i])
+        in_trade_cooldown = (
+            use_trade_cooldown
+            and last_trade_date is not None
+            and (dt - last_trade_date).days < trade_cooldown_days
+        )
 
         if not holding:
-            # No cooldown of its own — fires every time it's true and we're
-            # not already holding.
-            new_high_ready = use_new_high_trigger and bool(new_high_trigger_arr[i])
+            # No cooldown of its own (unless use_trade_cooldown gates it
+            # above) — otherwise fires every time it's true and we're not
+            # already holding.
+            new_high_ready = (
+                use_new_high_trigger and bool(new_high_trigger_arr[i]) and not in_trade_cooldown
+            )
 
             raw_entry_reason_today = None
             if new_high_ready or gc >= buy_green_count:
@@ -636,6 +674,7 @@ def run_backtest(
                 entry_price = price
                 entry_reason = entry_reason_today
                 entry_i = i
+                last_trade_date = dt
                 # Buy-side transaction fee: an instant haircut on the equity
                 # just committed, right as the position opens (including a
                 # position opened on this window's very first day).
@@ -649,9 +688,12 @@ def run_backtest(
             # weekends/holidays even though `dates` itself only contains
             # trading days.
             if (dt - entry_date).days >= min_holding_days:
-                # No cooldown of its own (mirrors the new-high buy trigger) —
-                # fires every time it's true while holding.
-                new_low_ready = use_new_low_trigger and bool(new_low_trigger_arr[i])
+                # No cooldown of its own (mirrors the new-high buy trigger)
+                # beyond use_trade_cooldown's gate above — otherwise fires
+                # every time it's true while holding.
+                new_low_ready = (
+                    use_new_low_trigger and bool(new_low_trigger_arr[i]) and not in_trade_cooldown
+                )
                 if new_low_ready or gc <= sell_green_count:
                     exit_reason_today = _sell_reason(gc, sell_green_count, include_new_low=new_low_ready)
 
@@ -800,6 +842,7 @@ def run_backtest(
                 entry_reason = None
                 entry_i = None
                 equity_at_entry = None
+                last_trade_date = dt
 
         if holding:
             fee_factor = _daily_fee_decay((dt - entry_date).days, daily_holding_fee_pct)
@@ -1168,6 +1211,8 @@ def simulate(
     buy_green_count: int = BUY_GREEN_COUNT,
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
+    use_trade_cooldown: bool = DEFAULT_USE_TRADE_COOLDOWN,
+    trade_cooldown_days: int = DEFAULT_TRADE_COOLDOWN_DAYS,
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
     use_sell_noise_filter: bool = True,
     sell_noise_filter_buffer_pct: float = DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT,
@@ -1196,6 +1241,8 @@ def simulate(
         buy_green_count=buy_green_count,
         sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
+        use_trade_cooldown=use_trade_cooldown,
+        trade_cooldown_days=trade_cooldown_days,
         use_sell_noise_filter=use_sell_noise_filter,
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
         use_daily_band_confirmation=use_daily_band_confirmation,
@@ -1247,6 +1294,8 @@ def run(
     buy_green_count: int = BUY_GREEN_COUNT,
     sell_green_count: int = SELL_GREEN_COUNT,
     min_holding_days: int = 0,
+    use_trade_cooldown: bool = DEFAULT_USE_TRADE_COOLDOWN,
+    trade_cooldown_days: int = DEFAULT_TRADE_COOLDOWN_DAYS,
     bond_annual_yield: float = DEFAULT_BOND_ANNUAL_YIELD,
     gold_price_basis: str = config.GOLD_PRICE_BASIS_DEFAULT,
     use_sell_noise_filter: bool = True,
@@ -1269,6 +1318,8 @@ def run(
         buy_green_count=buy_green_count,
         sell_green_count=sell_green_count,
         min_holding_days=min_holding_days,
+        use_trade_cooldown=use_trade_cooldown,
+        trade_cooldown_days=trade_cooldown_days,
         bond_annual_yield=bond_annual_yield,
         use_sell_noise_filter=use_sell_noise_filter,
         sell_noise_filter_buffer_pct=sell_noise_filter_buffer_pct,
