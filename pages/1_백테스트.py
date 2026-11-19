@@ -526,6 +526,7 @@ DEFAULTS = {
     "bt_kospi_transaction_tax_pct": config.KOREA_STOCK_SECURITIES_TRANSACTION_TAX_PCT,
     "bt_kospi_apply_dividends": True,
     "bt_kospi_dividend_tax_toggle": False,
+    "bt_crypto_fee_pct": config.CRYPTO_DEFAULT_EXCHANGE_FEE_PCT,
 }
 for _key, _default in DEFAULTS.items():
     st.session_state.setdefault(_key, _default)
@@ -554,6 +555,7 @@ _gold_basis_options = [
     config.GOLD_PRICE_BASIS_MIRAE_ASSET,
     config.GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
     config.GOLD_PRICE_BASIS_KOSPI200,
+    config.GOLD_PRICE_BASIS_BITCOIN,
 ]
 st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
 gold_price_basis = st.radio(
@@ -573,17 +575,20 @@ st.caption(
     "실제 국내 시세(KRW/g)를 그대로 사용합니다(출처: Naver 증권). ② 선택 시 최초 데이터 수집에 "
     "1분 내외 걸릴 수 있습니다(이후 캐시되어 즉시 표시)."
 )
-if gold_price_basis in config.ALL_KOSPI_PROXY_TICKERS:
+if gold_price_basis in config.ALL_PRICE_PROXY_TICKERS:
     _basis_label = config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]
     st.caption(
         f"{_basis_label}은 금이 아닙니다 — green_count·52주 신고가/신저가·노이즈 필터 등 매수·매도 "
         "신호 로직은 기존과 완전히 동일하게(실질금리·달러인덱스 기반) 작동하되, 그 신호에 따라 "
-        f"실제로 사고파는 대상 가격만 이 종목(티커: {config.ALL_KOSPI_PROXY_TICKERS[gold_price_basis]}) "
+        f"실제로 사고파는 대상 가격만 이 종목(티커: {config.ALL_PRICE_PROXY_TICKERS[gold_price_basis]}) "
         "종가로 치환한 것입니다 — 즉 '금 신호가 이 종목 매매에도 통하는가'를 검증하는 용도입니다."
         + (
             " 이건 금 시세와 아무 연관 없는 업종/시장 전체를 일부러 골라, 신호 자체가 아무 "
             "종목·지수에나 '그럴듯하게' 통하는 우연에 불과한지 대조해보는 placebo 대조군입니다."
             if gold_price_basis in config.GOLD_PRICE_BASIS_PLACEBO_SET
+            else " 비트코인은 '디지털 금'이라는 세간의 내러티브가 있어 placebo로 분류하지는 "
+            "않았지만, 그 상관관계를 전제하는 것은 아니며 이 역시 검증 대상입니다."
+            if gold_price_basis == config.GOLD_PRICE_BASIS_BITCOIN
             else ""
         )
     )
@@ -634,19 +639,22 @@ with st.expander("전략 규칙 보기"):
   동일하게 **매수 확인 - 매일 갱신 2시그마 밴드**(기본 ON, 하락 대신 상승 기준 — 8거래일차
   +6.05% ~ 21거래일차 +9.80%) 또는 D0+7일 고정 시점("매수 확인 상승률", 기본 5%) 중 하나로
   전환할 수 있습니다.
-- 고급 설정의 **수수료**(② KRX 금현물·③ 고려아연·④ 미래에셋증권 선택 시에만 적용, ① 국제
-  금 시세에는 적용되지 않음)는 기준에 따라 구조 자체가 다릅니다. ② KRX 금현물은 **종목**
-  (KRX 금현물 / TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의 기본값이 달라집니다 — KRX
-  금현물은 **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도 체결이 일어날 때마다 1회성
-  으로 차감)와 **보관수수료**(기본 0.00022%, 일률 — 보유 잔량에 매일 누적)로 나뉘고, TIGER
-  KRX금현물(ETF)은 매수/매도 수수료 0%에 그 자리에 펀드의 **총보수**(기본 0.15%, 연율,
-  일할 복리 환산)를 대신 입력받습니다. ③ 고려아연·④ 미래에셋증권은 둘 다 코스피 상장주식
-  이라 완전히 다른 구조 — **매매수수료**(기본 0.015%, 매수·매도 각각 부과)에 **매도 시에만**
-  붙는 **증권거래세+농특세**(기본 0.2%)가 별도로 더해지고, 보관수수료는 없는 대신(주식이라
-  실물 보관 개념 자체가 없음) **배당금**(보유 중 배당 기준일이 지나가면 배당수익률만큼
-  가산, 기본 세전·옵션으로 배당소득세 15.4% 차감 가능)이 반영됩니다. "수수료 반영" 체크박스
-  로 전부 껐다 켤 수 있고, 차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을 토글로 비교할
-  수 있습니다
+- 고급 설정의 **수수료**(② KRX 금현물·③~⑦ 고려아연/미래에셋증권/현대차/코스피200/비트코인
+  선택 시에만 적용, ① 국제 금 시세에는 적용되지 않음)는 기준에 따라 구조 자체가 다릅니다.
+  ② KRX 금현물은 **종목**(KRX 금현물 / TIGER KRX금현물(ETF)) 선택에 따라 세 입력값의
+  기본값이 달라집니다 — KRX 금현물은 **매수/매도 수수료**(각 기본 0.165%, 편도, 매수·매도
+  체결이 일어날 때마다 1회성으로 차감)와 **보관수수료**(기본 0.00022%, 일률 — 보유 잔량에
+  매일 누적)로 나뉘고, TIGER KRX금현물(ETF)은 매수/매도 수수료 0%에 그 자리에 펀드의
+  **총보수**(기본 0.15%, 연율, 일할 복리 환산)를 대신 입력받습니다. ③④⑤ 고려아연·
+  미래에셋증권·현대차는 모두 코스피 상장 보통주라 완전히 다른 구조 — **매매수수료**(기본
+  0.015%, 매수·매도 각각 부과)에 **매도 시에만** 붙는 **증권거래세+농특세**(기본 0.2%)가
+  별도로 더해지고, 보관수수료는 없는 대신(주식이라 실물 보관 개념 자체가 없음) **배당금**
+  (보유 중 배당 기준일이 지나가면 배당수익률만큼 가산, 기본 세전·옵션으로 배당소득세 15.4%
+  차감 가능)이 반영됩니다. ⑥ 코스피200은 ETF라 매매수수료+배당금은 같은 방식으로 반영되지만
+  증권거래세는 면제됩니다. ⑦ 비트코인은 증권거래세·배당 개념 자체가 없는 암호화폐라
+  **거래소 수수료**(기본 0.05%, 매수·매도 각각 동일 요율) 하나만 반영됩니다. "수수료 반영"
+  체크박스로 전부 껐다 켤 수 있고, 차트에서는 이 값과 별개로 수수료 반영/미반영 곡선을
+  토글로 비교할 수 있습니다
 - 분석 기간: **{years}년** (1~15년 조정 가능, 이동평균 계산용으로 그 이전 {buffer}캘린더일치
   데이터를 추가로 사용). 기본은 오늘을 기준으로 최근 {years}년이지만, "기준일 (오늘로부터
   N년 전)"을 0보다 크게 설정하면 분석 종료일 자체가 그만큼 과거로 이동합니다 — 예:
@@ -871,8 +879,9 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
 
     _is_kospi_stock_proxy = gold_price_basis in config.ALL_KOSPI_PROXY_TICKERS
     _is_etf_proxy = gold_price_basis in config.KOREA_ETF_PROXY_TICKERS
-    st.markdown("**수수료** (② KRX 금현물·③~⑥ 고려아연/미래에셋증권/현대차/코스피200 선택 시에만 "
-                "적용 — ① 국제 금 시세는 실물이 아닌 참고 가격이라 적용되지 않음)")
+    _is_crypto_proxy = gold_price_basis == config.GOLD_PRICE_BASIS_BITCOIN
+    st.markdown("**수수료** (② KRX 금현물·③~⑦ 고려아연/미래에셋증권/현대차/코스피200/비트코인 "
+                "선택 시에만 적용 — ① 국제 금 시세는 실물이 아닌 참고 가격이라 적용되지 않음)")
 
     if _is_kospi_stock_proxy:
         _kospi_label = config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]
@@ -936,6 +945,24 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
             f"{config.DIVIDEND_INCOME_TAX_PCT:g}%(소득세+지방소득세)를 뗀 세후 배당금을 대신 "
             "가산합니다.",
         )
+    elif _is_crypto_proxy:
+        apply_fees = st.checkbox(
+            "수수료 반영",
+            key="bt_apply_fees",
+            help="체크를 해제하면 아래 거래소 수수료 입력값과 무관하게 0으로 두고 계산합니다"
+            "(입력값 자체는 남아있어 다시 체크하면 복원됩니다).",
+        )
+        crypto_fee_pct = st.number_input(
+            "거래소 수수료 (%, 매수·매도 각각)",
+            min_value=0.0, max_value=5.0, step=0.001, format="%.3f",
+            key="bt_crypto_fee_pct",
+            disabled=not apply_fees,
+            help="국내 원화마켓 거래소(업비트 등)의 매수·매도 체결 수수료입니다(기본값 0.05% — "
+            "거래소·회원 등급별로 차이가 커 직접 조정 가능). 증권거래세·배당 개념 자체가 "
+            "암호화폐에는 없어 해당 항목은 표시하지 않습니다.",
+        )
+        st.caption("비트코인은 증권거래세·배당 개념이 없어(코스피 상장주식과 달리) 거래소 수수료만 "
+                   "반영됩니다.")
     else:
         gold_product = st.selectbox(
             "종목",
@@ -1032,7 +1059,7 @@ def load_signals(as_of_iso: str, years: int, gold_price_basis: str) -> pd.DataFr
 
 
 def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
-    if basis == config.GOLD_PRICE_BASIS_KRX or basis in config.ALL_KOSPI_PROXY_TICKERS:
+    if basis == config.GOLD_PRICE_BASIS_KRX or basis in config.ALL_PRICE_PROXY_TICKERS:
         return f"{value:,.0f}원"
     return f"${value:,.2f}"
 
@@ -1050,6 +1077,12 @@ if _is_kospi_stock_proxy:
         float(kospi_brokerage_fee_pct) + float(kospi_transaction_tax_pct) if _fees_active else 0.0
     )
     # 상장주식은 KRX 금현물 같은 "보관수수료(일할)" 개념이 없음 — 항상 0.
+    effective_daily_holding_fee_pct = 0.0
+elif _is_crypto_proxy:
+    _fees_active = apply_fees
+    # 매수·매도 동일 요율(거래소 수수료) — 증권거래세·보관수수료 개념 자체가 없음.
+    effective_buy_fee_pct = float(crypto_fee_pct) if _fees_active else 0.0
+    effective_sell_fee_pct = float(crypto_fee_pct) if _fees_active else 0.0
     effective_daily_holding_fee_pct = 0.0
 else:
     _fees_active = apply_fees and gold_price_basis == config.GOLD_PRICE_BASIS_KRX
@@ -1251,18 +1284,19 @@ if m is not None:
 if result is None:
     st.stop()
 
-# ---- ①~⑥ 결과 비교 (버튼을 눌러야만 계산 — 여섯 기준 모두 각자 네트워크
+# ---- ①~⑦ 결과 비교 (버튼을 눌러야만 계산 — 일곱 기준 모두 각자 네트워크
 # 조회가 필요해 페이지 로드 때마다 자동으로 돌리지 않음) ----
 with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 · ④ 미래에셋증권 · ⑤ 현대차 · "
-                  "⑥ 코스피200 결과 비교"):
+                  "⑥ 코스피200 · ⑦ 비트코인 결과 비교"):
     st.caption(
         "현재 설정된 신호 로직(green_count 임계값·52주 신고가/신저가·노이즈 필터·최소 보유일수· "
-        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 여섯 가지로 바꿔 각각 "
+        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 일곱 가지로 바꿔 각각 "
         "백테스트합니다. 수수료·배당은 각 기준의 기본값을 사용합니다(① 없음 / ② KRX 금현물 "
         "기본 수수료 / ③④⑤ 코스피 개별주 기본 수수료+증권거래세+세전 배당금 반영 / ⑥ ETF라 "
-        "증권거래세 없이 매매수수료+세전 배당금만 반영)."
+        "증권거래세 없이 매매수수료+세전 배당금만 반영 / ⑦ 거래소 수수료만 반영, 증권거래세·"
+        "배당 없음)."
     )
-    if st.button("여섯 가지 기준 비교 실행"):
+    if st.button("일곱 가지 기준 비교 실행"):
         _comparison_bases = [
             config.GOLD_PRICE_BASIS_INTL,
             config.GOLD_PRICE_BASIS_KRX,
@@ -1270,9 +1304,10 @@ with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 · �
             config.GOLD_PRICE_BASIS_MIRAE_ASSET,
             config.GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
             config.GOLD_PRICE_BASIS_KOSPI200,
+            config.GOLD_PRICE_BASIS_BITCOIN,
         ]
         _comparison_rows = []
-        with st.spinner("여섯 기준 모두 백테스트 중입니다..."):
+        with st.spinner("일곱 기준 모두 백테스트 중입니다..."):
             for _basis in _comparison_bases:
                 try:
                     _basis_signals = backtest.prepare_signals(
@@ -1299,6 +1334,13 @@ with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 · �
                         _basis_dividends = timeseries.fetch_dividend_yield_series(
                             _basis_signals["gold"], config.ALL_KOSPI_PROXY_TICKERS[_basis]
                         )
+                    elif _basis == config.GOLD_PRICE_BASIS_BITCOIN:
+                        _basis_fee_kwargs = dict(
+                            buy_fee_pct=config.CRYPTO_DEFAULT_EXCHANGE_FEE_PCT,
+                            sell_fee_pct=config.CRYPTO_DEFAULT_EXCHANGE_FEE_PCT,
+                            daily_holding_fee_pct=0.0,
+                        )
+                        _basis_dividends = None
                     else:
                         _basis_fee_kwargs = dict(buy_fee_pct=0.0, sell_fee_pct=0.0, daily_holding_fee_pct=0.0)
                         _basis_dividends = None
@@ -1773,7 +1815,8 @@ st.caption(
     "② KRX 금현물 기준일 때는 매수·매도 거래수수료와 보관수수료가 반영되지만 세금은 반영되지 "
     "않고, ③④⑤ 고려아연·미래에셋증권·현대차 기준일 때는 매매수수료·증권거래세·배당금(옵션으로 "
     "배당소득세)까지 반영되며, ⑥ 코스피200(ETF) 기준일 때는 매매수수료·배당금만 반영되고 "
-    "ETF라 증권거래세는 면제됩니다 — 그 외 세금은 여전히 반영되지 않습니다. 어느 기준이든 "
+    "ETF라 증권거래세는 면제됩니다. ⑦ 비트코인 기준일 때는 거래소 수수료만 반영되고 증권거래세·"
+    "배당 개념 자체가 없습니다 — 그 외 세금은 여전히 반영되지 않습니다. 어느 기준이든 "
     "슬리피지는 반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 있습니다. "
     "'④ 신호전략 (미보유기간 기대수익률 포함)' 그룹(요약 지표의 네 번째 그룹 — 위 '금 가격 "
     "기준'의 ④ 미래에셋증권과는 무관)의 기대수익률은 사용자가 입력한 단일 연이율을 그대로 "

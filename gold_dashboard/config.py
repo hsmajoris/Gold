@@ -45,6 +45,13 @@ GOLD_PRICE_BASIS_KOREA_ZINC = "korea_zinc"
 GOLD_PRICE_BASIS_MIRAE_ASSET = "mirae_asset"
 GOLD_PRICE_BASIS_HYUNDAI_MOTOR = "hyundai_motor"
 GOLD_PRICE_BASIS_KOSPI200 = "kospi200"
+# ⑦ 비트코인 — 위 ③~⑥과 마찬가지로 "대리 자산" 옵션이지만, KOSPI 상장주식이
+# 아니라 24시간 거래되는 암호화폐라 수수료·세금 구조가 전혀 다름(증권거래세·
+# 배당 없음) — 그래서 KOREA_STOCK_PROXY_TICKERS/KOREA_ETF_PROXY_TICKERS가
+# 아니라 별도의 CRYPTO_PROXY_TICKERS로 분리했다(아래 참고). "디지털 금"이라는
+# 세간의 내러티브가 있어 고려아연처럼 placebo 집합에서는 제외했지만, 그
+# 상관관계를 전제하는 것은 아니고 그 자체를 검증해보기 위한 추가 대조군이다.
+GOLD_PRICE_BASIS_BITCOIN = "bitcoin"
 GOLD_PRICE_BASIS_STATE_KEY = "gold_price_basis"
 GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_INTL: "① 국제 금 시세 (USD/oz, GC=F)",
@@ -53,6 +60,7 @@ GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_MIRAE_ASSET: "④ 미래에셋증권 (KOSPI 006800, 무관 대조군)",
     GOLD_PRICE_BASIS_HYUNDAI_MOTOR: "⑤ 현대차 (KOSPI 005380, 무관 대조군)",
     GOLD_PRICE_BASIS_KOSPI200: "⑥ 코스피200 (KODEX 200 ETF, 069500, 시장 전체 대조군)",
+    GOLD_PRICE_BASIS_BITCOIN: "⑦ 비트코인 (BTC-KRW, 디지털 자산 대조군)",
 }
 # What a fresh session (and any caller that doesn't specify gold_price_basis
 # explicitly) starts on.
@@ -86,11 +94,25 @@ KOREA_ETF_PROXY_TICKERS = {
     GOLD_PRICE_BASIS_KOSPI200: KOSPI200_ETF_TICKER,
 }
 # 가격 수집·look-ahead bias 보정·배당 조회처럼 "개별주 vs ETF" 구분이 필요 없는
-# 공통 로직에서 쓰는 합집합.
+# 공통 로직에서 쓰는 합집합. (코스피 상장 종목/ETF만 — 세금·배당 로직이 이
+# 둘에만 해당되므로 비트코인은 여기 포함하지 않는다. 가격 수집 등 정말로
+# 모든 대리 자산에 공통인 로직은 ALL_PRICE_PROXY_TICKERS를 대신 참고.)
 ALL_KOSPI_PROXY_TICKERS = {**KOREA_STOCK_PROXY_TICKERS, **KOREA_ETF_PROXY_TICKERS}
+# ⑦ 비트코인 — 24시간 거래되는 암호화폐라 증권거래세·배당 같은 한국 상장주식
+# 특유의 개념이 전혀 적용되지 않는다. 별도 딕셔너리로 분리해 ALL_KOSPI_PROXY_
+# TICKERS(세금·배당 로직용)를 건드리지 않으면서도, ALL_PRICE_PROXY_TICKERS를
+# 통해 가격 수집 등 정말로 공통인 로직에는 자연스럽게 포함된다.
+BITCOIN_TICKER = "BTC-KRW"
+CRYPTO_PROXY_TICKERS = {
+    GOLD_PRICE_BASIS_BITCOIN: BITCOIN_TICKER,
+}
+# 가격 수집(fetch_gold_price_series)·look-ahead bias 보정·"이건 금이 아니라
+# 대리 자산입니다" 안내 캡션처럼 코스피/암호화폐 구분 없이 "실제 금이 아닌
+# 대리 자산 전체"에 공통인 로직에서 쓰는 합집합.
+ALL_PRICE_PROXY_TICKERS = {**ALL_KOSPI_PROXY_TICKERS, **CRYPTO_PROXY_TICKERS}
 # 금과 의도적으로 무관한 종목/지수만 모은 부분집합(고려아연은 그나마 원자재
-# 관련이라 제외) — UI가 "이건 순수 placebo 대조군입니다" 문구를 추가로 보여줄
-# 대상을 판단하는 데만 쓰인다.
+# 관련이라 제외, 비트코인도 "디지털 금" 내러티브가 있어 제외) — UI가 "이건
+# 순수 placebo 대조군입니다" 문구를 추가로 보여줄 대상을 판단하는 데만 쓰인다.
 GOLD_PRICE_BASIS_PLACEBO_SET = {
     GOLD_PRICE_BASIS_MIRAE_ASSET,
     GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
@@ -110,6 +132,11 @@ KOREA_STOCK_SECURITIES_TRANSACTION_TAX_PCT = 0.2
 # 배당소득세(15.4% = 소득세 14% + 지방소득세 1.4%) — 배당금 반영 옵션에서 "세후"를
 # 선택했을 때만 적용되는 별도 토글용 상수(기본은 세전 배당금 그대로 가산).
 DIVIDEND_INCOME_TAX_PCT = 15.4
+
+# ⑦ 비트코인 — 국내 원화마켓 거래소(업비트 등)의 일반적인 매수·매도 수수료
+# 요율을 기본값으로 둔다(거래소·회원 등급별로 차이가 커 화면에서 직접 조정
+# 가능). 증권거래세·배당 개념 자체가 없어 그 두 상수는 해당 없음.
+CRYPTO_DEFAULT_EXCHANGE_FEE_PCT = 0.05
 
 INDICATOR_META = {
     "real_rate": {

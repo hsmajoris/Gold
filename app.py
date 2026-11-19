@@ -389,6 +389,7 @@ def render_dashboard() -> None:
         config.GOLD_PRICE_BASIS_MIRAE_ASSET,
         config.GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
         config.GOLD_PRICE_BASIS_KOSPI200,
+        config.GOLD_PRICE_BASIS_BITCOIN,
     ]
     st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
     gold_price_basis = st.radio(
@@ -408,7 +409,7 @@ def render_dashboard() -> None:
             "KRX 금현물과 직접 대응되지 않습니다. 이 설정은 유효성 검증 페이지의 백테스트에만 "
             "적용됩니다."
         )
-    elif gold_price_basis in config.ALL_KOSPI_PROXY_TICKERS:
+    elif gold_price_basis in config.ALL_PRICE_PROXY_TICKERS:
         st.caption(
             f"ℹ️ {config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]}은 금이 아닌 대리 자산"
             "(proxy)이며, 이 설정은 유효성 검증 페이지의 백테스트에만 적용됩니다. 이 대시보드 "
