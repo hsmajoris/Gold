@@ -214,7 +214,7 @@ KRX 금현물시장은 2014-03-24에 개장했으므로, ②를 선택한 상태
 | WTI | FRED `DCOILWTICO` |
 | VIX | Yahoo Finance `^VIX` |
 | 금 가격 (백테스트, ② KRX 금현물 선택 시) | Naver 증권 API `api.stock.naver.com/marketindex/metals/M04020000/prices` (KRX `04020000`, KRW/g) |
-| 서울 아파트 매매가격지수 (백테스트, ⑧ 선택 시) | 한국부동산원(REB) R-ONE Open API `reb.or.kr/r-one/openapi/SttsApiTblData.do` (통계표 `T244183132827305`, "(주) 매매가격지수", CLS_ID 50008="서울", 주간) |
+| 서울 아파트 매매가격지수 (백테스트, ⑧ 선택 시) | 한국부동산원(REB) R-ONE Open API `reb.or.kr/r-one/openapi/SttsApiTblData.do` (통계표 `A_2024_00045`, "(월) 매매가격지수_아파트", CLS_ID 500008="서울", 월간) |
 
 FRED 데이터는 공식 API(`https://api.stlouisfed.org/fred/series/observations`)로 받아오며,
 [무료 API 키](https://fred.stlouisfed.org/docs/api/api_key.html)가 필요합니다. 환경변수
