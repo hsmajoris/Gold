@@ -25,7 +25,6 @@ import streamlit as st
 
 from . import config
 from . import metrics
-from . import signals
 from . import timeseries as ts
 from .timeutil import today_kst
 
@@ -231,8 +230,15 @@ def fetch_raw_data(
 
 
 def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
-    """Adds SMA-based gold-friendly flags for real_rate/dxy, green_count (0-6),
-    gold's own long-term SMA, and the 52-week new-high/new-low flags:
+    """Adds gold's own long-term SMA and the 52-week new-high/new-low flags
+    to a frame that must already carry `green_count` — computed by
+    timeseries.fetch_backtest_frame() on a real_rate+dxy-only merge,
+    deliberately BEFORE "gold" is joined in (see signals.compute_green_count's
+    docstring for exactly why — in short, computing it AFTER merging in
+    "gold", as this function used to do directly, let whichever basis's own
+    trading calendar happened to be selected silently change green_count on
+    some days; bug found and fixed 2026-11-24). This function only adds the
+    gold-DEPENDENT columns, which legitimately do vary by basis:
     - gold_sma_long: gold's own LONG_TREND_WINDOW-day SMA — the gate the
       sell-/buy-signal noise filters compare price against (see
       DEFAULT_SELL_NOISE_FILTER_BUFFER_PCT/DEFAULT_BUY_NOISE_FILTER_BUFFER_PCT).
@@ -242,19 +248,6 @@ def compute_signals(df: pd.DataFrame) -> pd.DataFrame:
       merely "currently at/above/below the 52-week high/low").
     """
     df = df.copy()
-    gf_cols = []
-    for col in ("real_rate", "dxy"):
-        direction = signals.indicator_direction(col)
-        for window in MA_WINDOWS:
-            sma = metrics.compute_sma(df[col], window)
-            gf_col = f"{col}_gf_{window}"
-            # Delegates to the single shared comparison in signals.py — the same
-            # function app.py's build_table highlighting and chart shading use —
-            # so this can never silently drift from those.
-            df[gf_col] = signals.gold_friendly_vs_ma(df[col], sma, direction)
-            gf_cols.append(gf_col)
-    df["green_count"] = df[gf_cols].sum(axis=1).astype(int)
-
     df["gold_sma_long"] = metrics.compute_sma(df["gold"], LONG_TREND_WINDOW)
 
     # closed="left" excludes today's own close from "the prior N days'

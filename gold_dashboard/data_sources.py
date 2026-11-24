@@ -226,7 +226,7 @@ def fetch_reb_index_series(
     statbl_id: str, cls_id: int, dtacycle_cd: str, itm_id: int
 ) -> pd.Series:
     """Fetch a full REB R-ONE statistics-table time series (통계표ID+분류ID+
-    항목ID, e.g. the Seoul apartment weekly sale-price index:
+    항목ID, e.g. the Seoul apartment monthly sale-price index:
     config.REB_SEOUL_APT_STATBL_ID/CLS_ID/DTACYCLE_CD/ITM_ID) via the
     "통계 조회 조건 설정" (SttsApiTblData.do) detail function of 한국부동산원의
     부동산통계 Open API 서비스.
@@ -245,12 +245,18 @@ def fetch_reb_index_series(
     empty-but-valid query, not a failure. Any other non-INFO-000 result code
     raises.
 
-    Returns a date-indexed float Series (index = each row's own
-    WRTTIME_DESC — the survey reference date the API itself reports, already
-    a real calendar date, not something derived from WRTTIME_IDTFR_ID) with
-    no look-ahead/publication-lag adjustment applied — that correction is a
-    concern of how this series gets USED (see timeseries.fetch_gold_price_series
-    and config.REB_PUBLICATION_LAG_DAYS), not of fetching it.
+    Returns a date-indexed float Series with no look-ahead/publication-lag
+    adjustment applied — that correction is a concern of how this series
+    gets USED (see timeseries.fetch_gold_price_series and
+    config.REB_MONTHLY_PUBLICATION_DAY), not of fetching it. The index date
+    itself is derived differently depending on `dtacycle_cd`, since the
+    API's own WRTTIME_DESC field format differs by cycle (confirmed
+    2026-11-24 by direct inspection of both):
+    - "WK" (weekly): WRTTIME_DESC is already a real, parseable calendar date
+      (the Monday of that week) — used directly.
+    - "MM" (monthly): WRTTIME_DESC is a Korean free-text label (e.g. "2026년
+      10월"), NOT a parseable date — the index date is derived instead from
+      WRTTIME_IDTFR_ID itself ("YYYYMM"), anchored to that month's 1st day.
     """
     api_key = os.environ.get("REB_API_KEY")
     if not api_key:
@@ -295,7 +301,10 @@ def fetch_reb_index_series(
         raise RuntimeError(f"REB API에서 통계표 {statbl_id}(CLS_ID={cls_id})에 대한 데이터를 받지 못했습니다.")
 
     df = pd.DataFrame(rows)
-    df["date"] = pd.to_datetime(df["WRTTIME_DESC"]).dt.normalize()
+    if dtacycle_cd == "MM":
+        df["date"] = pd.to_datetime(df["WRTTIME_IDTFR_ID"], format="%Y%m")
+    else:
+        df["date"] = pd.to_datetime(df["WRTTIME_DESC"]).dt.normalize()
     df["value"] = pd.to_numeric(df["DTA_VAL"], errors="coerce")
     df = df.dropna(subset=["value"]).drop_duplicates(subset="date").set_index("date").sort_index()
     return df["value"].rename(statbl_id)
