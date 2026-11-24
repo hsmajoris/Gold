@@ -52,6 +52,23 @@ GOLD_PRICE_BASIS_KOSPI200 = "kospi200"
 # 세간의 내러티브가 있어 고려아연처럼 placebo 집합에서는 제외했지만, 그
 # 상관관계를 전제하는 것은 아니고 그 자체를 검증해보기 위한 추가 대조군이다.
 GOLD_PRICE_BASIS_BITCOIN = "bitcoin"
+# ⑧ 서울 아파트 매매가격지수 — 한국부동산원(REB) R-ONE Open API(통계표
+# T244183132827305, "(주) 매매가격지수")에서 가져오는 서울 전체(CLS_ID
+# 50008) 주간 지수. 실제 조사 대상이 "아파트"인지는 이 통계표의 주석
+# (STATBL_CMMT)에 명시돼 있지 않음(단지 '13.1.1 KB국민은행→한국부동산원
+# 이관, '12.5.7부터 시계열 제공이라고만 적혀 있음) — 다만 전체 통계표
+# 목록(769개)을 조회해보면 월간(MM) 통계표는 전부 이름에 "_아파트"/
+# "_단독주택"/"_연립다세대"/"_주택종합"처럼 주택유형이 명시돼 있는데 주간(WK)
+# 통계표만 그런 구분이 전혀 없고, 실제로 이 통계표는 "그룹"(주택유형) 분류
+# 자체가 존재하지 않는다(API로 확인: SttsApiTblItm?ITM_TAG=그룹 → "해당하는
+# 데이터가 없습니다") — 한국부동산원이 주간조사는 아파트만 실시하기 때문으로
+# 추정되지만 통계표 주석에 "아파트"라는 단어가 직접 나오지는 않으므로, 라벨은
+# 단정하지 않고 "서울 주간 매매가격지수(주간 조사 기준)"로 표기한다.
+# 실제 매매가 불가능한 참조 지수(reference index)라 수수료·세금·배당은 항상
+# 0으로 처리하고 "참조 지수, 실거래 불가"라고 화면에 표시한다(아래 KOSPI
+# 주식/ETF, 비트코인과 달리 ALL_KOSPI_PROXY_TICKERS/CRYPTO_PROXY_TICKERS
+# 어디에도 넣지 않음 — yfinance 티커가 아니라 REB API로 별도 수집).
+GOLD_PRICE_BASIS_SEOUL_APT = "seoul_apt"
 GOLD_PRICE_BASIS_STATE_KEY = "gold_price_basis"
 GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_INTL: "① 국제 금 시세 (USD/oz, GC=F)",
@@ -61,6 +78,7 @@ GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_HYUNDAI_MOTOR: "⑤ 현대차 (KOSPI 005380, 무관 대조군)",
     GOLD_PRICE_BASIS_KOSPI200: "⑥ 코스피200 (KODEX 200 ETF, 069500, 시장 전체 대조군)",
     GOLD_PRICE_BASIS_BITCOIN: "⑦ 비트코인 (BTC-KRW, 디지털 자산 대조군)",
+    GOLD_PRICE_BASIS_SEOUL_APT: "⑧ 서울 주간 매매가격지수 (한국부동산원, 참조 지수·실거래 불가)",
 }
 # What a fresh session (and any caller that doesn't specify gold_price_basis
 # explicitly) starts on.
@@ -137,6 +155,24 @@ DIVIDEND_INCOME_TAX_PCT = 15.4
 # 요율을 기본값으로 둔다(거래소·회원 등급별로 차이가 커 화면에서 직접 조정
 # 가능). 증권거래세·배당 개념 자체가 없어 그 두 상수는 해당 없음.
 CRYPTO_DEFAULT_EXCHANGE_FEE_PCT = 0.05
+
+# ⑧ 서울 아파트 매매가격지수 — 한국부동산원(REB) R-ONE Open API, 통계표
+# "(주) 매매가격지수"(주간, 서울 전체). 2026-11-24 기준 data_sources.
+# fetch_reb_index_series()로 실제 호출해 확인한 값들.
+REB_SEOUL_APT_STATBL_ID = "T244183132827305"
+REB_SEOUL_APT_CLS_ID = 50008  # "서울" (구별이 아닌 서울 전체)
+REB_SEOUL_APT_DTACYCLE_CD = "WK"  # 주간
+REB_SEOUL_APT_ITM_ID = 10001  # "지수" (이 통계표의 유일한 항목)
+# 공표 지연(look-ahead 방지): API가 돌려주는 WRTTIME_DESC는 조사기준일(항상
+# 월요일)이지만, 그 주차 지수가 실제로 "확정 공표"되는 날은 그 주 목요일 —
+# 2026-11-24(화) 기준 최신 공표분이 2026-11-16(월)週였고 바로 다음 주
+# (2026-11-23週)는 아직 없었다는 사실로 교차검증(월→목 공표 관행과 정확히
+# 일치). 이 보정 없이 조사기준일(월) 그대로 날짜를 붙이면, 그 주 지수가 아직
+# 공표되기도 전인 월~수요일 시점부터 이미 알고 있었던 것처럼 신호가 계산되는
+# look-ahead bias가 생긴다. 상수로 분리해 쉽게 조정/민감도 검증할 수 있게
+# 했다(3일→4일로 바꿨을 때 결과가 거의 달라지지 않음을 확인 — TRADING_LOGIC.md
+# 참고).
+REB_PUBLICATION_LAG_DAYS = 3
 
 INDICATOR_META = {
     "real_rate": {
