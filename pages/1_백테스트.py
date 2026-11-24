@@ -556,6 +556,7 @@ _gold_basis_options = [
     config.GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
     config.GOLD_PRICE_BASIS_KOSPI200,
     config.GOLD_PRICE_BASIS_BITCOIN,
+    config.GOLD_PRICE_BASIS_SEOUL_APT,
 ]
 st.session_state.setdefault(config.GOLD_PRICE_BASIS_STATE_KEY, config.GOLD_PRICE_BASIS_DEFAULT)
 gold_price_basis = st.radio(
@@ -591,6 +592,20 @@ if gold_price_basis in config.ALL_PRICE_PROXY_TICKERS:
             if gold_price_basis == config.GOLD_PRICE_BASIS_BITCOIN
             else ""
         )
+    )
+elif gold_price_basis == config.GOLD_PRICE_BASIS_SEOUL_APT:
+    st.caption(
+        f"{config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]}은 금이 아닙니다 — green_count·52주 "
+        "신고가/신저가·노이즈 필터 등 매수·매도 신호 로직은 기존과 완전히 동일하게 작동하되, 그 "
+        "신호에 따라 실제로 사고파는 대상 가격만 이 지수(한국부동산원 R-ONE Open API, 통계표 "
+        f"{config.REB_SEOUL_APT_STATBL_ID}, 서울 전체, 주간 조사 기준)로 치환한 것입니다 — '부동산이 "
+        "금을 대체할 자산인가'를 검증하는 용도입니다. ⚠️ 이 지수는 실제로 사고팔 수 있는 자산이 "
+        "아닌 참조 지수(reference index)이므로 매매수수료·증권거래세·배당은 항상 0으로 계산됩니다. "
+        f"조사기준일(항상 월요일)보다 공표가 늦어지는 점을 보정해({config.REB_PUBLICATION_LAG_DAYS}일, "
+        "월→목 공표 관행) look-ahead bias를 방지했고, 주간 지수라 매일 갱신되지 않는 기간은 직전 "
+        "값을 그대로 유지합니다(52주 신고가/신저가 같은 신호도 이 주간 갱신 주기에 맞춰서만 "
+        "바뀝니다). REB_API_KEY가 설정돼 있지 않거나 호출이 실패하면 이 기준만 사용할 수 없고 "
+        "다른 기준들은 그대로 동작합니다."
     )
 
 with st.expander("전략 규칙 보기"):
@@ -880,8 +895,10 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
     _is_kospi_stock_proxy = gold_price_basis in config.ALL_KOSPI_PROXY_TICKERS
     _is_etf_proxy = gold_price_basis in config.KOREA_ETF_PROXY_TICKERS
     _is_crypto_proxy = gold_price_basis == config.GOLD_PRICE_BASIS_BITCOIN
+    _is_seoul_apt = gold_price_basis == config.GOLD_PRICE_BASIS_SEOUL_APT
     st.markdown("**수수료** (② KRX 금현물·③~⑦ 고려아연/미래에셋증권/현대차/코스피200/비트코인 "
-                "선택 시에만 적용 — ① 국제 금 시세는 실물이 아닌 참고 가격이라 적용되지 않음)")
+                "선택 시에만 적용 — ① 국제 금 시세·⑧ 서울 아파트 매매가격지수는 실물이 아닌 참고 "
+                "가격이라 적용되지 않음)")
 
     if _is_kospi_stock_proxy:
         _kospi_label = config.GOLD_PRICE_BASIS_LABELS[gold_price_basis]
@@ -963,6 +980,14 @@ with st.expander("⚙️ 고급 설정 (최소 보유일수 등 — 기본값 �
         )
         st.caption("비트코인은 증권거래세·배당 개념이 없어(코스피 상장주식과 달리) 거래소 수수료만 "
                    "반영됩니다.")
+    elif _is_seoul_apt:
+        st.text_input(
+            "매매수수료·증권거래세·배당",
+            value="참조 지수, 실거래 불가", disabled=True,
+            help="한국부동산원이 공표하는 서울 아파트 매매가격지수는 실제로 사고팔 수 있는 "
+            "자산이 아닌 통계 지수입니다 — 매매수수료·증권거래세·배당금을 전부 0으로 두고 "
+            "계산합니다.",
+        )
     else:
         gold_product = st.selectbox(
             "종목",
@@ -1059,6 +1084,8 @@ def load_signals(as_of_iso: str, years: int, gold_price_basis: str) -> pd.DataFr
 
 
 def _format_gold_price(value: float, basis: str = gold_price_basis) -> str:
+    if basis == config.GOLD_PRICE_BASIS_SEOUL_APT:
+        return f"지수 {value:,.2f}"
     if basis == config.GOLD_PRICE_BASIS_KRX or basis in config.ALL_PRICE_PROXY_TICKERS:
         return f"{value:,.0f}원"
     return f"${value:,.2f}"
@@ -1083,6 +1110,12 @@ elif _is_crypto_proxy:
     # 매수·매도 동일 요율(거래소 수수료) — 증권거래세·보관수수료 개념 자체가 없음.
     effective_buy_fee_pct = float(crypto_fee_pct) if _fees_active else 0.0
     effective_sell_fee_pct = float(crypto_fee_pct) if _fees_active else 0.0
+    effective_daily_holding_fee_pct = 0.0
+elif _is_seoul_apt:
+    # 실거래 불가한 참조 지수 — 토글 없이 항상 수수료·세금·배당 전부 0.
+    _fees_active = False
+    effective_buy_fee_pct = 0.0
+    effective_sell_fee_pct = 0.0
     effective_daily_holding_fee_pct = 0.0
 else:
     _fees_active = apply_fees and gold_price_basis == config.GOLD_PRICE_BASIS_KRX
@@ -1284,19 +1317,20 @@ if m is not None:
 if result is None:
     st.stop()
 
-# ---- ①~⑦ 결과 비교 (버튼을 눌러야만 계산 — 일곱 기준 모두 각자 네트워크
+# ---- ①~⑧ 결과 비교 (버튼을 눌러야만 계산 — 여덟 기준 모두 각자 네트워크
 # 조회가 필요해 페이지 로드 때마다 자동으로 돌리지 않음) ----
 with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 · ④ 미래에셋증권 · ⑤ 현대차 · "
-                  "⑥ 코스피200 · ⑦ 비트코인 결과 비교"):
+                  "⑥ 코스피200 · ⑦ 비트코인 · ⑧ 서울 아파트 결과 비교"):
     st.caption(
         "현재 설정된 신호 로직(green_count 임계값·52주 신고가/신저가·노이즈 필터·최소 보유일수· "
-        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 일곱 가지로 바꿔 각각 "
+        "분석 기간)을 그대로 두고, '무엇을 사고파는지'(가격 기준)만 여덟 가지로 바꿔 각각 "
         "백테스트합니다. 수수료·배당은 각 기준의 기본값을 사용합니다(① 없음 / ② KRX 금현물 "
         "기본 수수료 / ③④⑤ 코스피 개별주 기본 수수료+증권거래세+세전 배당금 반영 / ⑥ ETF라 "
         "증권거래세 없이 매매수수료+세전 배당금만 반영 / ⑦ 거래소 수수료만 반영, 증권거래세·"
-        "배당 없음)."
+        "배당 없음 / ⑧ 실거래 불가한 참조 지수라 수수료 없음). ⑧은 REB_API_KEY가 없거나 호출에 "
+        "실패하면 이 행만 실패로 표시되고 나머지 기준은 정상적으로 비교됩니다."
     )
-    if st.button("일곱 가지 기준 비교 실행"):
+    if st.button("여덟 가지 기준 비교 실행"):
         _comparison_bases = [
             config.GOLD_PRICE_BASIS_INTL,
             config.GOLD_PRICE_BASIS_KRX,
@@ -1305,9 +1339,10 @@ with st.expander("① 국제시세 · ② KRX 금현물 · ③ 고려아연 · �
             config.GOLD_PRICE_BASIS_HYUNDAI_MOTOR,
             config.GOLD_PRICE_BASIS_KOSPI200,
             config.GOLD_PRICE_BASIS_BITCOIN,
+            config.GOLD_PRICE_BASIS_SEOUL_APT,
         ]
         _comparison_rows = []
-        with st.spinner("일곱 기준 모두 백테스트 중입니다..."):
+        with st.spinner("여덟 기준 모두 백테스트 중입니다..."):
             for _basis in _comparison_bases:
                 try:
                     _basis_signals = backtest.prepare_signals(
@@ -1816,8 +1851,12 @@ st.caption(
     "않고, ③④⑤ 고려아연·미래에셋증권·현대차 기준일 때는 매매수수료·증권거래세·배당금(옵션으로 "
     "배당소득세)까지 반영되며, ⑥ 코스피200(ETF) 기준일 때는 매매수수료·배당금만 반영되고 "
     "ETF라 증권거래세는 면제됩니다. ⑦ 비트코인 기준일 때는 거래소 수수료만 반영되고 증권거래세·"
-    "배당 개념 자체가 없습니다 — 그 외 세금은 여전히 반영되지 않습니다. 어느 기준이든 "
-    "슬리피지는 반영되어 있지 않고, 표본 기간이 짧아 과최적화(overfitting) 위험이 있습니다. "
+    "배당 개념 자체가 없습니다. ⑧ 서울 아파트 매매가격지수 기준일 때는 실거래가 불가능한 "
+    "참조 지수라 수수료·세금·배당이 전부 0이며, 한국부동산원이 주간 단위로만 공표하는 지수를 "
+    "공표 지연(+3일) 보정 후 일 단위로는 직전 값을 그대로 유지(ffill)한 것이라 52주 신고가/"
+    "신저가 같은 신호도 그 주간 갱신 주기에 맞춰서만 바뀝니다 — 그 외 세금은 여전히 반영되지 "
+    "않습니다. 어느 기준이든 슬리피지는 반영되어 있지 않고, 표본 기간이 짧아 과최적화"
+    "(overfitting) 위험이 있습니다. "
     "'④ 신호전략 (미보유기간 기대수익률 포함)' 그룹(요약 지표의 네 번째 그룹 — 위 '금 가격 "
     "기준'의 ④ 미래에셋증권과는 무관)의 기대수익률은 사용자가 입력한 단일 연이율을 그대로 "
     "연복리 적용한 단순 가정치이며, 실제 채권 등 투자자산의 이자율 변동·재투자·신용위험은 "
