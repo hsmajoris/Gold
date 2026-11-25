@@ -4,9 +4,14 @@
 직접 조절하며 R²(선형 적합도)를 확인할 수 있는 탐색 도구. 추가로 "반포자이가
 N년 안에 k배 오르면 다른 자산은?" 시나리오 계산기를 제공한다.
 
-차트는 백테스트 페이지(gold_dashboard/chart_utils.render_zoomable_chart)와 같은
-방식 — Y축 줌 자동조정 + X축 연/월 눈금 전환 + 하단 레인지슬라이더·상단 기간
-버튼 — 으로 렌더링한다.
+차트는 백테스트 페이지와 같은 방식(Y축 줌 자동조정 + X축 연/월 눈금 전환 +
+하단 레인지슬라이더·상단 기간 버튼)으로 렌더링한다(gold_dashboard/chart_utils.
+render_zoomable_chart). 이 차트는 st.iframe으로 띄우는 정적 HTML+JS라 Python
+쪽으로 "지금 확대해서 보는 구간"을 자동으로 돌려받을 채널이 없으므로(진짜
+양방향 커스텀 컴포넌트를 시도했으나 이 환경에서 Streamlit의 componentReady/
+render 핸드셰이크가 안정적으로 동작하지 않아 포기했다), 같은 효과는 아래
+"특정 구간만의 R²" 섹션의 수동 기간 선택(date_input)으로 제공한다 — 차트에서
+보고 있는 기간을 그대로 거기 입력하면 된다.
 
 이 페이지는 백테스트 페이지(가격 기준 선택·매매신호·수수료)와는 완전히
 독립적이다 — 매매신호 로직을 전혀 쓰지 않고, 순수하게 자산 간 과거 수익률과
@@ -100,21 +105,34 @@ def inverse_transform(y, lam: float):
     return np.power(y, 1.0 / lam)
 
 
-def fit_and_r2(monthly: pd.DataFrame, banpo_monthly: pd.Series, asset: str, lam: float, lag: int, excl_start, excl_end):
+def fit_and_r2(
+    monthly: pd.DataFrame, banpo_monthly: pd.Series, asset: str, lam: float, lag: int,
+    excl_start, excl_end, window_start=None, window_end=None,
+):
     """Shift `asset`'s monthly series back by `lag` months (so row t pairs
     asset[t-lag] with 반포자이[t]), apply the λ transform, fit a line against
     반포자이's own monthly mean, and return a dict of fit stats, or None if
     too few valid months remain. `excl_start`/`excl_end` (dates or None) drop
-    any row whose asset SOURCE month (post-lag) falls inside that range."""
+    any row whose asset SOURCE month (post-lag) falls inside that range.
+    `window_start`/`window_end` (dates or None) do the opposite — KEEP only
+    rows whose 반포자이(nominal, t) month falls inside that range, i.e. the
+    chart's current visible x-range (both 반포자이's own trace and the
+    lag-shifted asset trace sit at that same t position on screen — see the
+    chart-trace loop below — so this matches "only use what's currently
+    zoomed into on screen")."""
     source_month = monthly.index - lag
     asset_vals = monthly[asset].reindex(source_month).to_numpy()
     banpo_vals = banpo_monthly.reindex(monthly.index).to_numpy()
     source_ts = source_month.to_timestamp()
+    nominal_ts = monthly.index.to_timestamp()
 
     valid = ~np.isnan(asset_vals) & ~np.isnan(banpo_vals) & (asset_vals > 0)
     if excl_start is not None and excl_end is not None:
         excluded = (source_ts >= pd.Timestamp(excl_start)) & (source_ts <= pd.Timestamp(excl_end))
         valid &= ~excluded
+    if window_start is not None and window_end is not None:
+        within = (nominal_ts >= pd.Timestamp(window_start)) & (nominal_ts <= pd.Timestamp(window_end))
+        valid &= within
 
     n = int(valid.sum())
     if n < 5:
@@ -285,6 +303,44 @@ st.caption(
     "대응 관계). 즉 이 선의 x축 위치는 실제 관측 시점이 아니라 '반포자이에 반영됐다고 "
     "가정하는 시점'입니다."
 )
+
+if selected_assets:
+    st.subheader("특정 구간만의 R²")
+    st.caption(
+        "위 R²는 항상 전체 기간 기준입니다. 차트에서 지금 확대해서 보고 있는 기간(또는 "
+        "임의의 구간)만으로 R²를 다시 보고 싶으면 아래에 그 기간을 직접 입력하세요 "
+        "(λ·래그·제외구간은 위 설정을 그대로 쓰고, 반포자이 기준 시점으로 구간을 "
+        "판단합니다)."
+    )
+    default_start = monthly.index.min().to_timestamp().date()
+    default_end = monthly.index.max().to_timestamp().date()
+    window_range = st.date_input(
+        "구간", value=(default_start, default_end),
+        min_value=default_start, max_value=default_end, key="r2_window_range",
+    )
+    if isinstance(window_range, tuple) and len(window_range) == 2:
+        w_start, w_end = window_range
+        cols_window = st.columns(len(selected_assets))
+        for col, asset in zip(cols_window, selected_assets):
+            with col:
+                st.markdown(f"**{asset}**")
+                lam = float(st.session_state[f"lam_{asset}"])
+                lag = int(st.session_state[f"lag_{asset}"])
+                effective_lam = lam if st.session_state.get(f"disp_{asset}") == "λ 변환 데이터(지수)" else 1.0
+                w_excl_start = w_excl_end = None
+                if st.session_state.get(f"excl_on_{asset}"):
+                    rng = st.session_state.get(f"excl_range_{asset}")
+                    if isinstance(rng, tuple) and len(rng) == 2:
+                        w_excl_start, w_excl_end = rng
+                window_result = fit_and_r2(
+                    monthly, banpo_monthly, asset, effective_lam, lag,
+                    w_excl_start, w_excl_end, w_start, w_end,
+                )
+                if window_result is None:
+                    st.metric("R² (이 구간)", "표본 부족")
+                else:
+                    st.metric("R² (이 구간)", f"{window_result['r2']:.3f}")
+                    st.caption(f"표본 {window_result['n']}개월")
 
 st.divider()
 
