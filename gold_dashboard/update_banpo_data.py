@@ -106,7 +106,13 @@ def build_trend(rows: list[dict]) -> dict:
         window = matched[max(0, i - win + 1): i + 1]
         trend_value = sum(w["amount"] for w in window) / len(window)
         available_date = m["deal_date"] + dt.timedelta(days=config.BANPO_REPORTING_LAG_DAYS)
-        out_rows.append({"available_date": available_date.isoformat(), "trend_value": round(trend_value)})
+        out_rows.append({
+            "available_date": available_date.isoformat(),
+            "trend_value": round(trend_value),
+            # 개별 거래 원값(평활화 전) — pages/2_자산비교.py가 추세선과 함께
+            # 실제 체결가를 작은 점으로 같이 보여줄 때 쓴다.
+            "raw_value": m["amount"],
+        })
 
     return {
         "generated_at": dt.datetime.now().isoformat(),

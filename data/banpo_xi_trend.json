@@ -1,2208 +1,2758 @@
 {
-  "generated_at": "2026-11-25T09:20:31.435694",
+  "generated_at": "2026-11-25T10:30:54.135348",
   "source": "국토교통부 아파트매매 실거래가 공개 데이터(RTMSDataSvcAptTrade), 11650(반포동) 반포자이 전용 84.943㎡('국민평형')",
   "methodology": "거래일 순 직전 10건 단순이동평균(원시 거래금액, 원) — 신고기한(계약일로부터 30일 이내) + 안전마진을 더한 45일 뒤를 '확인 가능일'(available_date)로 삼아 look-ahead bias를 방지",
   "transaction_count": 550,
   "rows": [
     {
       "available_date": "2009-05-06",
-      "trend_value": 1090000000
+      "trend_value": 1090000000,
+      "raw_value": 1090000000
     },
     {
       "available_date": "2009-05-08",
-      "trend_value": 1080000000
+      "trend_value": 1080000000,
+      "raw_value": 1070000000
     },
     {
       "available_date": "2009-05-11",
-      "trend_value": 1093380000
+      "trend_value": 1093380000,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-05-15",
-      "trend_value": 1100070000
+      "trend_value": 1100070000,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-05-15",
-      "trend_value": 1104084000
+      "trend_value": 1104084000,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-05-18",
-      "trend_value": 1109808333
+      "trend_value": 1109808333,
+      "raw_value": 1138430000
     },
     {
       "available_date": "2009-05-19",
-      "trend_value": 1118407143
+      "trend_value": 1118407143,
+      "raw_value": 1170000000
     },
     {
       "available_date": "2009-05-21",
-      "trend_value": 1121481250
+      "trend_value": 1121481250,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-05-21",
-      "trend_value": 1121332222
+      "trend_value": 1121332222,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-05-22",
-      "trend_value": 1119691000
+      "trend_value": 1119691000,
+      "raw_value": 1104920000
     },
     {
       "available_date": "2009-05-23",
-      "trend_value": 1121627000
+      "trend_value": 1121627000,
+      "raw_value": 1109360000
     },
     {
       "available_date": "2009-05-23",
-      "trend_value": 1122874000
+      "trend_value": 1122874000,
+      "raw_value": 1082470000
     },
     {
       "available_date": "2009-05-23",
-      "trend_value": 1122874000
+      "trend_value": 1122874000,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-05-25",
-      "trend_value": 1125160000
+      "trend_value": 1125160000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-05-25",
-      "trend_value": 1127414000
+      "trend_value": 1127414000,
+      "raw_value": 1142680000
     },
     {
       "available_date": "2009-05-25",
-      "trend_value": 1122571000
+      "trend_value": 1122571000,
+      "raw_value": 1090000000
     },
     {
       "available_date": "2009-05-26",
-      "trend_value": 1118318000
+      "trend_value": 1118318000,
+      "raw_value": 1127470000
     },
     {
       "available_date": "2009-05-29",
-      "trend_value": 1120614000
+      "trend_value": 1120614000,
+      "raw_value": 1165960000
     },
     {
       "available_date": "2009-05-29",
-      "trend_value": 1121347000
+      "trend_value": 1121347000,
+      "raw_value": 1127470000
     },
     {
       "available_date": "2009-05-29",
-      "trend_value": 1140655000
+      "trend_value": 1140655000,
+      "raw_value": 1298000000
     },
     {
       "available_date": "2009-06-01",
-      "trend_value": 1144019000
+      "trend_value": 1144019000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-06-04",
-      "trend_value": 1151902000
+      "trend_value": 1151902000,
+      "raw_value": 1161300000
     },
     {
       "available_date": "2009-06-05",
-      "trend_value": 1150824000
+      "trend_value": 1150824000,
+      "raw_value": 1109360000
     },
     {
       "available_date": "2009-06-07",
-      "trend_value": 1148538000
+      "trend_value": 1148538000,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-06-11",
-      "trend_value": 1148040000
+      "trend_value": 1148040000,
+      "raw_value": 1137700000
     },
     {
       "available_date": "2009-06-12",
-      "trend_value": 1147722000
+      "trend_value": 1147722000,
+      "raw_value": 1086820000
     },
     {
       "available_date": "2009-06-12",
-      "trend_value": 1148175000
+      "trend_value": 1148175000,
+      "raw_value": 1132000000
     },
     {
       "available_date": "2009-06-12",
-      "trend_value": 1140261000
+      "trend_value": 1140261000,
+      "raw_value": 1086820000
     },
     {
       "available_date": "2009-06-13",
-      "trend_value": 1141814000
+      "trend_value": 1141814000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-06-15",
-      "trend_value": 1126314000
+      "trend_value": 1126314000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-06-18",
-      "trend_value": 1126314000
+      "trend_value": 1126314000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-06-18",
-      "trend_value": 1124452000
+      "trend_value": 1124452000,
+      "raw_value": 1142680000
     },
     {
       "available_date": "2009-06-21",
-      "trend_value": 1127816000
+      "trend_value": 1127816000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-06-21",
-      "trend_value": 1129613000
+      "trend_value": 1129613000,
+      "raw_value": 1138110000
     },
     {
       "available_date": "2009-06-21",
-      "trend_value": 1153843000
+      "trend_value": 1153843000,
+      "raw_value": 1380000000
     },
     {
       "available_date": "2009-06-22",
-      "trend_value": 1155653000
+      "trend_value": 1155653000,
+      "raw_value": 1104920000
     },
     {
       "available_date": "2009-06-25",
-      "trend_value": 1150700000
+      "trend_value": 1150700000,
+      "raw_value": 1082470000
     },
     {
       "available_date": "2009-06-26",
-      "trend_value": 1172018000
+      "trend_value": 1172018000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2009-06-28",
-      "trend_value": 1185718000
+      "trend_value": 1185718000,
+      "raw_value": 1280000000
     },
     {
       "available_date": "2009-06-30",
-      "trend_value": 1196118000
+      "trend_value": 1196118000,
+      "raw_value": 1247000000
     },
     {
       "available_date": "2009-07-03",
-      "trend_value": 1192274000
+      "trend_value": 1192274000,
+      "raw_value": 1104560000
     },
     {
       "available_date": "2009-07-04",
-      "trend_value": 1192274000
+      "trend_value": 1192274000,
+      "raw_value": 1142680000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1188874000
+      "trend_value": 1188874000,
+      "raw_value": 1109000000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1185963000
+      "trend_value": 1185963000,
+      "raw_value": 1109000000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1158863000
+      "trend_value": 1158863000,
+      "raw_value": 1109000000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1160385000
+      "trend_value": 1160385000,
+      "raw_value": 1120140000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1166365000
+      "trend_value": 1166365000,
+      "raw_value": 1142270000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1150592000
+      "trend_value": 1150592000,
+      "raw_value": 1142270000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1136819000
+      "trend_value": 1136819000,
+      "raw_value": 1142270000
     },
     {
       "available_date": "2009-07-10",
-      "trend_value": 1128715000
+      "trend_value": 1128715000,
+      "raw_value": 1165960000
     },
     {
       "available_date": "2009-07-17",
-      "trend_value": 1129825000
+      "trend_value": 1129825000,
+      "raw_value": 1115660000
     },
     {
       "available_date": "2009-07-17",
-      "trend_value": 1129327000
+      "trend_value": 1129327000,
+      "raw_value": 1137700000
     },
     {
       "available_date": "2009-07-31",
-      "trend_value": 1136427000
+      "trend_value": 1136427000,
+      "raw_value": 1180000000
     },
     {
       "available_date": "2009-08-06",
-      "trend_value": 1144527000
+      "trend_value": 1144527000,
+      "raw_value": 1190000000
     },
     {
       "available_date": "2009-08-09",
-      "trend_value": 1147854000
+      "trend_value": 1147854000,
+      "raw_value": 1142270000
     },
     {
       "available_date": "2009-08-18",
-      "trend_value": 1163540000
+      "trend_value": 1163540000,
+      "raw_value": 1277000000
     },
     {
       "available_date": "2009-08-25",
-      "trend_value": 1184313000
+      "trend_value": 1184313000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2009-08-27",
-      "trend_value": 1178086000
+      "trend_value": 1178086000,
+      "raw_value": 1080000000
     },
     {
       "available_date": "2009-09-11",
-      "trend_value": 1172106000
+      "trend_value": 1172106000,
+      "raw_value": 1082470000
     },
     {
       "available_date": "2009-09-13",
-      "trend_value": 1167610000
+      "trend_value": 1167610000,
+      "raw_value": 1121000000
     },
     {
       "available_date": "2009-09-19",
-      "trend_value": 1183044000
+      "trend_value": 1183044000,
+      "raw_value": 1270000000
     },
     {
       "available_date": "2009-09-24",
-      "trend_value": 1197274000
+      "trend_value": 1197274000,
+      "raw_value": 1280000000
     },
     {
       "available_date": "2009-10-10",
-      "trend_value": 1214274000
+      "trend_value": 1214274000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2009-10-15",
-      "trend_value": 1206174000
+      "trend_value": 1206174000,
+      "raw_value": 1109000000
     },
     {
       "available_date": "2009-10-19",
-      "trend_value": 1249947000
+      "trend_value": 1249947000,
+      "raw_value": 1580000000
     },
     {
       "available_date": "2009-10-23",
-      "trend_value": 1277247000
+      "trend_value": 1277247000,
+      "raw_value": 1550000000
     },
     {
       "available_date": "2009-10-23",
-      "trend_value": 1253147000
+      "trend_value": 1253147000,
+      "raw_value": 1109000000
     },
     {
       "available_date": "2009-10-23",
-      "trend_value": 1259447000
+      "trend_value": 1259447000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-10-26",
-      "trend_value": 1265500000
+      "trend_value": 1265500000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-11-06",
-      "trend_value": 1267700000
+      "trend_value": 1267700000,
+      "raw_value": 1143000000
     },
     {
       "available_date": "2009-12-08",
-      "trend_value": 1281200000
+      "trend_value": 1281200000,
+      "raw_value": 1405000000
     },
     {
       "available_date": "2009-12-11",
-      "trend_value": 1264100000
+      "trend_value": 1264100000,
+      "raw_value": 1109000000
     },
     {
       "available_date": "2010-02-19",
-      "trend_value": 1277100000
+      "trend_value": 1277100000,
+      "raw_value": 1480000000
     },
     {
       "available_date": "2010-04-05",
-      "trend_value": 1326200000
+      "trend_value": 1326200000,
+      "raw_value": 1600000000
     },
     {
       "available_date": "2010-04-23",
-      "trend_value": 1307200000
+      "trend_value": 1307200000,
+      "raw_value": 1390000000
     },
     {
       "available_date": "2010-05-23",
-      "trend_value": 1301200000
+      "trend_value": 1301200000,
+      "raw_value": 1490000000
     },
     {
       "available_date": "2010-05-29",
-      "trend_value": 1300300000
+      "trend_value": 1300300000,
+      "raw_value": 1100000000
     },
     {
       "available_date": "2010-06-01",
-      "trend_value": 1326000000
+      "trend_value": 1326000000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2010-08-09",
-      "trend_value": 1351700000
+      "trend_value": 1351700000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2010-08-11",
-      "trend_value": 1377400000
+      "trend_value": 1377400000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2010-09-11",
-      "trend_value": 1356900000
+      "trend_value": 1356900000,
+      "raw_value": 1200000000
     },
     {
       "available_date": "2010-09-11",
-      "trend_value": 1366000000
+      "trend_value": 1366000000,
+      "raw_value": 1200000000
     },
     {
       "available_date": "2010-10-30",
-      "trend_value": 1353000000
+      "trend_value": 1353000000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2010-11-11",
-      "trend_value": 1326000000
+      "trend_value": 1326000000,
+      "raw_value": 1330000000
     },
     {
       "available_date": "2010-12-16",
-      "trend_value": 1312000000
+      "trend_value": 1312000000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2010-12-20",
-      "trend_value": 1288000000
+      "trend_value": 1288000000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2010-12-20",
-      "trend_value": 1326000000
+      "trend_value": 1326000000,
+      "raw_value": 1480000000
     },
     {
       "available_date": "2010-12-25",
-      "trend_value": 1312300000
+      "trend_value": 1312300000,
+      "raw_value": 1263000000
     },
     {
       "available_date": "2010-12-28",
-      "trend_value": 1303300000
+      "trend_value": 1303300000,
+      "raw_value": 1310000000
     },
     {
       "available_date": "2010-12-28",
-      "trend_value": 1290800000
+      "trend_value": 1290800000,
+      "raw_value": 1275000000
     },
     {
       "available_date": "2010-12-28",
-      "trend_value": 1300800000
+      "trend_value": 1300800000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2010-12-29",
-      "trend_value": 1312300000
+      "trend_value": 1312300000,
+      "raw_value": 1315000000
     },
     {
       "available_date": "2011-01-01",
-      "trend_value": 1312300000
+      "trend_value": 1312300000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2011-01-03",
-      "trend_value": 1299800000
+      "trend_value": 1299800000,
+      "raw_value": 1205000000
     },
     {
       "available_date": "2011-01-08",
-      "trend_value": 1296800000
+      "trend_value": 1296800000,
+      "raw_value": 1220000000
     },
     {
       "available_date": "2011-01-09",
-      "trend_value": 1302800000
+      "trend_value": 1302800000,
+      "raw_value": 1310000000
     },
     {
       "available_date": "2011-01-10",
-      "trend_value": 1294800000
+      "trend_value": 1294800000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2011-01-11",
-      "trend_value": 1302900000
+      "trend_value": 1302900000,
+      "raw_value": 1344000000
     },
     {
       "available_date": "2011-01-14",
-      "trend_value": 1301900000
+      "trend_value": 1301900000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2011-01-21",
-      "trend_value": 1308900000
+      "trend_value": 1308900000,
+      "raw_value": 1345000000
     },
     {
       "available_date": "2011-01-27",
-      "trend_value": 1314400000
+      "trend_value": 1314400000,
+      "raw_value": 1355000000
     },
     {
       "available_date": "2011-02-05",
-      "trend_value": 1317400000
+      "trend_value": 1317400000,
+      "raw_value": 1345000000
     },
     {
       "available_date": "2011-03-04",
-      "trend_value": 1336400000
+      "trend_value": 1336400000,
+      "raw_value": 1540000000
     },
     {
       "available_date": "2011-03-31",
-      "trend_value": 1354400000
+      "trend_value": 1354400000,
+      "raw_value": 1385000000
     },
     {
       "available_date": "2011-04-29",
-      "trend_value": 1377400000
+      "trend_value": 1377400000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2011-05-24",
-      "trend_value": 1375900000
+      "trend_value": 1375900000,
+      "raw_value": 1295000000
     },
     {
       "available_date": "2011-06-11",
-      "trend_value": 1364900000
+      "trend_value": 1364900000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2011-08-07",
-      "trend_value": 1362500000
+      "trend_value": 1362500000,
+      "raw_value": 1320000000
     },
     {
       "available_date": "2011-09-08",
-      "trend_value": 1375500000
+      "trend_value": 1375500000,
+      "raw_value": 1430000000
     },
     {
       "available_date": "2011-10-08",
-      "trend_value": 1370000000
+      "trend_value": 1370000000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2011-11-26",
-      "trend_value": 1377500000
+      "trend_value": 1377500000,
+      "raw_value": 1430000000
     },
     {
       "available_date": "2011-11-29",
-      "trend_value": 1371000000
+      "trend_value": 1371000000,
+      "raw_value": 1280000000
     },
     {
       "available_date": "2011-11-30",
-      "trend_value": 1349000000
+      "trend_value": 1349000000,
+      "raw_value": 1320000000
     },
     {
       "available_date": "2011-12-02",
-      "trend_value": 1352000000
+      "trend_value": 1352000000,
+      "raw_value": 1415000000
     },
     {
       "available_date": "2011-12-15",
-      "trend_value": 1337000000
+      "trend_value": 1337000000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2012-01-07",
-      "trend_value": 1351400000
+      "trend_value": 1351400000,
+      "raw_value": 1439000000
     },
     {
       "available_date": "2012-04-19",
-      "trend_value": 1347400000
+      "trend_value": 1347400000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2012-04-27",
-      "trend_value": 1354400000
+      "trend_value": 1354400000,
+      "raw_value": 1390000000
     },
     {
       "available_date": "2012-04-30",
-      "trend_value": 1332400000
+      "trend_value": 1332400000,
+      "raw_value": 1210000000
     },
     {
       "available_date": "2012-06-21",
-      "trend_value": 1337400000
+      "trend_value": 1337400000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2012-06-27",
-      "trend_value": 1333400000
+      "trend_value": 1333400000,
+      "raw_value": 1390000000
     },
     {
       "available_date": "2012-07-19",
-      "trend_value": 1339400000
+      "trend_value": 1339400000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2012-08-06",
-      "trend_value": 1332400000
+      "trend_value": 1332400000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2012-10-16",
-      "trend_value": 1316900000
+      "trend_value": 1316900000,
+      "raw_value": 1260000000
     },
     {
       "available_date": "2012-10-21",
-      "trend_value": 1301400000
+      "trend_value": 1301400000,
+      "raw_value": 1145000000
     },
     {
       "available_date": "2012-10-30",
-      "trend_value": 1265500000
+      "trend_value": 1265500000,
+      "raw_value": 1080000000
     },
     {
       "available_date": "2012-11-12",
-      "trend_value": 1258900000
+      "trend_value": 1258900000,
+      "raw_value": 1184000000
     },
     {
       "available_date": "2012-11-26",
-      "trend_value": 1229900000
+      "trend_value": 1229900000,
+      "raw_value": 1100000000
     },
     {
       "available_date": "2012-11-30",
-      "trend_value": 1232900000
+      "trend_value": 1232900000,
+      "raw_value": 1240000000
     },
     {
       "available_date": "2012-12-06",
-      "trend_value": 1225400000
+      "trend_value": 1225400000,
+      "raw_value": 1265000000
     },
     {
       "available_date": "2012-12-15",
-      "trend_value": 1211400000
+      "trend_value": 1211400000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2012-12-17",
-      "trend_value": 1192400000
+      "trend_value": 1192400000,
+      "raw_value": 1150000000
     },
     {
       "available_date": "2012-12-20",
-      "trend_value": 1194900000
+      "trend_value": 1194900000,
+      "raw_value": 1275000000
     },
     {
       "available_date": "2012-12-21",
-      "trend_value": 1180200000
+      "trend_value": 1180200000,
+      "raw_value": 1113000000
     },
     {
       "available_date": "2012-12-25",
-      "trend_value": 1179700000
+      "trend_value": 1179700000,
+      "raw_value": 1140000000
     },
     {
       "available_date": "2013-01-01",
-      "trend_value": 1200700000
+      "trend_value": 1200700000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2013-01-16",
-      "trend_value": 1210100000
+      "trend_value": 1210100000,
+      "raw_value": 1278000000
     },
     {
       "available_date": "2013-01-18",
-      "trend_value": 1229100000
+      "trend_value": 1229100000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2013-01-21",
-      "trend_value": 1224600000
+      "trend_value": 1224600000,
+      "raw_value": 1195000000
     },
     {
       "available_date": "2013-01-25",
-      "trend_value": 1211100000
+      "trend_value": 1211100000,
+      "raw_value": 1130000000
     },
     {
       "available_date": "2013-02-03",
-      "trend_value": 1198100000
+      "trend_value": 1198100000,
+      "raw_value": 1120000000
     },
     {
       "available_date": "2013-02-04",
-      "trend_value": 1212100000
+      "trend_value": 1212100000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2013-02-07",
-      "trend_value": 1199600000
+      "trend_value": 1199600000,
+      "raw_value": 1150000000
     },
     {
       "available_date": "2013-02-12",
-      "trend_value": 1201800000
+      "trend_value": 1201800000,
+      "raw_value": 1135000000
     },
     {
       "available_date": "2013-02-18",
-      "trend_value": 1200800000
+      "trend_value": 1200800000,
+      "raw_value": 1130000000
     },
     {
       "available_date": "2013-02-28",
-      "trend_value": 1196800000
+      "trend_value": 1196800000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2013-03-03",
-      "trend_value": 1189000000
+      "trend_value": 1189000000,
+      "raw_value": 1200000000
     },
     {
       "available_date": "2013-04-04",
-      "trend_value": 1172000000
+      "trend_value": 1172000000,
+      "raw_value": 1120000000
     },
     {
       "available_date": "2013-04-25",
-      "trend_value": 1182500000
+      "trend_value": 1182500000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2013-05-02",
-      "trend_value": 1182800000
+      "trend_value": 1182800000,
+      "raw_value": 1133000000
     },
     {
       "available_date": "2013-05-19",
-      "trend_value": 1205800000
+      "trend_value": 1205800000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2013-05-27",
-      "trend_value": 1213000000
+      "trend_value": 1213000000,
+      "raw_value": 1362000000
     },
     {
       "available_date": "2013-06-15",
-      "trend_value": 1214500000
+      "trend_value": 1214500000,
+      "raw_value": 1165000000
     },
     {
       "available_date": "2013-06-25",
-      "trend_value": 1218500000
+      "trend_value": 1218500000,
+      "raw_value": 1175000000
     },
     {
       "available_date": "2013-07-02",
-      "trend_value": 1224500000
+      "trend_value": 1224500000,
+      "raw_value": 1190000000
     },
     {
       "available_date": "2013-08-30",
-      "trend_value": 1231500000
+      "trend_value": 1231500000,
+      "raw_value": 1320000000
     },
     {
       "available_date": "2013-08-30",
-      "trend_value": 1241500000
+      "trend_value": 1241500000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2013-09-28",
-      "trend_value": 1244500000
+      "trend_value": 1244500000,
+      "raw_value": 1150000000
     },
     {
       "available_date": "2013-09-29",
-      "trend_value": 1234000000
+      "trend_value": 1234000000,
+      "raw_value": 1195000000
     },
     {
       "available_date": "2013-10-07",
-      "trend_value": 1251700000
+      "trend_value": 1251700000,
+      "raw_value": 1310000000
     },
     {
       "available_date": "2013-10-15",
-      "trend_value": 1239700000
+      "trend_value": 1239700000,
+      "raw_value": 1230000000
     },
     {
       "available_date": "2013-10-21",
-      "trend_value": 1241500000
+      "trend_value": 1241500000,
+      "raw_value": 1380000000
     },
     {
       "available_date": "2013-10-22",
-      "trend_value": 1245000000
+      "trend_value": 1245000000,
+      "raw_value": 1200000000
     },
     {
       "available_date": "2013-11-12",
-      "trend_value": 1251000000
+      "trend_value": 1251000000,
+      "raw_value": 1235000000
     },
     {
       "available_date": "2013-11-20",
-      "trend_value": 1251000000
+      "trend_value": 1251000000,
+      "raw_value": 1190000000
     },
     {
       "available_date": "2013-11-28",
-      "trend_value": 1232000000
+      "trend_value": 1232000000,
+      "raw_value": 1130000000
     },
     {
       "available_date": "2013-12-12",
-      "trend_value": 1236000000
+      "trend_value": 1236000000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2013-12-20",
-      "trend_value": 1242000000
+      "trend_value": 1242000000,
+      "raw_value": 1210000000
     },
     {
       "available_date": "2013-12-30",
-      "trend_value": 1245000000
+      "trend_value": 1245000000,
+      "raw_value": 1225000000
     },
     {
       "available_date": "2014-01-20",
-      "trend_value": 1248000000
+      "trend_value": 1248000000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2014-01-28",
-      "trend_value": 1259500000
+      "trend_value": 1259500000,
+      "raw_value": 1345000000
     },
     {
       "available_date": "2014-01-28",
-      "trend_value": 1239000000
+      "trend_value": 1239000000,
+      "raw_value": 1175000000
     },
     {
       "available_date": "2014-02-18",
-      "trend_value": 1238500000
+      "trend_value": 1238500000,
+      "raw_value": 1195000000
     },
     {
       "available_date": "2014-02-18",
-      "trend_value": 1246000000
+      "trend_value": 1246000000,
+      "raw_value": 1310000000
     },
     {
       "available_date": "2014-03-04",
-      "trend_value": 1252000000
+      "trend_value": 1252000000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2014-03-06",
-      "trend_value": 1267000000
+      "trend_value": 1267000000,
+      "raw_value": 1280000000
     },
     {
       "available_date": "2014-03-09",
-      "trend_value": 1265000000
+      "trend_value": 1265000000,
+      "raw_value": 1320000000
     },
     {
       "available_date": "2014-03-19",
-      "trend_value": 1276000000
+      "trend_value": 1276000000,
+      "raw_value": 1320000000
     },
     {
       "available_date": "2014-03-20",
-      "trend_value": 1273000000
+      "trend_value": 1273000000,
+      "raw_value": 1195000000
     },
     {
       "available_date": "2014-03-23",
-      "trend_value": 1265000000
+      "trend_value": 1265000000,
+      "raw_value": 1260000000
     },
     {
       "available_date": "2014-03-23",
-      "trend_value": 1254000000
+      "trend_value": 1254000000,
+      "raw_value": 1235000000
     },
     {
       "available_date": "2014-04-07",
-      "trend_value": 1262500000
+      "trend_value": 1262500000,
+      "raw_value": 1260000000
     },
     {
       "available_date": "2014-04-09",
-      "trend_value": 1271500000
+      "trend_value": 1271500000,
+      "raw_value": 1285000000
     },
     {
       "available_date": "2014-04-21",
-      "trend_value": 1278800000
+      "trend_value": 1278800000,
+      "raw_value": 1383000000
     },
     {
       "available_date": "2014-05-17",
-      "trend_value": 1288800000
+      "trend_value": 1288800000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2014-06-10",
-      "trend_value": 1300600000
+      "trend_value": 1300600000,
+      "raw_value": 1398000000
     },
     {
       "available_date": "2014-06-17",
-      "trend_value": 1302600000
+      "trend_value": 1302600000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2014-08-23",
-      "trend_value": 1293600000
+      "trend_value": 1293600000,
+      "raw_value": 1230000000
     },
     {
       "available_date": "2014-08-30",
-      "trend_value": 1298600000
+      "trend_value": 1298600000,
+      "raw_value": 1245000000
     },
     {
       "available_date": "2014-09-05",
-      "trend_value": 1299600000
+      "trend_value": 1299600000,
+      "raw_value": 1270000000
     },
     {
       "available_date": "2014-09-22",
-      "trend_value": 1311600000
+      "trend_value": 1311600000,
+      "raw_value": 1355000000
     },
     {
       "available_date": "2014-10-02",
-      "trend_value": 1321600000
+      "trend_value": 1321600000,
+      "raw_value": 1360000000
     },
     {
       "available_date": "2014-10-20",
-      "trend_value": 1330600000
+      "trend_value": 1330600000,
+      "raw_value": 1375000000
     },
     {
       "available_date": "2014-11-01",
-      "trend_value": 1323300000
+      "trend_value": 1323300000,
+      "raw_value": 1310000000
     },
     {
       "available_date": "2014-11-05",
-      "trend_value": 1317800000
+      "trend_value": 1317800000,
+      "raw_value": 1295000000
     },
     {
       "available_date": "2014-11-14",
-      "trend_value": 1313000000
+      "trend_value": 1313000000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2014-11-18",
-      "trend_value": 1314000000
+      "trend_value": 1314000000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2014-11-29",
-      "trend_value": 1320000000
+      "trend_value": 1320000000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2015-01-08",
-      "trend_value": 1328500000
+      "trend_value": 1328500000,
+      "raw_value": 1330000000
     },
     {
       "available_date": "2015-01-22",
-      "trend_value": 1322500000
+      "trend_value": 1322500000,
+      "raw_value": 1210000000
     },
     {
       "available_date": "2015-01-22",
-      "trend_value": 1326000000
+      "trend_value": 1326000000,
+      "raw_value": 1390000000
     },
     {
       "available_date": "2015-01-26",
-      "trend_value": 1323000000
+      "trend_value": 1323000000,
+      "raw_value": 1330000000
     },
     {
       "available_date": "2015-01-30",
-      "trend_value": 1321400000
+      "trend_value": 1321400000,
+      "raw_value": 1359000000
     },
     {
       "available_date": "2015-02-03",
-      "trend_value": 1318400000
+      "trend_value": 1318400000,
+      "raw_value": 1280000000
     },
     {
       "available_date": "2015-02-15",
-      "trend_value": 1323900000
+      "trend_value": 1323900000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2015-02-21",
-      "trend_value": 1321900000
+      "trend_value": 1321900000,
+      "raw_value": 1330000000
     },
     {
       "available_date": "2015-02-26",
-      "trend_value": 1315900000
+      "trend_value": 1315900000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2015-03-01",
-      "trend_value": 1305200000
+      "trend_value": 1305200000,
+      "raw_value": 1183000000
     },
     {
       "available_date": "2015-03-02",
-      "trend_value": 1305200000
+      "trend_value": 1305200000,
+      "raw_value": 1330000000
     },
     {
       "available_date": "2015-03-10",
-      "trend_value": 1316450000
+      "trend_value": 1316450000,
+      "raw_value": 1322500000
     },
     {
       "available_date": "2015-03-12",
-      "trend_value": 1311450000
+      "trend_value": 1311450000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2015-03-14",
-      "trend_value": 1315450000
+      "trend_value": 1315450000,
+      "raw_value": 1370000000
     },
     {
       "available_date": "2015-03-22",
-      "trend_value": 1310550000
+      "trend_value": 1310550000,
+      "raw_value": 1310000000
     },
     {
       "available_date": "2015-03-31",
-      "trend_value": 1314550000
+      "trend_value": 1314550000,
+      "raw_value": 1320000000
     },
     {
       "available_date": "2015-03-31",
-      "trend_value": 1304550000
+      "trend_value": 1304550000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2015-04-18",
-      "trend_value": 1301550000
+      "trend_value": 1301550000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2015-04-18",
-      "trend_value": 1311550000
+      "trend_value": 1311550000,
+      "raw_value": 1390000000
     },
     {
       "available_date": "2015-04-23",
-      "trend_value": 1332950000
+      "trend_value": 1332950000,
+      "raw_value": 1397000000
     },
     {
       "available_date": "2015-04-25",
-      "trend_value": 1339950000
+      "trend_value": 1339950000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2015-05-04",
-      "trend_value": 1336700000
+      "trend_value": 1336700000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2015-05-10",
-      "trend_value": 1331700000
+      "trend_value": 1331700000,
+      "raw_value": 1290000000
     },
     {
       "available_date": "2015-05-15",
-      "trend_value": 1324700000
+      "trend_value": 1324700000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2015-05-21",
-      "trend_value": 1323700000
+      "trend_value": 1323700000,
+      "raw_value": 1300000000
     },
     {
       "available_date": "2015-05-30",
-      "trend_value": 1320200000
+      "trend_value": 1320200000,
+      "raw_value": 1285000000
     },
     {
       "available_date": "2015-06-03",
-      "trend_value": 1329200000
+      "trend_value": 1329200000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2015-06-04",
-      "trend_value": 1327200000
+      "trend_value": 1327200000,
+      "raw_value": 1280000000
     },
     {
       "available_date": "2015-07-06",
-      "trend_value": 1333200000
+      "trend_value": 1333200000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2015-07-07",
-      "trend_value": 1329250000
+      "trend_value": 1329250000,
+      "raw_value": 1357500000
     },
     {
       "available_date": "2015-07-09",
-      "trend_value": 1322250000
+      "trend_value": 1322250000,
+      "raw_value": 1330000000
     },
     {
       "available_date": "2015-07-12",
-      "trend_value": 1333250000
+      "trend_value": 1333250000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2015-07-13",
-      "trend_value": 1345250000
+      "trend_value": 1345250000,
+      "raw_value": 1410000000
     },
     {
       "available_date": "2015-07-28",
-      "trend_value": 1350250000
+      "trend_value": 1350250000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2015-08-02",
-      "trend_value": 1354250000
+      "trend_value": 1354250000,
+      "raw_value": 1340000000
     },
     {
       "available_date": "2015-08-04",
-      "trend_value": 1370550000
+      "trend_value": 1370550000,
+      "raw_value": 1448000000
     },
     {
       "available_date": "2015-08-11",
-      "trend_value": 1373050000
+      "trend_value": 1373050000,
+      "raw_value": 1365000000
     },
     {
       "available_date": "2015-08-17",
-      "trend_value": 1391050000
+      "trend_value": 1391050000,
+      "raw_value": 1460000000
     },
     {
       "available_date": "2015-08-21",
-      "trend_value": 1377550000
+      "trend_value": 1377550000,
+      "raw_value": 1315000000
     },
     {
       "available_date": "2015-08-21",
-      "trend_value": 1381800000
+      "trend_value": 1381800000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2015-09-25",
-      "trend_value": 1383800000
+      "trend_value": 1383800000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2015-10-03",
-      "trend_value": 1372300000
+      "trend_value": 1372300000,
+      "raw_value": 1285000000
     },
     {
       "available_date": "2015-10-10",
-      "trend_value": 1372050000
+      "trend_value": 1372050000,
+      "raw_value": 1407500000
     },
     {
       "available_date": "2015-10-12",
-      "trend_value": 1384050000
+      "trend_value": 1384050000,
+      "raw_value": 1470000000
     },
     {
       "available_date": "2015-10-15",
-      "trend_value": 1387050000
+      "trend_value": 1387050000,
+      "raw_value": 1370000000
     },
     {
       "available_date": "2015-10-17",
-      "trend_value": 1396750000
+      "trend_value": 1396750000,
+      "raw_value": 1545000000
     },
     {
       "available_date": "2015-10-18",
-      "trend_value": 1406150000
+      "trend_value": 1406150000,
+      "raw_value": 1459000000
     },
     {
       "available_date": "2015-10-26",
-      "trend_value": 1409150000
+      "trend_value": 1409150000,
+      "raw_value": 1490000000
     },
     {
       "available_date": "2015-11-07",
-      "trend_value": 1414150000
+      "trend_value": 1414150000,
+      "raw_value": 1365000000
     },
     {
       "available_date": "2015-11-09",
-      "trend_value": 1414150000
+      "trend_value": 1414150000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2015-11-19",
-      "trend_value": 1429150000
+      "trend_value": 1429150000,
+      "raw_value": 1500000000
     },
     {
       "available_date": "2015-11-27",
-      "trend_value": 1438650000
+      "trend_value": 1438650000,
+      "raw_value": 1380000000
     },
     {
       "available_date": "2015-12-01",
-      "trend_value": 1439400000
+      "trend_value": 1439400000,
+      "raw_value": 1415000000
     },
     {
       "available_date": "2015-12-01",
-      "trend_value": 1442400000
+      "trend_value": 1442400000,
+      "raw_value": 1500000000
     },
     {
       "available_date": "2015-12-07",
-      "trend_value": 1446400000
+      "trend_value": 1446400000,
+      "raw_value": 1410000000
     },
     {
       "available_date": "2015-12-14",
-      "trend_value": 1438900000
+      "trend_value": 1438900000,
+      "raw_value": 1470000000
     },
     {
       "available_date": "2015-12-16",
-      "trend_value": 1448200000
+      "trend_value": 1448200000,
+      "raw_value": 1552000000
     },
     {
       "available_date": "2015-12-24",
-      "trend_value": 1436200000
+      "trend_value": 1436200000,
+      "raw_value": 1370000000
     },
     {
       "available_date": "2015-12-25",
-      "trend_value": 1449900000
+      "trend_value": 1449900000,
+      "raw_value": 1502000000
     },
     {
       "available_date": "2015-12-28",
-      "trend_value": 1449900000
+      "trend_value": 1449900000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2016-01-28",
-      "trend_value": 1454900000
+      "trend_value": 1454900000,
+      "raw_value": 1550000000
     },
     {
       "available_date": "2016-02-04",
-      "trend_value": 1441900000
+      "trend_value": 1441900000,
+      "raw_value": 1250000000
     },
     {
       "available_date": "2016-02-05",
-      "trend_value": 1450400000
+      "trend_value": 1450400000,
+      "raw_value": 1500000000
     },
     {
       "available_date": "2016-02-19",
-      "trend_value": 1454900000
+      "trend_value": 1454900000,
+      "raw_value": 1545000000
     },
     {
       "available_date": "2016-03-01",
-      "trend_value": 1460900000
+      "trend_value": 1460900000,
+      "raw_value": 1470000000
     },
     {
       "available_date": "2016-03-07",
-      "trend_value": 1458900000
+      "trend_value": 1458900000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2016-03-11",
-      "trend_value": 1459200000
+      "trend_value": 1459200000,
+      "raw_value": 1555000000
     },
     {
       "available_date": "2016-04-17",
-      "trend_value": 1476200000
+      "trend_value": 1476200000,
+      "raw_value": 1540000000
     },
     {
       "available_date": "2016-06-03",
-      "trend_value": 1486000000
+      "trend_value": 1486000000,
+      "raw_value": 1600000000
     },
     {
       "available_date": "2016-06-13",
-      "trend_value": 1504300000
+      "trend_value": 1504300000,
+      "raw_value": 1583000000
     },
     {
       "available_date": "2016-06-23",
-      "trend_value": 1496800000
+      "trend_value": 1496800000,
+      "raw_value": 1475000000
     },
     {
       "available_date": "2016-06-27",
-      "trend_value": 1506800000
+      "trend_value": 1506800000,
+      "raw_value": 1350000000
     },
     {
       "available_date": "2016-06-28",
-      "trend_value": 1499800000
+      "trend_value": 1499800000,
+      "raw_value": 1430000000
     },
     {
       "available_date": "2016-07-05",
-      "trend_value": 1471800000
+      "trend_value": 1471800000,
+      "raw_value": 1265000000
     },
     {
       "available_date": "2016-07-07",
-      "trend_value": 1464800000
+      "trend_value": 1464800000,
+      "raw_value": 1400000000
     },
     {
       "available_date": "2016-07-15",
-      "trend_value": 1462800000
+      "trend_value": 1462800000,
+      "raw_value": 1430000000
     },
     {
       "available_date": "2016-07-22",
-      "trend_value": 1452300000
+      "trend_value": 1452300000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2016-08-02",
-      "trend_value": 1442800000
+      "trend_value": 1442800000,
+      "raw_value": 1445000000
     },
     {
       "available_date": "2016-08-09",
-      "trend_value": 1427800000
+      "trend_value": 1427800000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2016-08-14",
-      "trend_value": 1419500000
+      "trend_value": 1419500000,
+      "raw_value": 1500000000
     },
     {
       "available_date": "2016-08-20",
-      "trend_value": 1415000000
+      "trend_value": 1415000000,
+      "raw_value": 1430000000
     },
     {
       "available_date": "2016-08-22",
-      "trend_value": 1429000000
+      "trend_value": 1429000000,
+      "raw_value": 1490000000
     },
     {
       "available_date": "2016-08-27",
-      "trend_value": 1436000000
+      "trend_value": 1436000000,
+      "raw_value": 1500000000
     },
     {
       "available_date": "2016-08-28",
-      "trend_value": 1458500000
+      "trend_value": 1458500000,
+      "raw_value": 1490000000
     },
     {
       "available_date": "2016-09-01",
-      "trend_value": 1462500000
+      "trend_value": 1462500000,
+      "raw_value": 1440000000
     },
     {
       "available_date": "2016-09-06",
-      "trend_value": 1464500000
+      "trend_value": 1464500000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2016-09-10",
-      "trend_value": 1475500000
+      "trend_value": 1475500000,
+      "raw_value": 1560000000
     },
     {
       "available_date": "2016-09-25",
-      "trend_value": 1495000000
+      "trend_value": 1495000000,
+      "raw_value": 1640000000
     },
     {
       "available_date": "2016-10-02",
-      "trend_value": 1515000000
+      "trend_value": 1515000000,
+      "raw_value": 1650000000
     },
     {
       "available_date": "2016-10-03",
-      "trend_value": 1521500000
+      "trend_value": 1521500000,
+      "raw_value": 1565000000
     },
     {
       "available_date": "2016-10-14",
-      "trend_value": 1530500000
+      "trend_value": 1530500000,
+      "raw_value": 1520000000
     },
     {
       "available_date": "2016-10-17",
-      "trend_value": 1541500000
+      "trend_value": 1541500000,
+      "raw_value": 1600000000
     },
     {
       "available_date": "2016-10-19",
-      "trend_value": 1533500000
+      "trend_value": 1533500000,
+      "raw_value": 1420000000
     },
     {
       "available_date": "2016-11-07",
-      "trend_value": 1529500000
+      "trend_value": 1529500000,
+      "raw_value": 1450000000
     },
     {
       "available_date": "2016-11-11",
-      "trend_value": 1540000000
+      "trend_value": 1540000000,
+      "raw_value": 1545000000
     },
     {
       "available_date": "2016-11-14",
-      "trend_value": 1564000000
+      "trend_value": 1564000000,
+      "raw_value": 1690000000
     },
     {
       "available_date": "2016-11-15",
-      "trend_value": 1568000000
+      "trend_value": 1568000000,
+      "raw_value": 1600000000
     },
     {
       "available_date": "2016-11-24",
-      "trend_value": 1561000000
+      "trend_value": 1561000000,
+      "raw_value": 1570000000
     },
     {
       "available_date": "2016-11-28",
-      "trend_value": 1564800000
+      "trend_value": 1564800000,
+      "raw_value": 1688000000
     },
     {
       "available_date": "2016-12-13",
-      "trend_value": 1576300000
+      "trend_value": 1576300000,
+      "raw_value": 1680000000
     },
     {
       "available_date": "2016-12-20",
-      "trend_value": 1579000000
+      "trend_value": 1579000000,
+      "raw_value": 1547000000
     },
     {
       "available_date": "2017-03-02",
-      "trend_value": 1574000000
+      "trend_value": 1574000000,
+      "raw_value": 1550000000
     },
     {
       "available_date": "2017-03-03",
-      "trend_value": 1584800000
+      "trend_value": 1584800000,
+      "raw_value": 1528000000
     },
     {
       "available_date": "2017-03-31",
-      "trend_value": 1604300000
+      "trend_value": 1604300000,
+      "raw_value": 1645000000
     },
     {
       "available_date": "2017-04-14",
-      "trend_value": 1605800000
+      "trend_value": 1605800000,
+      "raw_value": 1560000000
     },
     {
       "available_date": "2017-04-23",
-      "trend_value": 1584800000
+      "trend_value": 1584800000,
+      "raw_value": 1480000000
     },
     {
       "available_date": "2017-04-30",
-      "trend_value": 1590800000
+      "trend_value": 1590800000,
+      "raw_value": 1660000000
     },
     {
       "available_date": "2017-05-03",
-      "trend_value": 1585500000
+      "trend_value": 1585500000,
+      "raw_value": 1517000000
     },
     {
       "available_date": "2017-05-04",
-      "trend_value": 1582700000
+      "trend_value": 1582700000,
+      "raw_value": 1660000000
     },
     {
       "available_date": "2017-05-20",
-      "trend_value": 1580400000
+      "trend_value": 1580400000,
+      "raw_value": 1657000000
     },
     {
       "available_date": "2017-05-23",
-      "trend_value": 1576700000
+      "trend_value": 1576700000,
+      "raw_value": 1510000000
     },
     {
       "available_date": "2017-05-31",
-      "trend_value": 1590700000
+      "trend_value": 1590700000,
+      "raw_value": 1690000000
     },
     {
       "available_date": "2017-06-04",
-      "trend_value": 1590900000
+      "trend_value": 1590900000,
+      "raw_value": 1530000000
     },
     {
       "available_date": "2017-06-09",
-      "trend_value": 1581200000
+      "trend_value": 1581200000,
+      "raw_value": 1548000000
     },
     {
       "available_date": "2017-06-27",
-      "trend_value": 1595200000
+      "trend_value": 1595200000,
+      "raw_value": 1700000000
     },
     {
       "available_date": "2017-06-27",
-      "trend_value": 1597200000
+      "trend_value": 1597200000,
+      "raw_value": 1500000000
     },
     {
       "available_date": "2017-07-01",
-      "trend_value": 1601200000
+      "trend_value": 1601200000,
+      "raw_value": 1700000000
     },
     {
       "available_date": "2017-07-03",
-      "trend_value": 1607000000
+      "trend_value": 1607000000,
+      "raw_value": 1575000000
     },
     {
       "available_date": "2017-07-14",
-      "trend_value": 1601500000
+      "trend_value": 1601500000,
+      "raw_value": 1605000000
     },
     {
       "available_date": "2017-07-15",
-      "trend_value": 1593800000
+      "trend_value": 1593800000,
+      "raw_value": 1580000000
     },
     {
       "available_date": "2017-07-16",
-      "trend_value": 1605300000
+      "trend_value": 1605300000,
+      "raw_value": 1625000000
     },
     {
       "available_date": "2017-07-16",
-      "trend_value": 1587000000
+      "trend_value": 1587000000,
+      "raw_value": 1507000000
     },
     {
       "available_date": "2017-07-30",
-      "trend_value": 1614000000
+      "trend_value": 1614000000,
+      "raw_value": 1800000000
     },
     {
       "available_date": "2017-08-16",
-      "trend_value": 1634200000
+      "trend_value": 1634200000,
+      "raw_value": 1750000000
     },
     {
       "available_date": "2017-08-19",
-      "trend_value": 1638200000
+      "trend_value": 1638200000,
+      "raw_value": 1740000000
     },
     {
       "available_date": "2017-08-19",
-      "trend_value": 1656200000
+      "trend_value": 1656200000,
+      "raw_value": 1680000000
     },
     {
       "available_date": "2017-08-26",
-      "trend_value": 1650200000
+      "trend_value": 1650200000,
+      "raw_value": 1640000000
     },
     {
       "available_date": "2017-09-07",
-      "trend_value": 1662700000
+      "trend_value": 1662700000,
+      "raw_value": 1700000000
     },
     {
       "available_date": "2017-09-09",
-      "trend_value": 1667200000
+      "trend_value": 1667200000,
+      "raw_value": 1650000000
     },
     {
       "available_date": "2017-09-09",
-      "trend_value": 1687700000
+      "trend_value": 1687700000,
+      "raw_value": 1785000000
     },
     {
       "available_date": "2017-09-17",
-      "trend_value": 1710200000
+      "trend_value": 1710200000,
+      "raw_value": 1850000000
     },
     {
       "available_date": "2017-09-21",
-      "trend_value": 1739500000
+      "trend_value": 1739500000,
+      "raw_value": 1800000000
     },
     {
       "available_date": "2017-09-21",
-      "trend_value": 1715000000
+      "trend_value": 1715000000,
+      "raw_value": 1555000000
     },
     {
       "available_date": "2017-10-05",
-      "trend_value": 1708000000
+      "trend_value": 1708000000,
+      "raw_value": 1680000000
     },
     {
       "available_date": "2017-11-05",
-      "trend_value": 1709000000
+      "trend_value": 1709000000,
+      "raw_value": 1750000000
     },
     {
       "available_date": "2017-11-06",
-      "trend_value": 1725000000
+      "trend_value": 1725000000,
+      "raw_value": 1840000000
     },
     {
       "available_date": "2017-11-06",
-      "trend_value": 1746000000
+      "trend_value": 1746000000,
+      "raw_value": 1850000000
     },
     {
       "available_date": "2017-11-16",
-      "trend_value": 1760100000
+      "trend_value": 1760100000,
+      "raw_value": 1841000000
     },
     {
       "available_date": "2017-12-03",
-      "trend_value": 1779100000
+      "trend_value": 1779100000,
+      "raw_value": 1840000000
     },
     {
       "available_date": "2017-12-08",
-      "trend_value": 1782600000
+      "trend_value": 1782600000,
+      "raw_value": 1820000000
     },
     {
       "available_date": "2017-12-15",
-      "trend_value": 1782600000
+      "trend_value": 1782600000,
+      "raw_value": 1850000000
     },
     {
       "available_date": "2017-12-15",
-      "trend_value": 1780600000
+      "trend_value": 1780600000,
+      "raw_value": 1780000000
     },
     {
       "available_date": "2017-12-16",
-      "trend_value": 1800100000
+      "trend_value": 1800100000,
+      "raw_value": 1750000000
     },
     {
       "available_date": "2017-12-19",
-      "trend_value": 1820100000
+      "trend_value": 1820100000,
+      "raw_value": 1880000000
     },
     {
       "available_date": "2017-12-25",
-      "trend_value": 1824600000
+      "trend_value": 1824600000,
+      "raw_value": 1795000000
     },
     {
       "available_date": "2018-01-01",
-      "trend_value": 1832600000
+      "trend_value": 1832600000,
+      "raw_value": 1920000000
     },
     {
       "available_date": "2018-01-04",
-      "trend_value": 1832600000
+      "trend_value": 1832600000,
+      "raw_value": 1850000000
     },
     {
       "available_date": "2018-01-04",
-      "trend_value": 1828500000
+      "trend_value": 1828500000,
+      "raw_value": 1800000000
     },
     {
       "available_date": "2018-01-09",
-      "trend_value": 1821500000
+      "trend_value": 1821500000,
+      "raw_value": 1770000000
     },
     {
       "available_date": "2018-01-13",
-      "trend_value": 1818500000
+      "trend_value": 1818500000,
+      "raw_value": 1790000000
     },
     {
       "available_date": "2018-01-13",
-      "trend_value": 1808500000
+      "trend_value": 1808500000,
+      "raw_value": 1750000000
     },
     {
       "available_date": "2018-01-14",
-      "trend_value": 1820500000
+      "trend_value": 1820500000,
+      "raw_value": 1900000000
     },
     {
       "available_date": "2018-01-15",
-      "trend_value": 1825500000
+      "trend_value": 1825500000,
+      "raw_value": 1800000000
     },
     {
       "available_date": "2018-01-16",
-      "trend_value": 1829500000
+      "trend_value": 1829500000,
+      "raw_value": 1920000000
     },
     {
       "available_date": "2018-02-05",
-      "trend_value": 1835000000
+      "trend_value": 1835000000,
+      "raw_value": 1850000000
     },
     {
       "available_date": "2018-02-10",
-      "trend_value": 1830000000
+      "trend_value": 1830000000,
+      "raw_value": 1870000000
     },
     {
       "available_date": "2018-02-12",
-      "trend_value": 1824000000
+      "trend_value": 1824000000,
+      "raw_value": 1790000000
     },
     {
       "available_date": "2018-02-22",
-      "trend_value": 1841000000
+      "trend_value": 1841000000,
+      "raw_value": 1970000000
     },
     {
       "available_date": "2018-02-25",
-      "trend_value": 1880000000
+      "trend_value": 1880000000,
+      "raw_value": 2160000000
     },
     {
       "available_date": "2018-03-08",
-      "trend_value": 1908000000
+      "trend_value": 1908000000,
+      "raw_value": 2070000000
     },
     {
       "available_date": "2018-04-27",
-      "trend_value": 1949000000
+      "trend_value": 1949000000,
+      "raw_value": 2160000000
     },
     {
       "available_date": "2018-05-03",
-      "trend_value": 1964000000
+      "trend_value": 1964000000,
+      "raw_value": 2050000000
     },
     {
       "available_date": "2018-05-06",
-      "trend_value": 2009000000
+      "trend_value": 2009000000,
+      "raw_value": 2250000000
     },
     {
       "available_date": "2018-07-06",
-      "trend_value": 2032000000
+      "trend_value": 2032000000,
+      "raw_value": 2150000000
     },
     {
       "available_date": "2018-07-29",
-      "trend_value": 2061000000
+      "trend_value": 2061000000,
+      "raw_value": 2140000000
     },
     {
       "available_date": "2018-08-03",
-      "trend_value": 2087500000
+      "trend_value": 2087500000,
+      "raw_value": 2135000000
     },
     {
       "available_date": "2018-09-07",
-      "trend_value": 2123500000
+      "trend_value": 2123500000,
+      "raw_value": 2150000000
     },
     {
       "available_date": "2018-09-07",
-      "trend_value": 2151500000
+      "trend_value": 2151500000,
+      "raw_value": 2250000000
     },
     {
       "available_date": "2018-09-22",
-      "trend_value": 2170500000
+      "trend_value": 2170500000,
+      "raw_value": 2350000000
     },
     {
       "available_date": "2018-09-28",
-      "trend_value": 2179500000
+      "trend_value": 2179500000,
+      "raw_value": 2160000000
     },
     {
       "available_date": "2018-09-29",
-      "trend_value": 2190500000
+      "trend_value": 2190500000,
+      "raw_value": 2270000000
     },
     {
       "available_date": "2018-09-29",
-      "trend_value": 2202500000
+      "trend_value": 2202500000,
+      "raw_value": 2170000000
     },
     {
       "available_date": "2018-10-05",
-      "trend_value": 2212500000
+      "trend_value": 2212500000,
+      "raw_value": 2350000000
     },
     {
       "available_date": "2018-10-08",
-      "trend_value": 2227500000
+      "trend_value": 2227500000,
+      "raw_value": 2300000000
     },
     {
       "available_date": "2018-11-06",
-      "trend_value": 2243500000
+      "trend_value": 2243500000,
+      "raw_value": 2300000000
     },
     {
       "available_date": "2018-11-16",
-      "trend_value": 2260000000
+      "trend_value": 2260000000,
+      "raw_value": 2300000000
     },
     {
       "available_date": "2019-04-13",
-      "trend_value": 2276000000
+      "trend_value": 2276000000,
+      "raw_value": 2310000000
     },
     {
       "available_date": "2019-04-22",
-      "trend_value": 2251000000
+      "trend_value": 2251000000,
+      "raw_value": 2000000000
     },
     {
       "available_date": "2019-06-09",
-      "trend_value": 2188000000
+      "trend_value": 2188000000,
+      "raw_value": 1720000000
     },
     {
       "available_date": "2019-06-13",
-      "trend_value": 2187000000
+      "trend_value": 2187000000,
+      "raw_value": 2150000000
     },
     {
       "available_date": "2019-06-26",
-      "trend_value": 2167000000
+      "trend_value": 2167000000,
+      "raw_value": 2070000000
     },
     {
       "available_date": "2019-07-04",
-      "trend_value": 2175000000
+      "trend_value": 2175000000,
+      "raw_value": 2250000000
     },
     {
       "available_date": "2019-07-09",
-      "trend_value": 2157000000
+      "trend_value": 2157000000,
+      "raw_value": 2170000000
     },
     {
       "available_date": "2019-07-12",
-      "trend_value": 2141000000
+      "trend_value": 2141000000,
+      "raw_value": 2140000000
     },
     {
       "available_date": "2019-07-13",
-      "trend_value": 2132000000
+      "trend_value": 2132000000,
+      "raw_value": 2210000000
     },
     {
       "available_date": "2019-07-15",
-      "trend_value": 2130000000
+      "trend_value": 2130000000,
+      "raw_value": 2280000000
     },
     {
       "available_date": "2019-07-20",
-      "trend_value": 2118000000
+      "trend_value": 2118000000,
+      "raw_value": 2190000000
     },
     {
       "available_date": "2019-07-26",
-      "trend_value": 2145500000
+      "trend_value": 2145500000,
+      "raw_value": 2275000000
     },
     {
       "available_date": "2019-07-30",
-      "trend_value": 2189500000
+      "trend_value": 2189500000,
+      "raw_value": 2160000000
     },
     {
       "available_date": "2019-08-07",
-      "trend_value": 2214500000
+      "trend_value": 2214500000,
+      "raw_value": 2400000000
     },
     {
       "available_date": "2019-08-16",
-      "trend_value": 2247500000
+      "trend_value": 2247500000,
+      "raw_value": 2400000000
     },
     {
       "available_date": "2019-08-17",
-      "trend_value": 2272500000
+      "trend_value": 2272500000,
+      "raw_value": 2500000000
     },
     {
       "available_date": "2019-08-18",
-      "trend_value": 2284500000
+      "trend_value": 2284500000,
+      "raw_value": 2290000000
     },
     {
       "available_date": "2019-08-23",
-      "trend_value": 2310000000
+      "trend_value": 2310000000,
+      "raw_value": 2395000000
     },
     {
       "available_date": "2019-09-02",
-      "trend_value": 2336000000
+      "trend_value": 2336000000,
+      "raw_value": 2470000000
     },
     {
       "available_date": "2019-09-08",
-      "trend_value": 2368000000
+      "trend_value": 2368000000,
+      "raw_value": 2600000000
     },
     {
       "available_date": "2019-09-15",
-      "trend_value": 2390000000
+      "trend_value": 2390000000,
+      "raw_value": 2410000000
     },
     {
       "available_date": "2019-09-26",
-      "trend_value": 2407500000
+      "trend_value": 2407500000,
+      "raw_value": 2450000000
     },
     {
       "available_date": "2019-09-30",
-      "trend_value": 2443500000
+      "trend_value": 2443500000,
+      "raw_value": 2520000000
     },
     {
       "available_date": "2019-10-05",
-      "trend_value": 2443500000
+      "trend_value": 2443500000,
+      "raw_value": 2400000000
     },
     {
       "available_date": "2019-10-18",
-      "trend_value": 2455500000
+      "trend_value": 2455500000,
+      "raw_value": 2520000000
     },
     {
       "available_date": "2019-11-15",
-      "trend_value": 2470500000
+      "trend_value": 2470500000,
+      "raw_value": 2650000000
     },
     {
       "available_date": "2019-11-23",
-      "trend_value": 2501500000
+      "trend_value": 2501500000,
+      "raw_value": 2600000000
     },
     {
       "available_date": "2019-11-23",
-      "trend_value": 2507000000
+      "trend_value": 2507000000,
+      "raw_value": 2450000000
     },
     {
       "available_date": "2019-12-03",
-      "trend_value": 2525000000
+      "trend_value": 2525000000,
+      "raw_value": 2650000000
     },
     {
       "available_date": "2019-12-10",
-      "trend_value": 2515000000
+      "trend_value": 2515000000,
+      "raw_value": 2500000000
     },
     {
       "available_date": "2019-12-10",
-      "trend_value": 2544000000
+      "trend_value": 2544000000,
+      "raw_value": 2700000000
     },
     {
       "available_date": "2019-12-16",
-      "trend_value": 2557000000
+      "trend_value": 2557000000,
+      "raw_value": 2580000000
     },
     {
       "available_date": "2019-12-19",
-      "trend_value": 2579000000
+      "trend_value": 2579000000,
+      "raw_value": 2740000000
     },
     {
       "available_date": "2019-12-21",
-      "trend_value": 2619000000
+      "trend_value": 2619000000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2019-12-30",
-      "trend_value": 2647000000
+      "trend_value": 2647000000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2020-01-12",
-      "trend_value": 2660000000
+      "trend_value": 2660000000,
+      "raw_value": 2780000000
     },
     {
       "available_date": "2020-01-14",
-      "trend_value": 2675000000
+      "trend_value": 2675000000,
+      "raw_value": 2750000000
     },
     {
       "available_date": "2020-01-16",
-      "trend_value": 2713000000
+      "trend_value": 2713000000,
+      "raw_value": 2830000000
     },
     {
       "available_date": "2020-01-26",
-      "trend_value": 2712000000
+      "trend_value": 2712000000,
+      "raw_value": 2640000000
     },
     {
       "available_date": "2020-01-28",
-      "trend_value": 2717000000
+      "trend_value": 2717000000,
+      "raw_value": 2550000000
     },
     {
       "available_date": "2020-02-10",
-      "trend_value": 2707000000
+      "trend_value": 2707000000,
+      "raw_value": 2600000000
     },
     {
       "available_date": "2020-03-16",
-      "trend_value": 2711500000
+      "trend_value": 2711500000,
+      "raw_value": 2625000000
     },
     {
       "available_date": "2020-03-28",
-      "trend_value": 2688500000
+      "trend_value": 2688500000,
+      "raw_value": 2510000000
     },
     {
       "available_date": "2020-06-12",
-      "trend_value": 2652500000
+      "trend_value": 2652500000,
+      "raw_value": 2440000000
     },
     {
       "available_date": "2020-06-19",
-      "trend_value": 2632500000
+      "trend_value": 2632500000,
+      "raw_value": 2600000000
     },
     {
       "available_date": "2020-06-27",
-      "trend_value": 2607500000
+      "trend_value": 2607500000,
+      "raw_value": 2530000000
     },
     {
       "available_date": "2020-08-05",
-      "trend_value": 2590500000
+      "trend_value": 2590500000,
+      "raw_value": 2580000000
     },
     {
       "available_date": "2020-08-06",
-      "trend_value": 2577500000
+      "trend_value": 2577500000,
+      "raw_value": 2700000000
     },
     {
       "available_date": "2020-08-09",
-      "trend_value": 2571500000
+      "trend_value": 2571500000,
+      "raw_value": 2580000000
     },
     {
       "available_date": "2020-08-10",
-      "trend_value": 2596500000
+      "trend_value": 2596500000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2020-08-22",
-      "trend_value": 2621500000
+      "trend_value": 2621500000,
+      "raw_value": 2850000000
     },
     {
       "available_date": "2020-08-27",
-      "trend_value": 2639000000
+      "trend_value": 2639000000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2020-09-13",
-      "trend_value": 2658000000
+      "trend_value": 2658000000,
+      "raw_value": 2700000000
     },
     {
       "available_date": "2020-10-02",
-      "trend_value": 2658000000
+      "trend_value": 2658000000,
+      "raw_value": 2440000000
     },
     {
       "available_date": "2020-10-27",
-      "trend_value": 2680000000
+      "trend_value": 2680000000,
+      "raw_value": 2820000000
     },
     {
       "available_date": "2020-10-31",
-      "trend_value": 2717000000
+      "trend_value": 2717000000,
+      "raw_value": 2900000000
     },
     {
       "available_date": "2020-11-26",
-      "trend_value": 2744000000
+      "trend_value": 2744000000,
+      "raw_value": 2850000000
     },
     {
       "available_date": "2020-12-10",
-      "trend_value": 2772000000
+      "trend_value": 2772000000,
+      "raw_value": 2980000000
     },
     {
       "available_date": "2021-01-10",
-      "trend_value": 2807000000
+      "trend_value": 2807000000,
+      "raw_value": 2930000000
     },
     {
       "available_date": "2021-01-26",
-      "trend_value": 2797000000
+      "trend_value": 2797000000,
+      "raw_value": 2700000000
     },
     {
       "available_date": "2021-01-26",
-      "trend_value": 2782000000
+      "trend_value": 2782000000,
+      "raw_value": 2700000000
     },
     {
       "available_date": "2021-01-30",
-      "trend_value": 2802000000
+      "trend_value": 2802000000,
+      "raw_value": 3000000000
     },
     {
       "available_date": "2021-01-31",
-      "trend_value": 2809000000
+      "trend_value": 2809000000,
+      "raw_value": 2770000000
     },
     {
       "available_date": "2021-02-02",
-      "trend_value": 2845000000
+      "trend_value": 2845000000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2021-02-09",
-      "trend_value": 2843000000
+      "trend_value": 2843000000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2021-03-02",
-      "trend_value": 2838000000
+      "trend_value": 2838000000,
+      "raw_value": 2850000000
     },
     {
       "available_date": "2021-03-04",
-      "trend_value": 2863000000
+      "trend_value": 2863000000,
+      "raw_value": 3100000000
     },
     {
       "available_date": "2021-03-07",
-      "trend_value": 2834000000
+      "trend_value": 2834000000,
+      "raw_value": 2690000000
     },
     {
       "available_date": "2021-03-20",
-      "trend_value": 2836000000
+      "trend_value": 2836000000,
+      "raw_value": 2950000000
     },
     {
       "available_date": "2021-03-23",
-      "trend_value": 2846000000
+      "trend_value": 2846000000,
+      "raw_value": 2800000000
     },
     {
       "available_date": "2021-03-26",
-      "trend_value": 2861000000
+      "trend_value": 2861000000,
+      "raw_value": 2850000000
     },
     {
       "available_date": "2021-05-03",
-      "trend_value": 2848000000
+      "trend_value": 2848000000,
+      "raw_value": 2870000000
     },
     {
       "available_date": "2021-06-26",
-      "trend_value": 2861000000
+      "trend_value": 2861000000,
+      "raw_value": 2900000000
     },
     {
       "available_date": "2021-07-04",
-      "trend_value": 2886000000
+      "trend_value": 2886000000,
+      "raw_value": 3050000000
     },
     {
       "available_date": "2021-07-31",
-      "trend_value": 2906000000
+      "trend_value": 2906000000,
+      "raw_value": 3000000000
     },
     {
       "available_date": "2021-09-10",
-      "trend_value": 2962000000
+      "trend_value": 2962000000,
+      "raw_value": 3410000000
     },
     {
       "available_date": "2021-11-21",
-      "trend_value": 3018000000
+      "trend_value": 3018000000,
+      "raw_value": 3660000000
     },
     {
       "available_date": "2022-01-25",
-      "trend_value": 3109000000
+      "trend_value": 3109000000,
+      "raw_value": 3600000000
     },
     {
       "available_date": "2022-04-15",
-      "trend_value": 3161000000
+      "trend_value": 3161000000,
+      "raw_value": 3470000000
     },
     {
       "available_date": "2022-05-06",
-      "trend_value": 3258000000
+      "trend_value": 3258000000,
+      "raw_value": 3770000000
     },
     {
       "available_date": "2022-05-12",
-      "trend_value": 3343000000
+      "trend_value": 3343000000,
+      "raw_value": 3700000000
     },
     {
       "available_date": "2022-06-30",
-      "trend_value": 3446000000
+      "trend_value": 3446000000,
+      "raw_value": 3900000000
     },
     {
       "available_date": "2023-02-09",
-      "trend_value": 3504000000
+      "trend_value": 3504000000,
+      "raw_value": 3480000000
     },
     {
       "available_date": "2023-03-25",
-      "trend_value": 3496000000
+      "trend_value": 3496000000,
+      "raw_value": 2970000000
     },
     {
       "available_date": "2023-04-18",
-      "trend_value": 3511000000
+      "trend_value": 3511000000,
+      "raw_value": 3150000000
     },
     {
       "available_date": "2023-05-04",
-      "trend_value": 3480000000
+      "trend_value": 3480000000,
+      "raw_value": 3100000000
     },
     {
       "available_date": "2023-05-09",
-      "trend_value": 3412000000
+      "trend_value": 3412000000,
+      "raw_value": 2980000000
     },
     {
       "available_date": "2023-06-05",
-      "trend_value": 3357000000
+      "trend_value": 3357000000,
+      "raw_value": 3050000000
     },
     {
       "available_date": "2023-06-06",
-      "trend_value": 3302000000
+      "trend_value": 3302000000,
+      "raw_value": 2920000000
     },
     {
       "available_date": "2023-06-17",
-      "trend_value": 3245000000
+      "trend_value": 3245000000,
+      "raw_value": 3200000000
     },
     {
       "available_date": "2023-07-11",
-      "trend_value": 3185000000
+      "trend_value": 3185000000,
+      "raw_value": 3100000000
     },
     {
       "available_date": "2023-07-13",
-      "trend_value": 3108000000
+      "trend_value": 3108000000,
+      "raw_value": 3130000000
     },
     {
       "available_date": "2023-07-22",
-      "trend_value": 3048000000
+      "trend_value": 3048000000,
+      "raw_value": 2880000000
     },
     {
       "available_date": "2023-07-24",
-      "trend_value": 3091000000
+      "trend_value": 3091000000,
+      "raw_value": 3400000000
     },
     {
       "available_date": "2023-07-27",
-      "trend_value": 3101000000
+      "trend_value": 3101000000,
+      "raw_value": 3250000000
     },
     {
       "available_date": "2023-07-27",
-      "trend_value": 3066500000
+      "trend_value": 3066500000,
+      "raw_value": 2755000000
     },
     {
       "available_date": "2023-08-12",
-      "trend_value": 3108500000
+      "trend_value": 3108500000,
+      "raw_value": 3400000000
     },
     {
       "available_date": "2023-09-16",
-      "trend_value": 3163500000
+      "trend_value": 3163500000,
+      "raw_value": 3600000000
     },
     {
       "available_date": "2023-09-26",
-      "trend_value": 3213500000
+      "trend_value": 3213500000,
+      "raw_value": 3420000000
     },
     {
       "available_date": "2023-09-28",
-      "trend_value": 3231500000
+      "trend_value": 3231500000,
+      "raw_value": 3380000000
     },
     {
       "available_date": "2023-09-29",
-      "trend_value": 3266500000
+      "trend_value": 3266500000,
+      "raw_value": 3450000000
     },
     {
       "available_date": "2023-10-09",
-      "trend_value": 3301200000
+      "trend_value": 3301200000,
+      "raw_value": 3477000000
     },
     {
       "available_date": "2023-10-26",
-      "trend_value": 3323200000
+      "trend_value": 3323200000,
+      "raw_value": 3100000000
     },
     {
       "available_date": "2023-11-10",
-      "trend_value": 3313200000
+      "trend_value": 3313200000,
+      "raw_value": 3300000000
     },
     {
       "available_date": "2024-03-05",
-      "trend_value": 3298200000
+      "trend_value": 3298200000,
+      "raw_value": 3100000000
     },
     {
       "available_date": "2024-04-07",
-      "trend_value": 3322700000
+      "trend_value": 3322700000,
+      "raw_value": 3000000000
     },
     {
       "available_date": "2024-04-24",
-      "trend_value": 3327700000
+      "trend_value": 3327700000,
+      "raw_value": 3450000000
     },
     {
       "available_date": "2024-04-25",
-      "trend_value": 3322700000
+      "trend_value": 3322700000,
+      "raw_value": 3550000000
     },
     {
       "available_date": "2024-04-27",
-      "trend_value": 3333200000
+      "trend_value": 3333200000,
+      "raw_value": 3525000000
     },
     {
       "available_date": "2024-05-03",
-      "trend_value": 3340200000
+      "trend_value": 3340200000,
+      "raw_value": 3450000000
     },
     {
       "available_date": "2024-05-31",
-      "trend_value": 3330200000
+      "trend_value": 3330200000,
+      "raw_value": 3350000000
     },
     {
       "available_date": "2024-05-31",
-      "trend_value": 3322500000
+      "trend_value": 3322500000,
+      "raw_value": 3400000000
     },
     {
       "available_date": "2024-06-01",
-      "trend_value": 3347500000
+      "trend_value": 3347500000,
+      "raw_value": 3350000000
     },
     {
       "available_date": "2024-06-10",
-      "trend_value": 3360500000
+      "trend_value": 3360500000,
+      "raw_value": 3430000000
     },
     {
       "available_date": "2024-06-28",
-      "trend_value": 3413500000
+      "trend_value": 3413500000,
+      "raw_value": 3630000000
     },
     {
       "available_date": "2024-07-08",
-      "trend_value": 3443500000
+      "trend_value": 3443500000,
+      "raw_value": 3300000000
     },
     {
       "available_date": "2024-07-12",
-      "trend_value": 3441500000
+      "trend_value": 3441500000,
+      "raw_value": 3430000000
     },
     {
       "available_date": "2024-07-19",
-      "trend_value": 3431500000
+      "trend_value": 3431500000,
+      "raw_value": 3450000000
     },
     {
       "available_date": "2024-07-22",
-      "trend_value": 3441000000
+      "trend_value": 3441000000,
+      "raw_value": 3620000000
     },
     {
       "available_date": "2024-07-23",
-      "trend_value": 3440000000
+      "trend_value": 3440000000,
+      "raw_value": 3440000000
     },
     {
       "available_date": "2024-08-06",
-      "trend_value": 3485000000
+      "trend_value": 3485000000,
+      "raw_value": 3800000000
     },
     {
       "available_date": "2024-08-21",
-      "trend_value": 3535000000
+      "trend_value": 3535000000,
+      "raw_value": 3900000000
     },
     {
       "available_date": "2024-08-28",
-      "trend_value": 3597000000
+      "trend_value": 3597000000,
+      "raw_value": 3970000000
     },
     {
       "available_date": "2024-10-26",
-      "trend_value": 3664000000
+      "trend_value": 3664000000,
+      "raw_value": 4100000000
     },
     {
       "available_date": "2024-11-19",
-      "trend_value": 3700000000
+      "trend_value": 3700000000,
+      "raw_value": 3990000000
     },
     {
       "available_date": "2024-12-24",
-      "trend_value": 3775000000
+      "trend_value": 3775000000,
+      "raw_value": 4050000000
     },
     {
       "available_date": "2025-03-02",
-      "trend_value": 3842000000
+      "trend_value": 3842000000,
+      "raw_value": 4100000000
     },
     {
       "available_date": "2025-03-03",
-      "trend_value": 3882000000
+      "trend_value": 3882000000,
+      "raw_value": 3850000000
     },
     {
       "available_date": "2025-03-07",
-      "trend_value": 3920000000
+      "trend_value": 3920000000,
+      "raw_value": 4000000000
     },
     {
       "available_date": "2025-03-08",
-      "trend_value": 3969000000
+      "trend_value": 3969000000,
+      "raw_value": 3930000000
     },
     {
       "available_date": "2025-03-09",
-      "trend_value": 3989000000
+      "trend_value": 3989000000,
+      "raw_value": 4000000000
     },
     {
       "available_date": "2025-03-11",
-      "trend_value": 4014000000
+      "trend_value": 4014000000,
+      "raw_value": 4150000000
     },
     {
       "available_date": "2025-03-20",
-      "trend_value": 3987000000
+      "trend_value": 3987000000,
+      "raw_value": 3700000000
     },
     {
       "available_date": "2025-03-29",
-      "trend_value": 3927000000
+      "trend_value": 3927000000,
+      "raw_value": 3500000000
     },
     {
       "available_date": "2025-03-31",
-      "trend_value": 3922000000
+      "trend_value": 3922000000,
+      "raw_value": 3940000000
     },
     {
       "available_date": "2025-03-31",
-      "trend_value": 3917000000
+      "trend_value": 3917000000,
+      "raw_value": 4000000000
     },
     {
       "available_date": "2025-04-02",
-      "trend_value": 3917000000
+      "trend_value": 3917000000,
+      "raw_value": 4100000000
     },
     {
       "available_date": "2025-04-03",
-      "trend_value": 3922000000
+      "trend_value": 3922000000,
+      "raw_value": 3900000000
     },
     {
       "available_date": "2025-04-04",
-      "trend_value": 3863000000
+      "trend_value": 3863000000,
+      "raw_value": 3410000000
     },
     {
       "available_date": "2025-04-07",
-      "trend_value": 3890000000
+      "trend_value": 3890000000,
+      "raw_value": 4200000000
     },
     {
       "available_date": "2025-04-09",
-      "trend_value": 3910000000
+      "trend_value": 3910000000,
+      "raw_value": 4200000000
     },
     {
       "available_date": "2025-04-10",
-      "trend_value": 3867000000
+      "trend_value": 3867000000,
+      "raw_value": 3720000000
     },
     {
       "available_date": "2025-04-10",
-      "trend_value": 3917000000
+      "trend_value": 3917000000,
+      "raw_value": 4200000000
     },
     {
       "available_date": "2025-04-11",
-      "trend_value": 3967000000
+      "trend_value": 3967000000,
+      "raw_value": 4000000000
     },
     {
       "available_date": "2025-04-11",
-      "trend_value": 3983000000
+      "trend_value": 3983000000,
+      "raw_value": 4100000000
     },
     {
       "available_date": "2025-04-12",
-      "trend_value": 4021000000
+      "trend_value": 4021000000,
+      "raw_value": 4380000000
     },
     {
       "available_date": "2025-04-13",
-      "trend_value": 4031000000
+      "trend_value": 4031000000,
+      "raw_value": 4200000000
     },
     {
       "available_date": "2025-04-15",
-      "trend_value": 4081000000
+      "trend_value": 4081000000,
+      "raw_value": 4400000000
     },
     {
       "available_date": "2025-04-18",
-      "trend_value": 4170000000
+      "trend_value": 4170000000,
+      "raw_value": 4300000000
     },
     {
       "available_date": "2025-04-21",
-      "trend_value": 4180000000
+      "trend_value": 4180000000,
+      "raw_value": 4300000000
     },
     {
       "available_date": "2025-04-22",
-      "trend_value": 4185000000
+      "trend_value": 4185000000,
+      "raw_value": 4250000000
     },
     {
       "available_date": "2025-04-28",
-      "trend_value": 4268000000
+      "trend_value": 4268000000,
+      "raw_value": 4550000000
     },
     {
       "available_date": "2025-07-04",
-      "trend_value": 4315000000
+      "trend_value": 4315000000,
+      "raw_value": 4670000000
     },
     {
       "available_date": "2025-07-17",
-      "trend_value": 4373000000
+      "trend_value": 4373000000,
+      "raw_value": 4580000000
     },
     {
       "available_date": "2025-07-29",
-      "trend_value": 4443000000
+      "trend_value": 4443000000,
+      "raw_value": 4800000000
     },
     {
       "available_date": "2025-08-06",
-      "trend_value": 4462000000
+      "trend_value": 4462000000,
+      "raw_value": 4570000000
     },
     {
       "available_date": "2025-08-24",
-      "trend_value": 4542000000
+      "trend_value": 4542000000,
+      "raw_value": 5000000000
     },
     {
       "available_date": "2025-08-24",
-      "trend_value": 4577000000
+      "trend_value": 4577000000,
+      "raw_value": 4750000000
     },
     {
       "available_date": "2025-08-31",
-      "trend_value": 4642000000
+      "trend_value": 4642000000,
+      "raw_value": 4950000000
     },
     {
       "available_date": "2025-10-24",
-      "trend_value": 4712000000
+      "trend_value": 4712000000,
+      "raw_value": 5000000000
     },
     {
       "available_date": "2025-10-26",
-      "trend_value": 4767000000
+      "trend_value": 4767000000,
+      "raw_value": 4800000000
     },
     {
       "available_date": "2025-12-08",
-      "trend_value": 4796000000
+      "trend_value": 4796000000,
+      "raw_value": 4840000000
     },
     {
       "available_date": "2026-02-12",
-      "trend_value": 4830000000
+      "trend_value": 4830000000,
+      "raw_value": 5010000000
     },
     {
       "available_date": "2026-03-05",
-      "trend_value": 4892000000
+      "trend_value": 4892000000,
+      "raw_value": 5200000000
     },
     {
       "available_date": "2026-03-08",
-      "trend_value": 4922000000
+      "trend_value": 4922000000,
+      "raw_value": 5100000000
     },
     {
       "available_date": "2026-03-08",
-      "trend_value": 4951000000
+      "trend_value": 4951000000,
+      "raw_value": 4860000000
     },
     {
       "available_date": "2026-04-14",
-      "trend_value": 4931000000
+      "trend_value": 4931000000,
+      "raw_value": 4800000000
     },
     {
       "available_date": "2026-04-23",
-      "trend_value": 4966000000
+      "trend_value": 4966000000,
+      "raw_value": 5100000000
     },
     {
       "available_date": "2026-05-24",
-      "trend_value": 4931000000
+      "trend_value": 4931000000,
+      "raw_value": 4600000000
     },
     {
       "available_date": "2026-06-15",
-      "trend_value": 4901000000
+      "trend_value": 4901000000,
+      "raw_value": 4700000000
     },
     {
       "available_date": "2026-06-28",
-      "trend_value": 4871000000
+      "trend_value": 4871000000,
+      "raw_value": 4500000000
     },
     {
       "available_date": "2026-08-11",
-      "trend_value": 4857000000
+      "trend_value": 4857000000,
+      "raw_value": 4700000000
     },
     {
       "available_date": "2026-09-06",
-      "trend_value": 4876000000
+      "trend_value": 4876000000,
+      "raw_value": 5200000000
     },
     {
       "available_date": "2026-09-14",
-      "trend_value": 4876000000
+      "trend_value": 4876000000,
+      "raw_value": 5200000000
     },
     {
       "available_date": "2026-10-23",
-      "trend_value": 4871000000
+      "trend_value": 4871000000,
+      "raw_value": 5050000000
     },
     {
       "available_date": "2026-12-03",
-      "trend_value": 4840000000
+      "trend_value": 4840000000,
+      "raw_value": 4550000000
     }
   ]
 }
