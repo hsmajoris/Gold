@@ -25,7 +25,13 @@ def render_zoomable_chart(fig: go.Figure, height: int = 460) -> None:
        points of every currently-visible trace on any x-range change
        (rangeslider drag, rangeselector button, box-zoom) and applies that as
        the new y-range (with an 8% padding), restoring full y-autorange when
-       the x-range resets to "전체".
+       the x-range resets to "전체". If some traces are assigned to a second
+       y-axis (trace.yaxis="y2", with fig.update_layout(yaxis2=dict(
+       overlaying="y", side="right", ...)) — e.g. pages/2_자산비교.py putting
+       a differently-scaled comparison asset on its own right-hand axis so it
+       doesn't visually flatten against 반포자이's axis), each distinct axis
+       found among the traces is autoscaled independently, using only the
+       traces assigned to it.
     2. X-axis year/month tick switching: >6년 보이는 구간 = 연도만, 4~6년 =
        1월/7월, 2~4년 = 1/4/7/10월, ≤2년 = 매달 — 단일 dtick으로는 "1월은
        연도, 나머지는 월"처럼 두 라벨 형식을 섞을 수 없어 tickvals/ticktext를
@@ -77,11 +83,21 @@ def render_zoomable_chart(fig: go.Figure, height: int = 460) -> None:
         return null;
     }}
 
-    function visibleYRange(x0, x1) {{
+    // Plotly trace attribute "yaxis" is "y" (default/primary) or "y2","y3",...
+    // (secondary+) — this maps that to the matching layout key ("yaxis",
+    // "yaxis2", ...) used in both gd.layout and a Plotly.relayout() update.
+    function axisKeyFor(tr) {{
+        var ax = tr.yaxis || "y";
+        return ax === "y" ? "yaxis" : "yaxis" + ax.slice(1);
+    }}
+    var axisKeys = Array.from(new Set((gd.data || []).map(axisKeyFor)));
+
+    function visibleYRange(x0, x1, axisKey) {{
         var t0 = new Date(x0).getTime();
         var t1 = new Date(x1).getTime();
         var ymin = Infinity, ymax = -Infinity;
         (gd.data || []).forEach(function(tr) {{
+            if (axisKeyFor(tr) !== axisKey) return;
             if (tr.visible === false || tr.visible === "legendonly") return;
             var xs = toArray(tr.x), ys = toArray(tr.y);
             if (!xs || !ys) return;
@@ -158,17 +174,19 @@ def render_zoomable_chart(fig: go.Figure, height: int = 460) -> None:
         if (ev["xaxis.autorange"] === true || x0 === undefined || x1 === undefined) {{
             var full = fullXExtent();
             var updates = xTickUpdates(full[0], full[1]);
-            updates["yaxis.autorange"] = true;
+            axisKeys.forEach(function(k) {{ updates[k + ".autorange"] = true; }});
             busy = true;
             Plotly.relayout(gd, updates).then(function() {{ busy = false; }});
             return;
         }}
-        var yr = visibleYRange(x0, x1);
         var updates = xTickUpdates(x0, x1);
-        if (yr) {{
-            updates["yaxis.range"] = yr;
-            updates["yaxis.autorange"] = false;
-        }}
+        axisKeys.forEach(function(axisKey) {{
+            var yr = visibleYRange(x0, x1, axisKey);
+            if (yr) {{
+                updates[axisKey + ".range"] = yr;
+                updates[axisKey + ".autorange"] = false;
+            }}
+        }});
         busy = true;
         Plotly.relayout(gd, updates).then(function() {{ busy = false; }});
     }}

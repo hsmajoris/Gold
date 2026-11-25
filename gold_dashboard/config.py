@@ -124,6 +124,13 @@ BITCOIN_TICKER = "BTC-KRW"
 CRYPTO_PROXY_TICKERS = {
     GOLD_PRICE_BASIS_BITCOIN: BITCOIN_TICKER,
 }
+# yfinance의 BTC-KRW는 2014-09-17(Yahoo의 암호화폐 티커 공통 개시일) 이전 데이터가
+# 아예 없다 — pages/2_자산비교.py가 비트코인의 실제 거래 시작 시점(2010년 중반)
+# 부터 보여주기 위해 그 이전 구간을 추정 복원할 때 쓰는 환율(FRED DEXKOUS,
+# "원/달러 현물환율")로, blockchain.info의 일별 USD 시세와 곱해 KRW 추정치를
+# 만든다(data_sources.fetch_bitcoin_full_history_krw 참고). 이미 FRED_API_KEY를
+# 쓰는 다른 시리즈와 같은 키를 재사용하므로 별도 키가 필요 없다.
+USD_KRW_FRED_SERIES_ID = "DEXKOUS"
 # 가격 수집(fetch_gold_price_series)·look-ahead bias 보정·"이건 금이 아니라
 # 대리 자산입니다" 안내 캡션처럼 코스피/암호화폐 구분 없이 "실제 금이 아닌
 # 대리 자산 전체"에 공통인 로직에서 쓰는 합집합.

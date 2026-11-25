@@ -34,6 +34,12 @@ NAVER_METALS_MAX_PAGE_SIZE = 60
 # (2026) under 3,100 trading days at pageSize=60 — this leaves generous room
 # for years of future growth without ever being a realistic ceiling.
 NAVER_METALS_MAX_PAGES = 4000
+# blockchain.info's free, no-auth daily USD bitcoin price chart — the only
+# practical source for bitcoin's actual 2010-era trading history (yfinance's
+# own BTC-KRW/BTC-USD tickers start no earlier than 2014-09-17; see
+# fetch_bitcoin_full_history_krw). sampled=false asks for full daily
+# resolution instead of the API's default down-sampled (~1,600-point) series.
+BLOCKCHAIN_MARKET_PRICE_URL = "https://api.blockchain.info/charts/market-price"
 REQUEST_TIMEOUT = 60
 # data_sources.py가 속한 패키지(gold_dashboard/)의 부모 = 레포 루트.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -194,6 +200,61 @@ def fetch_krx_gold_krw_per_gram() -> pd.Series:
     df["close"] = df["closePrice"].str.replace(",", "", regex=False).astype(float)
     df = df.drop_duplicates(subset="date").set_index("date").sort_index()
     return df["close"].rename("krx_gold_krw_per_g")
+
+
+@_retry_network_call
+def _download_blockchain_market_price_usd() -> list:
+    resp = requests.get(
+        BLOCKCHAIN_MARKET_PRICE_URL,
+        params={"timespan": "all", "format": "json", "sampled": "false"},
+        timeout=REQUEST_TIMEOUT,
+    )
+    resp.raise_for_status()
+    payload = resp.json()
+    if payload.get("status") != "ok":
+        raise RuntimeError(f"blockchain.info market-price request failed: {payload}")
+    return payload["values"]
+
+
+def fetch_bitcoin_full_history_krw() -> pd.Series:
+    """Daily BTC-KRW back to bitcoin's actual trading start (mid-2010) —
+    far earlier than yfinance's own BTC-KRW history, which starts no earlier
+    than 2014-09-17 (Yahoo's common cutover date for crypto tickers).
+
+    From 2014-09-17 onward this is yfinance's own KRW-quoted close (the real
+    local market price, premium included). Before that date — no KRW-quoted
+    bitcoin market existed yet — it's a synthetic estimate: blockchain.info's
+    daily USD market-price average (free, no auth) times FRED's DEXKOUS
+    (원/달러 현물환율) spot rate for the same day, reusing the same
+    FRED_API_KEY every other FRED series in this app already requires (no
+    new secret needed). The two segments are simply concatenated at the
+    cutover with no rescaling — they already land within ~1-2% of each other
+    there, so no visible jump — since this is a synthetic USD×FX estimate,
+    not an actual traded KRW price, for everything before 2014-09-17.
+
+    Used by pages/2_자산비교.py so 비트코인 can be compared against 반포자이
+    across its (almost) full trading history instead of being truncated to
+    2014-09+."""
+    try:
+        raw_values = _download_blockchain_market_price_usd()
+    except Exception as exc:
+        raise RuntimeError(f"failed to fetch blockchain.info market price: {exc!r}") from exc
+
+    usd = pd.Series(
+        {pd.Timestamp(p["x"], unit="s").normalize(): float(p["y"]) for p in raw_values}
+    ).sort_index()
+    usd = usd[usd > 0]  # zero before bitcoin actually started trading (~2010-07)
+
+    fx = fetch_fred_series(config.USD_KRW_FRED_SERIES_ID)
+    fx = fx.reindex(usd.index, method="ffill").dropna()
+
+    synthetic = (usd.reindex(fx.index) * fx).dropna()
+
+    real = fetch_yfinance_close(config.BITCOIN_TICKER, start=pd.Timestamp("2014-01-01"))
+    cutover = real.index.min()
+
+    combined = pd.concat([synthetic[synthetic.index < cutover], real[real.index >= cutover]])
+    return combined.sort_index().rename("btc_krw_full_history")
 
 
 def fetch_banpo_xi_trend_series() -> pd.Series:
