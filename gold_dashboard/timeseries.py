@@ -101,41 +101,22 @@ def fetch_gold_price_series(
         yf_end = end_date + timedelta(days=1)  # yfinance's `end` is exclusive
         return ds.fetch_yfinance_close(config.ALL_PRICE_PROXY_TICKERS[basis], start=fetch_start, end=yf_end)
     if basis == config.GOLD_PRICE_BASIS_SEOUL_APT:
-        # ⑧ 서울 아파트 매매가격지수(한국부동산원 R-ONE API, 월간 통계표
-        # "(월) 매매가격지수_아파트" — 2026-11-24에 주간 통계표에서 교체,
-        # config.REB_SEOUL_APT_STATBL_ID 주석 참고) — 실거래 불가한 참조
-        # 지수. 두 가지 보정을 적용한다:
-        # (1) 공표 지연 보정: fetch_reb_index_series가 돌려주는 날짜는 조사
-        #     대상 월의 1일(예: "202610" -> 2026-10-01)이지만, 그 달 지수가
-        #     실제로 "확정 공표"되는 날은 그 다음 달의 config.
-        #     REB_MONTHLY_PUBLICATION_DAY일(기본 20일, 한국부동산원 공식
-        #     공표일정 "익월 15일경"보다 며칠의 안전 마진을 둠) — 이 보정
-        #     없이 월초 날짜 그대로 쓰면 아직 공표되지도 않은 그 달 지수를
-        #     한 달 넘게 미리 알고 있었던 것처럼 계산하는 look-ahead bias가
-        #     생긴다.
-        # (2) 리베이스 보정: 이 함수가 반환하는 구간의 첫 값이 정확히 100이
-        #     되도록 재정규화한다. REB가 주기적으로 자체 기준시점을 바꾸므로
-        #     원본 값 자체의 절대 수준은 그때그때 달라지는데, green_count/
-        #     52주 신고가·신저가/수익률 계산은 전부 같은 두 시점의 '비율'만
-        #     보기 때문에 상수배 재정규화는 그 계산 결과에 수학적으로 아무
-        #     영향을 주지 않는다(분자·분모에 똑같이 곱해지는 상수는 비율에서
-        #     소거됨) — 화면에 보여줄 때만 "분석 시작 시점=100"이라는
-        #     직관적인 기준을 주기 위한 재정규화다.
-        raw = ds.fetch_reb_index_series(
-            config.REB_SEOUL_APT_STATBL_ID,
-            config.REB_SEOUL_APT_CLS_ID,
-            config.REB_SEOUL_APT_DTACYCLE_CD,
-            config.REB_SEOUL_APT_ITM_ID,
-        )
-        raw = raw.set_axis(
-            raw.index + pd.DateOffset(months=1) + timedelta(days=config.REB_MONTHLY_PUBLICATION_DAY - 1)
-        )
+        # ⑧ 반포자이 전용 84.943㎡ 실거래가 추세 — 국토교통부 실거래가 데이터를
+        # 월 1회 GitHub Actions가 미리 받아둔 캐시(config.BANPO_TREND_DATA_PATH,
+        # update_banpo_data.py가 생성)를 읽는다. 이미 캐시 생성 시점에
+        # (1) look-ahead 방지용 신고기한 보정(config.BANPO_REPORTING_LAG_DAYS)과
+        # (2) 거래 단위 평활화(config.BANPO_TREND_WINDOW_TRANSACTIONS건 이동평균)가
+        # 다 적용된 값이라 여기서는 분석 기간으로 자르고 리베이스만 한다.
+        # 리베이스(구간 첫 값=100)는 REB 지수 때와 같은 이유로 수행 — 비율
+        # 기반 계산(green_count/52주 신고가·신저가/수익률)에는 영향이 없고,
+        # 화면 표시용 기준점만 맞추는 것이다.
+        raw = ds.fetch_banpo_xi_trend_series()
         end_date = as_of or today_kst()
         fetch_start = gold_fetch_start(end_date, years, buffer_days)
         series = raw[(raw.index >= pd.Timestamp(fetch_start)) & (raw.index <= pd.Timestamp(end_date))]
         if series.empty:
-            raise RuntimeError("선택한 분석 기간에 해당하는 서울 아파트 매매가격지수 데이터가 없습니다.")
-        return (series / series.iloc[0] * 100.0).rename("seoul_apt_index")
+            raise RuntimeError("선택한 분석 기간에 해당하는 반포자이 실거래가 데이터가 없습니다.")
+        return (series / series.iloc[0] * 100.0).rename("banpo_xi_trend_index")
     return fetch_raw_series("gold", as_of, years=years, buffer_days=buffer_days)
 
 

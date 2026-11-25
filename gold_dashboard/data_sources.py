@@ -1,10 +1,12 @@
 """Fetches raw daily price/rate series from free data sources (FRED CSV export,
 Yahoo Finance via yfinance, Naver's stock-data API for KRX's gold-spot
-market, and 한국부동산원(REB) R-ONE Open API for the Seoul apartment price
-index)."""
+market, and a monthly-refreshed local cache of 국토교통부 반포자이 실거래가
+— see gold_dashboard/update_banpo_data.py for how that cache is built)."""
 
+import json
 import logging
 import os
+from pathlib import Path
 
 import pandas as pd
 import requests
@@ -32,18 +34,9 @@ NAVER_METALS_MAX_PAGE_SIZE = 60
 # (2026) under 3,100 trading days at pageSize=60 — this leaves generous room
 # for years of future growth without ever being a realistic ceiling.
 NAVER_METALS_MAX_PAGES = 4000
-# 한국부동산원(REB) R-ONE Open API — 데이터 조회 상세기능 URL. 인증키는
-# REB_API_KEY 환경변수에서 읽는다(절대 코드/커밋에 하드코딩하지 않음 —
-# FRED_API_KEY와 동일한 방식). data.go.kr이 중계하는 것이 아니라 reb.or.kr이
-# 직접 서비스하는 엔드포인트(활용가이드 문서 "부동산통계 Open API 활용가이드"
-# 기준).
-REB_DATA_URL = "https://www.reb.or.kr/r-one/openapi/SttsApiTblData.do"
-REB_MAX_PAGE_SIZE = 1000
-# 안전장치용 페이지 상한(주간 통계가 2012년부터 있어도 현재 기준 1,000건
-# 미만이라 사실상 1페이지로 끝나지만, 향후 데이터가 쌓여도 무한 루프에
-# 빠지지 않도록).
-REB_MAX_PAGES = 50
 REQUEST_TIMEOUT = 60
+# data_sources.py가 속한 패키지(gold_dashboard/)의 부모 = 레포 루트.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
 
 logger = logging.getLogger(__name__)
 
@@ -203,108 +196,35 @@ def fetch_krx_gold_krw_per_gram() -> pd.Series:
     return df["close"].rename("krx_gold_krw_per_g")
 
 
-@_retry_network_call
-def _download_reb_data_page(
-    statbl_id: str, cls_id: int, dtacycle_cd: str, itm_id: int, api_key: str, page: int, page_size: int
-) -> dict:
-    params = {
-        "KEY": api_key,
-        "Type": "json",
-        "pIndex": page,
-        "pSize": page_size,
-        "STATBL_ID": statbl_id,
-        "DTACYCLE_CD": dtacycle_cd,
-        "CLS_ID": cls_id,
-        "ITM_ID": itm_id,
-    }
-    resp = requests.get(REB_DATA_URL, params=params, timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+def fetch_banpo_xi_trend_series() -> pd.Series:
+    """Read the monthly-refreshed cache of 반포자이 전용 84.943㎡ 실거래가
+    추세 (config.BANPO_TREND_DATA_PATH, written by update_banpo_data.py from
+    국토교통부 아파트매매 실거래가 공개 데이터— see that module's docstring).
 
+    Raises a clear RuntimeError (not a bare FileNotFoundError) if the cache
+    file is missing, since this is the one failure mode callers most need to
+    surface distinctly (see the 유효성 검증 page's ⑧ 반포자이 기준, which
+    must degrade to "unavailable" rather than crash the whole page when the
+    cache hasn't been generated yet — e.g. a fresh clone before the first
+    scheduled refresh has run).
 
-def fetch_reb_index_series(
-    statbl_id: str, cls_id: int, dtacycle_cd: str, itm_id: int
-) -> pd.Series:
-    """Fetch a full REB R-ONE statistics-table time series (통계표ID+분류ID+
-    항목ID, e.g. the Seoul apartment monthly sale-price index:
-    config.REB_SEOUL_APT_STATBL_ID/CLS_ID/DTACYCLE_CD/ITM_ID) via the
-    "통계 조회 조건 설정" (SttsApiTblData.do) detail function of 한국부동산원의
-    부동산통계 Open API 서비스.
-
-    Requires the REB_API_KEY environment variable (never hardcoded — same
-    convention as FRED_API_KEY). Raises a clear RuntimeError (not a bare
-    KeyError) if it's unset, since this is the one failure mode callers most
-    need to surface distinctly (see the 유효성 검증 page's ⑧ 서울 아파트
-    기준, which must degrade to "unavailable" rather than crash the whole
-    page when this key is missing/invalid).
-
-    Paginates in REB_MAX_PAGE_SIZE-row chunks (the API's own per-request cap)
-    until `list_total_count` rows have been collected, up to REB_MAX_PAGES as
-    a safety bound. A response of INFO-200 ("해당하는 데이터가 없습니다") is
-    treated as "no rows" rather than an error — the API uses this for an
-    empty-but-valid query, not a failure. Any other non-INFO-000 result code
-    raises.
-
-    Returns a date-indexed float Series with no look-ahead/publication-lag
-    adjustment applied — that correction is a concern of how this series
-    gets USED (see timeseries.fetch_gold_price_series and
-    config.REB_MONTHLY_PUBLICATION_DAY), not of fetching it. The index date
-    itself is derived differently depending on `dtacycle_cd`, since the
-    API's own WRTTIME_DESC field format differs by cycle (confirmed
-    2026-11-24 by direct inspection of both):
-    - "WK" (weekly): WRTTIME_DESC is already a real, parseable calendar date
-      (the Monday of that week) — used directly.
-    - "MM" (monthly): WRTTIME_DESC is a Korean free-text label (e.g. "2026년
-      10월"), NOT a parseable date — the index date is derived instead from
-      WRTTIME_IDTFR_ID itself ("YYYYMM"), anchored to that month's 1st day.
+    Returns a date-indexed float Series keyed by each cached row's
+    `available_date` (already adjusted for reporting lag by
+    update_banpo_data.py — no further look-ahead correction needed here),
+    with no rebasing applied (see timeseries.fetch_gold_price_series, which
+    rebases the analysis-window slice it actually uses).
     """
-    api_key = os.environ.get("REB_API_KEY")
-    if not api_key:
+    path = _REPO_ROOT / config.BANPO_TREND_DATA_PATH
+    if not path.exists():
         raise RuntimeError(
-            "REB_API_KEY 환경변수가 설정되지 않았습니다 — 서울 아파트 매매가격지수(⑧) 기준은 "
-            "한국부동산원 R-ONE Open API 인증키가 있어야 조회할 수 있습니다."
+            f"{path}가 없습니다 — 반포자이 실거래가(⑧) 기준은 월 1회 GitHub Actions가 생성하는 "
+            "캐시 파일이 있어야 조회할 수 있습니다(gold_dashboard/update_banpo_data.py 참고)."
         )
-
-    rows: list[dict] = []
-    total = None
-    page = 1
-    while page <= REB_MAX_PAGES:
-        try:
-            data = _download_reb_data_page(statbl_id, cls_id, dtacycle_cd, itm_id, api_key, page, REB_MAX_PAGE_SIZE)
-        except Exception as exc:
-            raise RuntimeError(
-                f"REB API 호출 실패(통계표 {statbl_id}, {page}페이지, 3회 재시도 후): {exc!r}"
-            ) from exc
-
-        body = data.get("SttsApiTblData")
-        if body is None:
-            # 데이터 없음(INFO-200)인 경우 "SttsApiTblData" 래퍼 없이 바로
-            # {"RESULT": {...}} 형태로 응답이 온다(요청/응답 메시지 예제와
-            # 별개로 실제 호출에서 확인된 동작).
-            result = data.get("RESULT", {})
-            if result.get("CODE") == "INFO-200":
-                break
-            raise RuntimeError(f"REB API가 예상치 못한 응답을 반환했습니다(통계표 {statbl_id}): {data!r}")
-
-        head = body[0]["head"]
-        result = head[1]["RESULT"]
-        if result["CODE"] not in ("INFO-000",):
-            raise RuntimeError(f"REB API 오류(통계표 {statbl_id}): {result}")
-        total = head[0]["list_total_count"]
-        page_rows = body[1].get("row", []) if len(body) > 1 else []
-        rows.extend(page_rows)
-        if not page_rows or (total is not None and len(rows) >= total):
-            break
-        page += 1
-
-    if not rows:
-        raise RuntimeError(f"REB API에서 통계표 {statbl_id}(CLS_ID={cls_id})에 대한 데이터를 받지 못했습니다.")
-
-    df = pd.DataFrame(rows)
-    if dtacycle_cd == "MM":
-        df["date"] = pd.to_datetime(df["WRTTIME_IDTFR_ID"], format="%Y%m")
-    else:
-        df["date"] = pd.to_datetime(df["WRTTIME_DESC"]).dt.normalize()
-    df["value"] = pd.to_numeric(df["DTA_VAL"], errors="coerce")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    df = pd.DataFrame(payload["rows"])
+    if df.empty:
+        raise RuntimeError(f"{path}에 반포자이 실거래가 데이터가 없습니다.")
+    df["date"] = pd.to_datetime(df["available_date"])
+    df["value"] = pd.to_numeric(df["trend_value"], errors="coerce")
     df = df.dropna(subset=["value"]).drop_duplicates(subset="date").set_index("date").sort_index()
-    return df["value"].rename(statbl_id)
+    return df["value"].rename("banpo_xi_trend")

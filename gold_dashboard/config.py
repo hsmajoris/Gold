@@ -52,17 +52,22 @@ GOLD_PRICE_BASIS_KOSPI200 = "kospi200"
 # 세간의 내러티브가 있어 고려아연처럼 placebo 집합에서는 제외했지만, 그
 # 상관관계를 전제하는 것은 아니고 그 자체를 검증해보기 위한 추가 대조군이다.
 GOLD_PRICE_BASIS_BITCOIN = "bitcoin"
-# ⑧ 서울 아파트 매매가격지수 — 한국부동산원(REB) R-ONE Open API, 통계표
-# "(월) 매매가격지수_아파트"(A_2024_00045, 서울 전체, 월간). 공식 통계표
-# 메타(이름 자체에 "_아파트"가 명시돼 있고, STATBL_ID 하단의 REB_SEOUL_APT_*
-# 상수 쪽 주석 참고)로 실제 "아파트" 지수임을 확인한 뒤 쓰는 것 — 처음에는
-# 주간(WK) 통계표를 썼다가, 실제 집값 상승 체감과 맞지 않는다는 지적을 받아
-# 재검증한 결과 그 통계표가 실은 "주택종합"이었음이 드러나 교체했다(아래
-# REB_SEOUL_APT_STATBL_ID 주석 참고). 실제 매매가 불가능한 참조 지수
-# (reference index)라 수수료·세금·배당은 항상 0으로 처리하고 "참조 지수,
-# 실거래 불가"라고 화면에 표시한다(아래 KOSPI 주식/ETF, 비트코인과 달리
-# ALL_KOSPI_PROXY_TICKERS/CRYPTO_PROXY_TICKERS 어디에도 넣지 않음 — yfinance
-# 티커가 아니라 REB API로 별도 수집).
+# ⑧ 반포자이(서초구 반포동) 전용 84.943㎡("국민평형") 실거래가 추세 — 처음에는
+# 한국부동산원(REB) R-ONE API의 서울 아파트 매매가격지수(월간 공식 통계)를
+# 썼으나(2026-11-24 주간→월간 통계표 교체 경위는 TRADING_LOGIC.md 7-2 참고),
+# "자산군 비교" 분석(pages/2_자산비교.py)에서 같은 기간 실제 반포자이 거래가가
+# 서울 평균 지수보다 훨씬 많이 오른 것으로 확인되어(강남권 우량 단지 vs 서울
+# 전체 평균의 괴리), 서울 "평균"이 아니라 실제 거래 가능한 특정 단지의 실거래
+# 흐름으로 교체했다(2026-11-25). 국토교통부 아파트매매 실거래가 공개 데이터
+# (data_sources.py 참고, REB와는 다른 API·다른 키)에서 반포자이 전용
+# 84.943㎡ 거래만 추려 10건 이동평균 낸 "추세"를 쓴다 — 이는 데이터를 매일
+# 새로 받는 대신 월 1회 GitHub Actions로 미리 받아 data/banpo_xi_trend.json에
+# 캐시해 둔 것을 읽는다(update_banpo_data.py). 실제 거래가 기반이지만 특정
+# 단지 1개 평형만의 추세선이고 보유·매매에 따르는 중개수수료·취득세·양도
+# 소득세 등은 전혀 반영하지 않으므로, 여전히 수수료·세금·배당은 0으로
+# 처리한다. 상수 이름(SEOUL_APT)은 과거 "서울 지수" 시절의 유산이며, 실제
+# 값("seoul_apt")은 세션 상태 호환을 위해 그대로 두었다 — 실제 내용은 이제
+# 반포자이 실거래가다.
 GOLD_PRICE_BASIS_SEOUL_APT = "seoul_apt"
 GOLD_PRICE_BASIS_STATE_KEY = "gold_price_basis"
 GOLD_PRICE_BASIS_LABELS = {
@@ -73,7 +78,7 @@ GOLD_PRICE_BASIS_LABELS = {
     GOLD_PRICE_BASIS_HYUNDAI_MOTOR: "⑤ 현대차 (KOSPI 005380, 무관 대조군)",
     GOLD_PRICE_BASIS_KOSPI200: "⑥ 코스피200 (KODEX 200 ETF, 069500, 시장 전체 대조군)",
     GOLD_PRICE_BASIS_BITCOIN: "⑦ 비트코인 (BTC-KRW, 디지털 자산 대조군)",
-    GOLD_PRICE_BASIS_SEOUL_APT: "⑧ 서울 아파트 매매가격지수 (한국부동산원, 월간, 참조 지수·실거래 불가)",
+    GOLD_PRICE_BASIS_SEOUL_APT: "⑧ 반포자이 84㎡ 실거래가 추세 (국토교통부, 월간 캐시, 실거래 기반)",
 }
 # What a fresh session (and any caller that doesn't specify gold_price_basis
 # explicitly) starts on.
@@ -151,34 +156,33 @@ DIVIDEND_INCOME_TAX_PCT = 15.4
 # 가능). 증권거래세·배당 개념 자체가 없어 그 두 상수는 해당 없음.
 CRYPTO_DEFAULT_EXCHANGE_FEE_PCT = 0.05
 
-# ⑧ 서울 아파트 매매가격지수 — 한국부동산원(REB) R-ONE Open API.
-#
-# 2026-11-24에 처음 연동했을 때는 주간(WK) 통계표 "(주) 매매가격지수"
-# (T244183132827305, CLS_ID 50008)를 썼는데, 같은 날 사용자가 "서울 집값이
-# 10년간 2배 올랐다는데 이 지수의 B&H는 10년에 겨우 35%"라는 점을 지적해
-# 재검증한 결과 실제로 데이터가 잘못됐었다 — 이 통계표의 2016-11 대비
-# 2026-11 성장률(+35.8%)이 같은 기간 공식 월간 "주택종합"(아파트+단독+연립
-# 전체 평균) 지수의 성장률(+36.7%, A_2024_00016)과 거의 일치하고, 공식
-# "아파트"(+43.7%, A_2024_00045)와는 확연히 괴리되는 것으로 확인됐다 — 즉
-# 이 WK 통계표는 "아파트"가 아니라 "주택종합"이었다. 전체 통계표 목록(769개)을
-# 다시 뒤져봐도 주간(WK) 주기로 공표되는 "아파트" 전용 통계표는 아예
-# 존재하지 않는다(주간 통계는 전부 "주택종합" 기준이고, 그 산하의 "규모별"/
-# "연령별" 세분류도 주택유형이 아니라 면적·건물연령 구간일 뿐이다) — 그래서
-# 주간 갱신을 포기하고, 실제로 "아파트"임이 확인된 월간(MM) 통계표
-# "(월) 매매가격지수_아파트"(A_2024_00045)로 교체했다(2026-11-24).
-REB_SEOUL_APT_STATBL_ID = "A_2024_00045"
-REB_SEOUL_APT_CLS_ID = 500008  # "서울" (이 통계표 자신의 분류 체계 — 통계표마다
-# CLS_ID·ITM_ID 번호 체계가 독립적이라 다른 통계표의 값을 그대로 재사용할 수
-# 없음, SttsApiTblItm으로 통계표별로 직접 조회해 확인해야 한다)
-REB_SEOUL_APT_DTACYCLE_CD = "MM"  # 월간
-REB_SEOUL_APT_ITM_ID = 100001  # "지수" (이 통계표의 유일한 항목)
-# 공표 지연(look-ahead 방지): 월간 통계는 조사 대상 월(M)의 수치가 그 다음
-# 달(M+1)의 "15일경"에 공표된다(한국부동산원 공식 공표일정 — 실제 과거
-# 공표이력도 대체로 15~19일 사이, 공휴일 등으로 며칠씩 늦춰지기도 함). 그래서
-# 월초(WRTTIME_IDTFR_ID="YYYYMM"을 그 달 1일로 간주)에서 (M+1)월의 이 날짜
-# 까지 뒤로 밀어 look-ahead bias를 방지한다 — 과거 공표이력 범위(15~19일)보다
-# 약간 더 보수적인 날짜를 기본값으로 둬 안전 마진을 확보했다.
-REB_MONTHLY_PUBLICATION_DAY = 20
+# ⑧ 반포자이 실거래가 — 국토교통부 아파트매매 실거래가 공개 데이터
+# (RTMSDataSvcAptTrade API, data.go.kr 경유 — REB R-ONE과는 별개의 서비스·키).
+# 2026-11-24에는 한국부동산원 서울 아파트 매매가격지수(공식 통계)를 썼으나,
+# 2026-11-25에 특정 강남권 단지(반포자이)의 실거래가 서울 평균보다 훨씬 더
+# 올랐다는 것이 자산군 비교 분석에서 드러나 실거래가 기반으로 교체했다(위
+# GOLD_PRICE_BASIS_SEOUL_APT 주석 참고).
+BANPO_LAWD_CD = "11650"  # 법정동코드 — 서초구
+BANPO_UMD_NM = "반포동"  # 법정동명 — RTMS 응답의 umdNm과 대조해 필터링
+BANPO_APT_NAME = "반포자이"  # RTMS 응답의 aptNm과 대조해 필터링(부분 일치)
+BANPO_EXCLUSIVE_AREA = "84.943"  # 전용면적(㎡), RTMS 응답의 excluUseAr 문자열과
+# 정확히 일치해야 함 — 반포자이 전체 2,752건 중 550건(2009-03~현재)으로 가장
+# 거래가 많은 면적 유형이라 "국민평형"(전용 84㎡대)의 대표값으로 선택했다.
+BANPO_FETCH_START_YM = "200812"  # 반포자이 입주(2008-12)에 안전 마진을 더한
+# 조회 시작월 — 실제 최초 거래는 2009-03-22.
+BANPO_TREND_WINDOW_TRANSACTIONS = 10  # 거래일 순 직전 n건 단순이동평균 — 개별
+# 거래(층·동·시점별로 들쭉날쭉)를 매끄러운 "추세"로 바꾸는 창 크기.
+# 공표 지연(look-ahead 방지): 부동산 실거래는 계약일로부터 30일 이내 신고
+# 의무가 있어, 거래 당일에 그 거래를 "알고 있었다"고 가정하면 look-ahead
+# bias가 생긴다. 법정 신고기한(30일)에 안전 마진을 더한 날수만큼 뒤로 밀어
+# "확인 가능일"로 삼는다(REB 월간 통계의 REB_MONTHLY_PUBLICATION_DAY와 같은
+# 취지).
+BANPO_REPORTING_LAG_DAYS = 45
+# 월 1회(매달 1일) GitHub Actions로 갱신되는 캐시 파일 — 이 API는 한 번에 한
+# 달치만 반환해 전체 역사(200개월+)를 받으려면 수백 번 호출해야 하므로,
+# 페이지 로드 시마다 라이브로 받지 않고 미리 받아둔 이 파일을 읽는다(아래
+# BANPO_TREND_DATA_PATH, update_banpo_data.py/timeseries.py 참고).
+BANPO_TREND_DATA_PATH = "data/banpo_xi_trend.json"
 
 INDICATOR_META = {
     "real_rate": {

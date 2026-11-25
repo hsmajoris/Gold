@@ -594,6 +594,7 @@ def main() -> None:
         [
             st.Page(render_dashboard, title="대시보드", url_path="", default=True),
             st.Page("pages/1_백테스트.py", title="유효성 검증", url_path="백테스트"),
+            st.Page("pages/2_자산비교.py", title="자산비교", url_path="자산비교"),
         ]
     )
     pages.run()
