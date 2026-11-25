@@ -1,0 +1,39 @@
+name: Update Banpo Xi Transaction Data
+
+on:
+  schedule:
+    # 00:00 UTC on the 1st of every month — real-estate transactions don't
+    # need daily refreshes the way price series do, and this API only
+    # returns one month per call (200+ calls for the full history), so this
+    # runs far less often than update_dashboard_data.yml.
+    - cron: "0 0 1 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update-banpo-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch latest 반포자이 transaction data
+        env:
+          RTMS_API_KEY: ${{ secrets.RTMS_API_KEY }}
+        run: python -m gold_dashboard.update_banpo_data
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/banpo_xi_trend.json
+          git diff --cached --quiet || git commit -m "chore: update 반포자이 실거래가 추세 데이터"
+          git push

@@ -214,7 +214,7 @@ KRX 금현물시장은 2014-03-24에 개장했으므로, ②를 선택한 상태
 | WTI | FRED `DCOILWTICO` |
 | VIX | Yahoo Finance `^VIX` |
 | 금 가격 (백테스트, ② KRX 금현물 선택 시) | Naver 증권 API `api.stock.naver.com/marketindex/metals/M04020000/prices` (KRX `04020000`, KRW/g) |
-| 서울 아파트 매매가격지수 (백테스트, ⑧ 선택 시) | 한국부동산원(REB) R-ONE Open API `reb.or.kr/r-one/openapi/SttsApiTblData.do` (통계표 `A_2024_00045`, "(월) 매매가격지수_아파트", CLS_ID 500008="서울", 월간) |
+| 반포자이 84㎡ 실거래가 추세 (백테스트, ⑧ 선택 시) | 국토교통부 아파트매매 실거래가 공개 데이터 `apis.data.go.kr/1613000/RTMSDataSvcAptTrade` (서초구 반포동, 전용 84.943㎡, 거래일순 10건 이동평균) — 월 1회 GitHub Actions가 받아 `data/banpo_xi_trend.json`에 캐시 |
 
 FRED 데이터는 공식 API(`https://api.stlouisfed.org/fred/series/observations`)로 받아오며,
 [무료 API 키](https://fred.stlouisfed.org/docs/api/api_key.html)가 필요합니다. 환경변수
@@ -222,14 +222,14 @@ FRED 데이터는 공식 API(`https://api.stlouisfed.org/fred/series/observation
 네트워크 오류(타임아웃 등) 발생 시 최대 3회까지 5~10초 지수 백오프로 재시도합니다. KRX
 금현물(Naver API) 요청도 페이지별로 동일하게 최대 3회까지 5~10초 지수 백오프로 재시도합니다.
 
-한국부동산원 R-ONE Open API도 마찬가지로 무료 인증키가 필요하며([data.go.kr](https://www.data.go.kr/data/15134761/openapi.do)에서
-"한국부동산원_부동산통계 조회 서비스"에 활용신청), 환경변수 `REB_API_KEY`로 전달합니다. 단
-`FRED_API_KEY`와 달리 이 키는 **GitHub Actions의 일일 데이터 갱신 워크플로(`update_dashboard_data.yml`)에는
-필요 없습니다** — 그 워크플로는 대시보드 메인 화면(항상 국제 시세 고정)만 갱신하고 유효성 검증
-페이지의 ⑧ 서울 아파트 기준은 건드리지 않기 때문입니다. ⑧을 실제로 써볼 수 있으려면 **Streamlit
-앱이 배포된 환경(예: Streamlit Community Cloud의 "Secrets" 설정)에 `REB_API_KEY`를 등록**해야
-합니다. 키가 없거나 호출이 실패해도 ⑧ 기준만 오류 메시지와 함께 사용할 수 없을 뿐 다른 기준·
-페이지는 정상 동작합니다.
+국토교통부 실거래가 API도 마찬가지로 무료 인증키가 필요하며([data.go.kr](https://www.data.go.kr/data/15057511/openapi.do)에서
+"국토교통부_아파트 매매 실거래가"에 활용신청), 환경변수 `RTMS_API_KEY`로 전달합니다. 이 API는
+한 번에 한 지역·한 달치만 반환해 전체 역사(200개월+)를 받으려면 수백 번 호출해야 하므로, 다른
+지표들과 달리 **별도의 월간 워크플로(`update_banpo_data.yml`)가 매달 1일에 한 번만 갱신**합니다
+— `FRED_API_KEY`처럼 **GitHub Actions 저장소 Secrets에 `RTMS_API_KEY`를 등록**해야 이 워크플로가
+동작하며, 등록만 해두면 Streamlit 앱 자체는 이 키가 전혀 필요 없이 그 결과(`data/banpo_xi_trend.json`)를
+그대로 읽습니다. 이 파일이 아직 없거나 오래됐어도 ⑧ 기준만 오류 메시지와 함께 사용할 수 없을 뿐
+다른 기준·페이지는 정상 동작합니다.
 
 ## 갱신 주기
 
@@ -237,6 +237,10 @@ FRED 데이터는 공식 API(`https://api.stlouisfed.org/fred/series/observation
 전일 미국장 마감 종가로 자동 갱신**됩니다. GitHub Actions가 매일 22:00 UTC(=07:00 KST)에
 `gold_dashboard/update_data.py`를 실행해 `data/latest.json`을 갱신·커밋하고, Streamlit
 앱은 이 파일을 읽어 즉시 표시합니다(파일이 없으면 그때그때 실시간으로 계산).
+
+⑧ 반포자이 실거래가 추세(`data/banpo_xi_trend.json`)는 부동산 거래 특성상 매일 갱신할 필요가
+없어 **별도로 매달 1일 00:00 UTC에** `update_banpo_data.yml` 워크플로가
+`gold_dashboard/update_banpo_data.py`를 실행해 갱신·커밋합니다.
 
 앱이 "오늘"을 계산할 때는 반드시 `gold_dashboard/timeutil.py`의 `today_kst()`를 사용합니다
 (파이썬 기본 `date.today()`는 호스팅 서버의 로컬 시간대를 따르는데, Streamlit Cloud 등
@@ -297,8 +301,10 @@ UTC로는 전날이라, `date.today()`를 그대로 쓰면 기준일 선택 캘�
 ```bash
 pip install -r requirements.txt
 export FRED_API_KEY=your_fred_api_key
-export REB_API_KEY=your_reb_api_key    # 유효성 검증 페이지에서 ⑧ 서울 아파트 기준을 쓸 때만 필요
-python -m gold_dashboard.update_data   # data/latest.json 생성(선택, REB_API_KEY 불필요)
+export RTMS_API_KEY=your_rtms_api_key  # ⑧ 반포자이 실거래가 캐시를 직접 갱신해볼 때만 필요
+python -m gold_dashboard.update_data        # data/latest.json 생성(선택, RTMS_API_KEY 불필요)
+python -m gold_dashboard.update_banpo_data  # data/banpo_xi_trend.json 생성(선택, RTMS_API_KEY 필요,
+                                             # 200개월+ 조회라 몇 분 걸릴 수 있음)
 streamlit run app.py
 ```
 
