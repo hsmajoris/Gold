@@ -31,7 +31,6 @@ st.caption(
 )
 
 ASSET_TICKERS = {
-    "비트코인": "BTC-KRW",
     "하이닉스": "000660.KS",
     "코스피": "^KS11",
 }
@@ -54,6 +53,9 @@ def load_raw_series() -> dict[str, pd.Series]:
         for name, ticker in ASSET_TICKERS.items()
     }
     series["국내금"] = ds.fetch_krx_gold_krw_per_gram()
+    # yfinance의 BTC-KRW는 2014-09-17 이전 데이터가 없어, 비트코인의 실제 거래
+    # 시작 시점(2010년 중반)부터 비교하려면 별도 함수가 필요하다 — 아래 참고.
+    series["비트코인"] = ds.fetch_bitcoin_full_history_krw()
     return series
 
 
@@ -221,6 +223,7 @@ for asset in selected_assets:
     fig.add_trace(go.Scatter(
         x=idx.index.to_timestamp(), y=idx.values, mode="lines", name=label,
         line=dict(color=COLORS.get(asset)),
+        yaxis="y2",
         hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + label + "</extra>",
     ))
 
@@ -235,17 +238,26 @@ fig.update_xaxes(
         dict(step="all", label="전체"),
     ]),
 )
-fig.update_yaxes(title="지수(각 자산 첫 유효월=100)")
-fig.update_layout(
+layout_kwargs = dict(
     height=460, margin=dict(t=60, b=10), hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+    yaxis=dict(title="반포자이 지수(첫 유효월=100)"),
 )
+if selected_assets:
+    layout_kwargs["yaxis2"] = dict(
+        title="비교 자산 지수(첫 유효월=100)",
+        overlaying="y", side="right", showgrid=False,
+    )
+fig.update_layout(**layout_kwargs)
 render_zoomable_chart(fig, height=460)
 st.caption(
     "하단 슬라이더로 구간을 드래그해 확대, 상단 버튼으로 빠른 기간 이동이 가능합니다 — "
-    "확대하면 Y축도 그 구간에 맞춰 자동으로 다시 스케일됩니다. 'λ 변환 데이터'도 첫 "
-    "유효월=100으로 다시 지수화해서 보여주므로, 변환 여부와 무관하게 모든 선이 같은 "
-    "Y축 스케일에서 비교됩니다."
+    "확대하면 두 Y축 모두 각자 화면에 보이는 구간의 데이터에 맞춰 독립적으로 다시 "
+    "스케일됩니다. 비교 자산은 반포자이와 변동폭(스케일)이 크게 달라 같은 축을 쓰면 "
+    "한쪽이 거의 평평해 보이므로, 오른쪽의 별도 축(보조축)에 그립니다 — 두 선 모두 "
+    "자신의 첫 유효월=100 기준 '지수'이므로, 눈금 위치가 같다고 실제 값이 같다는 뜻은 "
+    "아니며 시간에 따른 등락의 '모양'(고점·저점 타이밍, 등락 비율)을 비교하는 용도입니다. "
+    "'λ 변환 데이터'도 같은 방식(첫 유효월=100)으로 다시 지수화해서 보여줍니다."
 )
 
 st.divider()
