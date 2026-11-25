@@ -153,9 +153,12 @@ display_mode: dict[str, str] = {}
 
 if selected_assets:
     st.caption(
-        "선택한 자산마다 λ(거듭제곱 변환)·래그(개월)·제외구간을 조절할 수 있고, 차트에는 "
-        "그 자산의 '원 데이터' 또는 'λ 변환 데이터' 중 고른 쪽이 지수(=100)로 표시됩니다 "
-        "(둘 다 반포자이 추세와의 R² 계산에는 λ·래그가 그대로 반영됩니다)."
+        "선택한 자산마다 λ(거듭제곱 변환)·래그(개월)·제외구간을 조절할 수 있습니다. 차트에는 "
+        "그 자산의 '원 데이터' 또는 'λ 변환 데이터' 중 고른 쪽이 지수(=100)로 표시되고, 아래 "
+        "R²도 그 선택을 그대로 따라갑니다 — '원 데이터'를 고르면 변환 없는 원값 기준 R², "
+        "'λ 변환 데이터'를 고르면 설정한 λ를 반영한 R²로 바뀌어, 토글만으로 λ 변환이 적합도를 "
+        "얼마나 개선하는지 바로 비교할 수 있습니다(래그·제외구간은 두 경우 모두 동일하게 "
+        "반영됩니다). 아래 시나리오 계산기는 이 토글과 무관하게 항상 λ 입력값을 그대로 씁니다."
     )
     cols = st.columns(len(selected_assets))
     for col, asset in zip(cols, selected_assets):
@@ -184,13 +187,22 @@ if selected_assets:
                 )
                 if isinstance(excl_range, tuple) and len(excl_range) == 2:
                     excl_start, excl_end = excl_range
+            # 시나리오 계산기(아래)는 항상 "지금 입력한 λ" 기준으로 계산하므로,
+            # 여기 fit_results는 차트 표시 토글과 무관하게 그 λ로 고정해 둔다.
             result = fit_and_r2(monthly, banpo_monthly, asset, float(lam), int(lag), excl_start, excl_end)
             fit_results[asset] = result
-            if result is None:
+            # 화면에 보여줄 R²만 토글을 따라간다 — '원 데이터' 선택 시 λ=1(변환 없음)
+            # 기준으로 다시 계산해, 토글만으로 "λ 변환이 적합도를 실제로 개선하는지"를
+            # 바로 비교할 수 있게 한다.
+            if display_mode[asset] == "λ 변환 데이터(지수)":
+                display_result = result
+            else:
+                display_result = fit_and_r2(monthly, banpo_monthly, asset, 1.0, int(lag), excl_start, excl_end)
+            if display_result is None:
                 st.metric("R²", "표본 부족")
             else:
-                st.metric("R²", f"{result['r2']:.3f}")
-                st.caption(f"표본 {result['n']}개월")
+                st.metric("R²", f"{display_result['r2']:.3f}")
+                st.caption(f"표본 {display_result['n']}개월")
 
 st.subheader("지수 비교 차트")
 fig = go.Figure()
