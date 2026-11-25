@@ -228,3 +228,27 @@ def fetch_banpo_xi_trend_series() -> pd.Series:
     df["value"] = pd.to_numeric(df["trend_value"], errors="coerce")
     df = df.dropna(subset=["value"]).drop_duplicates(subset="date").set_index("date").sort_index()
     return df["value"].rename("banpo_xi_trend")
+
+
+def fetch_banpo_xi_raw_and_trend() -> pd.DataFrame:
+    """Like fetch_banpo_xi_trend_series(), but also returns each individual
+    transaction's own (pre-smoothing) raw deal amount alongside the trend —
+    used by pages/2_자산비교.py to plot the raw transactions as scatter points
+    next to the smoothed trend line. Columns: "raw", "trend", both float,
+    indexed by the same look-ahead-safe `available_date` as the trend-only
+    series."""
+    path = _REPO_ROOT / config.BANPO_TREND_DATA_PATH
+    if not path.exists():
+        raise RuntimeError(
+            f"{path}가 없습니다 — 반포자이 실거래가(⑧) 기준은 월 1회 GitHub Actions가 생성하는 "
+            "캐시 파일이 있어야 조회할 수 있습니다(gold_dashboard/update_banpo_data.py 참고)."
+        )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    df = pd.DataFrame(payload["rows"])
+    if df.empty:
+        raise RuntimeError(f"{path}에 반포자이 실거래가 데이터가 없습니다.")
+    df["date"] = pd.to_datetime(df["available_date"])
+    df["raw"] = pd.to_numeric(df["raw_value"], errors="coerce")
+    df["trend"] = pd.to_numeric(df["trend_value"], errors="coerce")
+    df = df.dropna(subset=["raw", "trend"]).drop_duplicates(subset="date").set_index("date").sort_index()
+    return df[["raw", "trend"]]
