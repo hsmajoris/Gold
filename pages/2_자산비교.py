@@ -213,6 +213,7 @@ if banpo_base_value:
 
 for asset in selected_assets:
     lam = float(st.session_state[f"lam_{asset}"])
+    lag = int(st.session_state[f"lag_{asset}"])
     if display_mode.get(asset) == "λ 변환 데이터(지수)":
         series = pd.Series(transform(monthly[asset].to_numpy(), lam), index=monthly[asset].index)
         label = f"{asset}(λ={lam:g} 변환)"
@@ -220,8 +221,15 @@ for asset in selected_assets:
         series = monthly[asset]
         label = asset
     idx = to_index100(series)
+    # R² 계산(fit_and_r2)은 asset[t-lag]를 반포자이[t]와 짝짓는다 — 그 "예측
+    # 대상 시점(t)"에 맞춰 그리려면 asset 값을 실제 관측 시점보다 lag개월
+    # 뒤로 밀어서 표시해야 한다. 즉 이 차트의 x축 위치는 그 자산의 실제
+    # 관측 시점이 아니라, "그 값이 반포자이에 반영됐다고 가정하는 시점"이다.
+    display_x = (idx.index + lag).to_timestamp()
+    if lag != 0:
+        label += f", {lag:+d}개월 래그"
     fig.add_trace(go.Scatter(
-        x=idx.index.to_timestamp(), y=idx.values, mode="lines", name=label,
+        x=display_x, y=idx.values, mode="lines", name=label,
         line=dict(color=COLORS.get(asset)),
         yaxis="y2",
         hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + label + "</extra>",
@@ -257,7 +265,13 @@ st.caption(
     "한쪽이 거의 평평해 보이므로, 오른쪽의 별도 축(보조축)에 그립니다 — 두 선 모두 "
     "자신의 첫 유효월=100 기준 '지수'이므로, 눈금 위치가 같다고 실제 값이 같다는 뜻은 "
     "아니며 시간에 따른 등락의 '모양'(고점·저점 타이밍, 등락 비율)을 비교하는 용도입니다. "
-    "'λ 변환 데이터'도 같은 방식(첫 유효월=100)으로 다시 지수화해서 보여줍니다."
+    "'λ 변환 데이터'도 같은 방식(첫 유효월=100)으로 다시 지수화해서 보여줍니다. "
+    "래그(개월)를 설정한 자산은 그 선 자체를 래그만큼 뒤로(미래 방향으로) 밀어서 "
+    "그립니다 — 반포자이가 그 자산을 뒤늦게 따라가는 경우가 많아, 예를 들어 "
+    "래그=6이면 '그 자산의 어떤 시점 값'을 '그로부터 6개월 뒤'의 x축 위치에 표시해 "
+    "반포자이의 같은 시점 움직임과 나란히 비교할 수 있게 합니다(R² 계산과 동일한 "
+    "대응 관계). 즉 이 선의 x축 위치는 실제 관측 시점이 아니라 '반포자이에 반영됐다고 "
+    "가정하는 시점'입니다."
 )
 
 st.divider()
