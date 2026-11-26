@@ -52,6 +52,16 @@ CONTROLLABLE_ASSETS = ["비트코인", "하이닉스", "코스피", "국내금"]
 BENCHMARK = "반포자이"
 COLORS = {"비트코인": "#5b6fb8", "반포자이": "#a13d2f", "하이닉스": "#2f8a5f", "코스피": "#8a8a8a", "국내금": "#b8860b"}
 
+# 반포자이 전용 84.943㎡("국민평형")의 공급면적 — 국토부 실거래가 공개 데이터에는
+# 공급면적이 없어, 실제 매물 표기(당근부동산) 2건(116.87㎡, 116.71㎡)의 평균값을
+# 쓴다(총괄판 엑셀을 만들 때 썼던 것과 동일한 값·출처). 평단가 = 원시 거래금액(raw,
+# 총액) ÷ 이 공급면적(평) — 캐시에 저장된 raw_value/trend_value는 "원시 거래금액"
+# (총액, 원)이지 평단가가 아니므로 차트에 평단가로 표시하려면 이 변환이 필요하다.
+BANPO_SUPPLY_AREA_M2 = (116.87 + 116.71) / 2  # ≈116.79㎡
+PYEONG_M2 = 3.305785
+BANPO_SUPPLY_AREA_PYEONG = BANPO_SUPPLY_AREA_M2 / PYEONG_M2  # ≈35.33평
+CHEONMANWON = 1e7  # 천만원 단위 변환 상수
+
 # 자산별 기본 λ·래그. 회귀식은 log(반포자이) = 절편 + 기울기×transform(자산,λ)
 # 형태(반포자이·자산 둘 다 "비율로" 성장하는 자산이라, 반포자이 쪽도 log를 써야
 # 두 자산의 과거 등락 '배수'가 시나리오 계산기에서도 일관되게 나온다 — 예를
@@ -269,11 +279,16 @@ fig = go.Figure()
 banpo_base = banpo_raw_trend["trend"].dropna()
 banpo_base_value = banpo_base.iloc[0] if not banpo_base.empty else None
 if banpo_base_value:
-    raw_idx = banpo_raw_trend["raw"] / banpo_base_value * 100.0
+    # 캐시된 raw/trend 값은 "원시 거래금액"(총액, 원)이라, 차트에는 공급면적
+    # 기준 평단가(천만원 단위)로 환산해서 보여준다 — 아래 BANPO_SUPPLY_AREA_PYEONG
+    # 참고(시나리오 계산기·R² 등 다른 계산은 여전히 원래의 총액(원) 기준 그대로
+    # 쓰며, 이 환산은 이 차트의 표시에만 적용된다).
+    raw_pyeongga_cheonman = banpo_raw_trend["raw"] / BANPO_SUPPLY_AREA_PYEONG / CHEONMANWON
     fig.add_trace(go.Scatter(
-        x=raw_idx.index, y=raw_idx.values, mode="markers", name="반포자이 실거래(개별)",
+        x=raw_pyeongga_cheonman.index, y=raw_pyeongga_cheonman.values, mode="markers",
+        name="반포자이 실거래(개별)",
         marker=dict(size=4, color=COLORS[BENCHMARK], opacity=0.45),
-        hovertemplate="%{x|%Y-%m-%d}<br>지수 %{y:.1f}<extra>반포자이 실거래</extra>",
+        hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.2f}천만원<extra>반포자이 실거래</extra>",
     ))
 
 # 비교 자산은 이제 지수(=100)로 정규화하지 않고 원래 단위(또는 λ 변환값)를
@@ -298,6 +313,13 @@ for i, asset in enumerate(selected_assets):
         values = monthly[asset].to_numpy()
         label = asset
         axis_title = f"{asset}(원래 값)"
+        # 비트코인 원 데이터는 억 단위라 눈금이 읽기 어려우므로, 반포자이
+        # 왼쪽 축과 같은 단위(천만원)로 맞춰 보조축에 표시한다 — 다른
+        # 자산(코스피 포인트, 하이닉스 주가, 국내금 g당가)은 이미 눈금이
+        # 읽기 쉬운 크기라 그대로 둔다.
+        if asset == "비트코인":
+            values = values / CHEONMANWON
+            axis_title = f"{asset}(원래 값, 천만원)"
     series = pd.Series(values, index=monthly[asset].index)
     # R² 계산(fit_and_r2)은 asset[t-lag]를 반포자이[t]와 짝짓는다 — 그 "예측
     # 대상 시점(t)"에 맞춰 그리려면 asset 값을 실제 관측 시점보다 lag개월
@@ -314,11 +336,12 @@ for i, asset in enumerate(selected_assets):
     axis_num = i + 2
     trace_axis = f"y{axis_num}"
     layout_axis_key = f"yaxis{axis_num}"
+    value_unit = "천만원" if (asset == "비트코인" and display_mode.get(asset) != "λ 변환 데이터") else ""
     fig.add_trace(go.Scatter(
         x=display_x, y=series.values, mode="lines", name=label,
         line=dict(color=COLORS.get(asset)),
         yaxis=trace_axis,
-        hovertemplate="%{x|%Y-%m}<br>%{y:,.3g}<extra>" + label + "</extra>",
+        hovertemplate="%{x|%Y-%m}<br>%{y:,.3g}" + value_unit + "<extra>" + label + "</extra>",
     ))
     axis_entry = dict(
         title=dict(text=axis_title, font=dict(color=COLORS.get(asset))),
@@ -332,22 +355,23 @@ for i, asset in enumerate(selected_assets):
 
     if show_regression_line and fit_results.get(asset) is not None and banpo_base_value:
         # 회귀식(fit_and_r2가 구한 slope/intercept)에 이 자산의 실제 값(source_month
-        # 기준, 반포자이[t]와 짝지어진 그 x)을 넣어 "반포자이 예측값"을 구하고, 반포자이
-        # 자신의 다른 트레이스와 비교할 수 있도록 같은 지수(=100) 기준·주축에 그린다.
+        # 기준, 반포자이[t]와 짝지어진 그 x)을 넣어 "반포자이 예측값(총액, 원)"을
+        # 구하고, 실제 반포자이 실거래 트레이스와 같은 축에서 비교할 수 있도록
+        # 똑같이 평단가(천만원)로 환산해서 그린다.
         res = fit_results[asset]
         source_month = monthly.index - lag
         asset_vals = monthly[asset].reindex(source_month).to_numpy()
         x_transformed = transform(asset_vals, lam)
         predicted_log = res["intercept"] + res["slope"] * x_transformed
         predicted_raw = np.exp(predicted_log)
-        predicted_idx = predicted_raw / banpo_base_value * 100.0
-        pred_series = pd.Series(predicted_idx, index=monthly.index)
+        predicted_pyeongga = predicted_raw / BANPO_SUPPLY_AREA_PYEONG / CHEONMANWON
+        pred_series = pd.Series(predicted_pyeongga, index=monthly.index)
         reg_label = f"반포자이 회귀선(vs {asset})"
         fig.add_trace(go.Scatter(
             x=pred_series.index.to_timestamp(), y=pred_series.values, mode="lines",
             name=reg_label,
             line=dict(color=COLORS.get(asset), dash="dot", width=1.5),
-            hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + reg_label + "</extra>",
+            hovertemplate="%{x|%Y-%m}<br>%{y:,.2f}천만원<extra>" + reg_label + "</extra>",
         ))
 
 _first_jan1 = pd.Timestamp(year=max(banpo_raw_trend.index.min().year, 2005), month=1, day=1)
@@ -376,9 +400,9 @@ if overlap_candidates:
         xaxis_kwargs["range"] = [overlap_start.isoformat(), data_max.isoformat()]
 fig.update_xaxes(**xaxis_kwargs)
 layout_kwargs = dict(
-    height=460, margin=dict(t=60, b=10, r=10 + 60 * max(n_assets - 1, 0)), hovermode="closest",
+    height=460, margin=dict(t=60, b=10, r=70 + 60 * max(n_assets - 1, 0)), hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-    yaxis=dict(title="반포자이 지수(첫 유효월=100)"),
+    yaxis=dict(title=f"반포자이84 평당가(천만원, 공급면적 {BANPO_SUPPLY_AREA_PYEONG:.1f}평 기준)"),
 )
 layout_kwargs.update(extra_axis_layout)
 fig.update_layout(**layout_kwargs)
@@ -386,8 +410,9 @@ render_zoomable_chart(fig, height=460)
 st.caption(
     "하단 슬라이더로 구간을 드래그해 확대, 상단 버튼으로 빠른 기간 이동이 가능합니다 — "
     "확대하면 모든 Y축이 각자 화면에 보이는 구간의 데이터에 맞춰 독립적으로 다시 "
-    "스케일됩니다. 반포자이(왼쪽 축, 첫 유효월=100 기준 지수)와 비교 자산은 변동폭"
-    "(스케일)이 크게 달라 같은 축을 쓰면 한쪽이 거의 평평해 보이므로, 비교 자산마다 "
+    "스케일됩니다. 반포자이(왼쪽 축, 84㎡ 평당가·공급면적 기준·천만원 단위)와 비교 "
+    "자산은 변동폭(스케일)이 크게 달라 같은 축을 쓰면 한쪽이 거의 평평해 보이므로, "
+    "비교 자산마다 "
     "오른쪽에 자신만의 축을 따로 둡니다(둘 이상 선택하면 축이 여러 개 나란히 붙습니다). "
     "그 축에는 '원 데이터'를 골랐으면 그 자산의 원래 값(원·포인트 등 단위 그대로), "
     "'λ 변환 데이터'를 골랐으면 설정한 λ로 거듭제곱(또는 λ=0이면 로그) 변환한 값이 "
