@@ -158,9 +158,13 @@ def fit_and_r2(
     ss_res = float(np.sum((y - pred) ** 2))
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    x_mean = float(x.mean())
+    sxx = float(np.sum((x - x_mean) ** 2))
+    resid_se = float(np.sqrt(ss_res / (n - 2))) if n > 2 else float("nan")
     return {
         "slope": slope, "intercept": intercept, "r2": r2, "n": n,
         "asset_min": float(np.nanmin(asset_vals[valid])), "asset_max": float(np.nanmax(asset_vals[valid])),
+        "x_mean": x_mean, "sxx": sxx, "resid_se": resid_se,
     }
 
 
@@ -399,6 +403,11 @@ with scenario_cols[0]:
     fold_change = st.number_input("반포자이 목표 배수", min_value=0.1, max_value=20.0, value=2.0, step=0.1)
 with scenario_cols[1]:
     horizon_years = st.number_input("기간(년)", min_value=1, max_value=30, value=5, step=1)
+with scenario_cols[2]:
+    investment_amount = st.number_input(
+        "다른 자산에 넣을 내 투자금액(원)", min_value=0, value=10_000_000, step=1_000_000,
+        help="반포자이가 아니라 비교 자산 쪽에 지금 이 금액을 투자한다고 가정합니다.",
+    )
 
 banpo_now = banpo_monthly.dropna().iloc[-1]
 banpo_target = banpo_now * fold_change
@@ -409,6 +418,28 @@ st.markdown(
     f"**{banpo_target:,.0f}원**이 된다고 가정합니다(연복리 {banpo_cagr:.1%})."
 )
 
+Z_95 = 1.96  # 정규근사 95% 구간(표본이 보통 100개월 이상이라 t분포와 거의 같음)
+
+
+def invert_x_with_interval(result: dict, y_target: float, z: float = Z_95):
+    """회귀식 y=intercept+slope*x를 역으로 풀어 x의 점추정값과, 잔차 산포·표본
+    크기·(x의 관측 평균에서 얼마나 떨어져 있는지=외삽 정도)를 반영한 근사
+    예측구간을 함께 반환한다 — 표준적인 '새 관측치에 대한 예측구간' 공식
+    (margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 그 점추정 x에서 평가해, y 쪽의
+    불확실성 폭을 다시 x 쪽 범위로 환산하는 근사(역보정/calibration) 방식이다.
+    (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는 음수(=이 λ 변환에서 도달 불가능한
+    영역)일 수 있으며 호출부에서 그 경우를 따로 처리해야 한다."""
+    slope, intercept = result["slope"], result["intercept"]
+    x_point = (y_target - intercept) / slope
+    se, n, x_mean, sxx = result["resid_se"], result["n"], result["x_mean"], result["sxx"]
+    if not np.isfinite(se) or sxx <= 0:
+        return x_point, None, None
+    margin_y = z * se * np.sqrt(1 + 1.0 / n + (x_point - x_mean) ** 2 / sxx)
+    y_lo, y_hi = y_target - margin_y, y_target + margin_y
+    x_a, x_b = (y_lo - intercept) / slope, (y_hi - intercept) / slope
+    return x_point, min(x_a, x_b), max(x_a, x_b)  # slope<0이면 뒤집히므로 min/max로 정렬
+
+
 rows = []
 for asset in CONTROLLABLE_ASSETS:
     effective_lam = float(st.session_state.get(f"lam_{asset}", DEFAULT_LAMBDA[asset]))
@@ -417,17 +448,45 @@ for asset in CONTROLLABLE_ASSETS:
     asset_now_series = monthly[asset].dropna()
     asset_now = asset_now_series.iloc[-1] if not asset_now_series.empty else None
     if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
-        rows.append({"자산": asset, "R²": "-", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-", "반포자이 대비": "-", "비고": "회귀 불가(표본 부족)"})
+        rows.append({
+            "자산": asset, "R²": "-", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-",
+            "반포자이 대비": "-", "투자금액 → 예상액(95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
+        })
         continue
-    x_required = (banpo_target - result["intercept"]) / result["slope"]
+    x_required, x_lo, x_hi = invert_x_with_interval(result, banpo_target)
     if x_required <= 0:
-        rows.append({"자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-", "반포자이 대비": "-", "비고": "회귀식상 불가능(음수)"})
+        rows.append({
+            "자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-",
+            "연복리(CAGR)": "-", "반포자이 대비": "-", "투자금액 → 예상액(95% 구간)": "-",
+            "비고": "회귀식상 불가능(음수)",
+        })
         continue
     asset_required = float(inverse_transform(np.array([x_required]), effective_lam)[0])
     asset_fold = asset_required / asset_now
     asset_cagr = asset_fold ** (1.0 / horizon_years) - 1.0
     relative_fold = asset_fold / fold_change
     out_of_range = asset_required > result["asset_max"] * 1.5 or asset_required < result["asset_min"] * 0.67
+
+    # x_lo/x_hi(또는 둘 다 음수) → 95% 구간이 그 λ 변환에서 아예 도달 불가능한
+    # 쪽은 "N/A(불가능)"로 표시 — 점추정 자체가 불가능한 경우(위에서 continue)와
+    # 같은 종류의 음수-불가 상황이, 구간의 한쪽 끝에서만 생길 수도 있다.
+    if x_lo is None:
+        invest_label = "구간 추정 불가(표본 부족 또는 변동 없음)"
+    else:
+        def _invest_value(x_val):
+            if x_val <= 0:
+                return None
+            req = float(inverse_transform(np.array([x_val]), effective_lam)[0])
+            return investment_amount * (req / asset_now)
+
+        invest_lo, invest_hi = _invest_value(x_lo), _invest_value(x_hi)
+        if invest_lo is None and invest_hi is None:
+            invest_label = "구간 전체가 불가능(λ 변환상 음수)"
+        else:
+            lo_text = f"{invest_lo:,.0f}원" if invest_lo is not None else "0원 미만(불가능)"
+            hi_text = f"{invest_hi:,.0f}원" if invest_hi is not None else "상한 없음"
+            invest_label = f"{lo_text} ~ {hi_text}"
+
     rows.append({
         "자산": asset,
         "R²": f"{result['r2']:.3f}",
@@ -435,6 +494,7 @@ for asset in CONTROLLABLE_ASSETS:
         "현재 대비": f"{asset_fold:.2f}배",
         "연복리(CAGR)": f"{asset_cagr:.1%}",
         "반포자이 대비": f"{relative_fold:.2f}배 " + ("오버퍼폼" if relative_fold >= 1 else "언더퍼폼"),
+        "투자금액 → 예상액(95% 구간)": invest_label,
         "비고": "⚠️ 관측 범위를 크게 벗어남(외삽)" if out_of_range else "",
     })
 
@@ -445,6 +505,15 @@ st.caption(
     "덜 올라도(혹은 떨어져도, 1.0 미만) 성립한다는 뜻입니다. ⚠️ 표시는 함의 가격이 그 자산의 "
     "과거 관측 범위(최소~최대)를 50% 넘게 벗어난 경우로, 회귀식의 형태가 그 구간에서도 "
     "유지된다는 보장이 없어 특히 신뢰도가 낮습니다."
+)
+st.caption(
+    "'투자금액 → 예상액(95% 구간)'은 입력한 투자금액을 지금 이 자산에 넣었을 때, 반포자이가 "
+    "목표 배수에 도달하는 시점 기준으로 얼마가 될지를 95% 예측구간으로 보여줍니다 — 점추정(함의 "
+    "가격)만 보여주면 실제로는 그 회귀식 주변에 흩어져 있던 과거 달(월)들의 산포를 숨기게 되므로, "
+    "잔차 표준오차·표본 수·현재 추정치가 관측 데이터 평균에서 얼마나 떨어져 있는지(외삽 정도)를 "
+    "반영한 표준적인 예측구간 공식으로 범위를 계산합니다. 외삽이 심할수록(관측 범위를 크게 벗어날"
+    "수록) 구간이 급격히 넓어지며, '상한 없음'·'불가능'은 95% 구간의 그 끝이 이 λ 변환에서 "
+    "수학적으로 도달할 수 없는 영역(§5.8의 '회귀식상 불가능'과 같은 이유)에 해당한다는 뜻입니다."
 )
 
 st.caption(
