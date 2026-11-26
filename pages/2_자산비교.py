@@ -558,7 +558,8 @@ for asset in CONTROLLABLE_ASSETS:
     asset_now = asset_now_series.iloc[-1] if not asset_now_series.empty else None
     if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
         rows.append({
-            "자산": asset, "R²": "-", "회귀식": "-", "현재 대비": "-", "연복리(CAGR)": "-",
+            "자산": asset, "R²": "-", "회귀식": "-", "매입단가(오늘)": "-", "매도단가(함의가격)": "-",
+            "현재 대비": "-", "연복리(CAGR)": "-",
             "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "회귀 불가(표본 부족)",
         })
         continue
@@ -566,7 +567,8 @@ for asset in CONTROLLABLE_ASSETS:
     x_required, x_lo, x_hi = invert_x_with_interval(result, asset_now, effective_lam, banpo_now, banpo_target)
     if x_required <= 0:
         rows.append({
-            "자산": asset, "R²": f"{result['r2']:.3f}", "회귀식": equation, "현재 대비": "-",
+            "자산": asset, "R²": f"{result['r2']:.3f}", "회귀식": equation,
+            "매입단가(오늘)": f"{asset_now:,.0f}원", "매도단가(함의가격)": "-", "현재 대비": "-",
             "연복리(CAGR)": "-", "반포자이 대비": "-",
             "투자금액 → 예상액(억원, 95% 구간)": "회귀식상 불가능(음수)",
         })
@@ -600,6 +602,8 @@ for asset in CONTROLLABLE_ASSETS:
         "자산": asset,
         "R²": f"{result['r2']:.3f}",
         "회귀식": equation,
+        "매입단가(오늘)": f"{asset_now:,.0f}원",
+        "매도단가(함의가격)": f"{asset_required:,.0f}원",
         "현재 대비": f"{asset_fold:.2f}배",
         "연복리(CAGR)": f"{asset_cagr:.1%}",
         "반포자이 대비": f"{relative_fold:.2f}배 " + ("오버퍼폼" if relative_fold >= 1 else "언더퍼폼"),
@@ -608,6 +612,11 @@ for asset in CONTROLLABLE_ASSETS:
 
 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 st.caption(
+    "'매입단가(오늘)'은 그 자산의 가장 최근 거래일 실제가, '매도단가(함의가격)'은 반포자이가 "
+    "목표 배수에 도달할 때 회귀식이 요구하는 그 자산의 가격입니다 — '현재 대비' 배수는 "
+    "이 둘의 비율(매도단가÷매입단가)입니다. 투자금액을 바꿔도 이 배수 자체는 바뀌지 않습니다 "
+    "— 배수는 가격 궤적(매입단가→매도단가)만으로 정해지고, 투자금액은 그 배수를 곱해 "
+    "최종 원화 금액으로 환산하는 데만 쓰입니다(아래 '투자금액 → 예상액' 참고).\n\n"
     "'회귀식'은 그 자산에 설정된 λ·래그로 적합된 실제 회귀식입니다 — '현재 대비' 배수는 "
     "이 식의 기울기(slope)만큼, 오늘의 실제 자산·반포자이 가격을 기준점으로 삼아 비율로 "
     "이동시킨 결과입니다(절편은 이 계산에 쓰지 않습니다 — 왜 그런지는 위 설명 참고). "
