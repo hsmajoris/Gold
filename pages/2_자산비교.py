@@ -48,8 +48,14 @@ BENCHMARK = "반포자이"
 COLORS = {"비트코인": "#5b6fb8", "반포자이": "#a13d2f", "하이닉스": "#2f8a5f", "코스피": "#8a8a8a", "국내금": "#b8860b"}
 
 # 자산별 기본 λ·래그 — 2026-11-25 그리드서치 결과(월별 집계, 반포자이84 평당가
-# 추세 기준, TRADING_LOGIC.md 참고). 아래 컨트롤에서 자유롭게 바꿀 수 있다.
-DEFAULT_LAMBDA = {"비트코인": 0.40, "하이닉스": 0.10, "코스피": -1.3, "국내금": -0.70}
+# 추세 기준, TRADING_LOGIC.md 참고). λ는 0 이상(로그~거듭제곱)만 허용한다 —
+# 음수 λ는 회귀식을 역으로 풀 때(시나리오 계산기) x^λ(λ<0)의 부호 반전 때문에
+# "회귀식상 도달 불가능(음수)" 같은 해석하기 어려운 결과를 만들기 쉽다. 코스피·
+# 국내금은 원래 그리드서치가 음수 λ(-1.3, -0.70)를 골랐었지만, λ≥0 제약 하에서
+# 다시 찾아보면(기존 래그 고정, λ∈[0,3] 재탐색) 둘 다 λ=0(로그)이 최적이라(각각
+# R²=0.676, 0.930 — 음수 λ였을 때의 0.670, 0.954와 거의 같은 수준) 그 값으로
+# 바꿨다. 아래 컨트롤에서 자유롭게 바꿀 수 있다.
+DEFAULT_LAMBDA = {"비트코인": 0.40, "하이닉스": 0.10, "코스피": 0.0, "국내금": 0.0}
 DEFAULT_LAG_MONTHS = {"비트코인": 6, "하이닉스": 12, "코스피": 11, "국내금": 2}
 
 
@@ -97,13 +103,6 @@ def monthly_mean_frame(series_dict: dict[str, pd.Series]) -> pd.DataFrame:
         all_months = months if all_months is None else all_months.union(months)
     all_months = all_months.sort_values()
     return pd.DataFrame({name: s.reindex(all_months) for name, s in monthly.items()}, index=all_months)
-
-
-def to_index100(s: pd.Series) -> pd.Series:
-    first_valid = s.first_valid_index()
-    if first_valid is None:
-        return s
-    return s / s[first_valid] * 100.0
 
 
 def transform(x, lam: float):
@@ -189,27 +188,30 @@ display_mode: dict[str, str] = {}
 if selected_assets:
     st.caption(
         "선택한 자산마다 λ(거듭제곱 변환)·래그(개월)·제외구간을 조절할 수 있습니다. 차트에는 "
-        "그 자산의 '원 데이터' 또는 'λ 변환 데이터' 중 고른 쪽이 지수(=100)로 표시되고, 아래 "
-        "R²도 그 선택을 그대로 따라갑니다 — '원 데이터'를 고르면 변환 없는 원값 기준 R², "
-        "'λ 변환 데이터'를 고르면 설정한 λ를 반영한 R²로 바뀌어, 토글만으로 λ 변환이 적합도를 "
-        "얼마나 개선하는지 바로 비교할 수 있습니다(래그·제외구간은 두 경우 모두 동일하게 "
-        "반영됩니다). 아래 시나리오 계산기는 이 토글과 무관하게 항상 λ 입력값을 그대로 씁니다."
+        "그 자산의 '원 데이터'(변환 없는 원래 값 그대로) 또는 'λ 변환 데이터'(설정한 λ로 "
+        "거듭제곱·로그 변환한 값) 중 고른 쪽이 각자 자신의 축(오른쪽 보조축)에 원래 단위 "
+        "그대로 표시되고, 아래 R²도 그 선택을 그대로 따라갑니다 — '원 데이터'를 고르면 변환 "
+        "없는 원값 기준 R², 'λ 변환 데이터'를 고르면 설정한 λ를 반영한 R²로 바뀌어, 토글만으로 "
+        "λ 변환이 적합도를 얼마나 개선하는지 바로 비교할 수 있습니다(래그·제외구간은 두 경우 "
+        "모두 동일하게 반영됩니다). λ는 0 이상의 값만 쓸 수 있습니다(음수 λ는 아래 시나리오 "
+        "계산기에서 회귀식을 역으로 풀 때 해석하기 어려운 결과를 만들기 쉬워 제외했습니다). "
+        "아래 시나리오 계산기는 이 토글과 무관하게 항상 λ 입력값을 그대로 씁니다."
     )
     cols = st.columns(len(selected_assets))
     for col, asset in zip(cols, selected_assets):
         with col:
             st.markdown(f"**{asset}**")
             lam = st.number_input(
-                "λ", min_value=-3.0, max_value=3.0, step=0.05,
+                "λ", min_value=0.0, max_value=3.0, step=0.05,
                 value=DEFAULT_LAMBDA[asset], key=f"lam_{asset}",
-                help="0=로그, 1=원값, 0.5=제곱근, 1/3≈0.33=세제곱근",
+                help="0=로그, 1=원값, 0.5=제곱근, 1/3≈0.33=세제곱근 (0 이상만 가능)",
             )
             lag = st.number_input(
                 "래그(개월)", min_value=-24, max_value=36, step=1,
                 value=DEFAULT_LAG_MONTHS[asset], key=f"lag_{asset}",
             )
             display_mode[asset] = st.radio(
-                "차트 표시", ["원 데이터(지수)", "λ 변환 데이터(지수)"],
+                "차트 표시", ["원 데이터", "λ 변환 데이터"],
                 key=f"disp_{asset}", horizontal=False,
             )
             use_excl = st.checkbox("제외구간 사용", key=f"excl_on_{asset}")
@@ -229,7 +231,7 @@ if selected_assets:
             # 화면에 보여줄 R²만 토글을 따라간다 — '원 데이터' 선택 시 λ=1(변환 없음)
             # 기준으로 다시 계산해, 토글만으로 "λ 변환이 적합도를 실제로 개선하는지"를
             # 바로 비교할 수 있게 한다.
-            if display_mode[asset] == "λ 변환 데이터(지수)":
+            if display_mode[asset] == "λ 변환 데이터":
                 display_result = result
             else:
                 display_result = fit_and_r2(monthly, banpo_monthly, asset, 1.0, int(lag), excl_start, excl_end)
@@ -262,29 +264,59 @@ if banpo_base_value:
         hovertemplate="%{x|%Y-%m-%d}<br>지수 %{y:.1f}<extra>반포자이 실거래</extra>",
     ))
 
-for asset in selected_assets:
+# 비교 자산은 이제 지수(=100)로 정규화하지 않고 원래 단위(또는 λ 변환값)를
+# 그대로 보여주므로, 여러 자산을 동시에 선택하면 서로 스케일이 완전히 달라
+# 한 보조축을 같이 쓸 수 없다 — 선택한 자산마다 독립된 오른쪽 축(y2,y3,...)을
+# 하나씩 배정하고, 두 번째 축부터는 anchor="free"로 플롯 영역 바깥쪽에
+# 차례로 겹치지 않게 늘어놓는다(x축 도메인을 그만큼 왼쪽으로 줄여 자리를 만듦).
+MARGIN_STEP = 0.08
+n_assets = len(selected_assets)
+right_edge = max(0.3, 1.0 - MARGIN_STEP * max(n_assets - 1, 0))
+extra_axis_layout: dict[str, dict] = {}
+overlap_candidates = [banpo_base.index.min()] if not banpo_base.empty else []
+
+for i, asset in enumerate(selected_assets):
     lam = float(st.session_state[f"lam_{asset}"])
     lag = int(st.session_state[f"lag_{asset}"])
-    if display_mode.get(asset) == "λ 변환 데이터(지수)":
-        series = pd.Series(transform(monthly[asset].to_numpy(), lam), index=monthly[asset].index)
+    if display_mode.get(asset) == "λ 변환 데이터":
+        values = transform(monthly[asset].to_numpy(), lam)
         label = f"{asset}(λ={lam:g} 변환)"
+        axis_title = f"{asset}(λ={lam:g} 변환값)"
     else:
-        series = monthly[asset]
+        values = monthly[asset].to_numpy()
         label = asset
-    idx = to_index100(series)
+        axis_title = f"{asset}(원래 값)"
+    series = pd.Series(values, index=monthly[asset].index)
     # R² 계산(fit_and_r2)은 asset[t-lag]를 반포자이[t]와 짝짓는다 — 그 "예측
     # 대상 시점(t)"에 맞춰 그리려면 asset 값을 실제 관측 시점보다 lag개월
     # 뒤로 밀어서 표시해야 한다. 즉 이 차트의 x축 위치는 그 자산의 실제
     # 관측 시점이 아니라, "그 값이 반포자이에 반영됐다고 가정하는 시점"이다.
-    display_x = (idx.index + lag).to_timestamp()
+    display_x = (series.index + lag).to_timestamp()
     if lag != 0:
         label += f", {lag:+d}개월 래그"
+
+    first_valid_period = monthly[asset].dropna().index.min()
+    if pd.notna(first_valid_period):
+        overlap_candidates.append((first_valid_period + lag).to_timestamp())
+
+    axis_num = i + 2
+    trace_axis = f"y{axis_num}"
+    layout_axis_key = f"yaxis{axis_num}"
     fig.add_trace(go.Scatter(
-        x=display_x, y=idx.values, mode="lines", name=label,
+        x=display_x, y=series.values, mode="lines", name=label,
         line=dict(color=COLORS.get(asset)),
-        yaxis="y2",
-        hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + label + "</extra>",
+        yaxis=trace_axis,
+        hovertemplate="%{x|%Y-%m}<br>%{y:,.3g}<extra>" + label + "</extra>",
     ))
+    axis_entry = dict(
+        title=dict(text=axis_title, font=dict(color=COLORS.get(asset))),
+        overlaying="y", side="right", showgrid=False,
+        tickfont=dict(color=COLORS.get(asset)),
+    )
+    if i >= 1:
+        axis_entry["anchor"] = "free"
+        axis_entry["position"] = min(1.0, right_edge + MARGIN_STEP * i)
+    extra_axis_layout[layout_axis_key] = axis_entry
 
     if show_regression_line and fit_results.get(asset) is not None and banpo_base_value:
         # 회귀식(fit_and_r2가 구한 slope/intercept)에 이 자산의 실제 값(source_month
@@ -306,7 +338,7 @@ for asset in selected_assets:
         ))
 
 _first_jan1 = pd.Timestamp(year=max(banpo_raw_trend.index.min().year, 2005), month=1, day=1)
-fig.update_xaxes(
+xaxis_kwargs = dict(
     tickformat="%Y", dtick="M12", tick0=_first_jan1.isoformat(),
     rangeslider=dict(visible=True),
     rangeselector=dict(buttons=[
@@ -316,32 +348,45 @@ fig.update_xaxes(
         dict(step="all", label="전체"),
     ]),
 )
+if n_assets >= 2:
+    xaxis_kwargs["domain"] = [0.0, right_edge]
+if overlap_candidates:
+    # 선택한 자산(들)과 반포자이가 "둘 다" 값을 가진 가장 이른 날짜를 차트의
+    # 기본(최초) 보이는 구간의 시작일로 잡는다 — 그래야 처음 열었을 때부터
+    # 모든 선이 공백 없이 보인다. "전체" 버튼을 누르면 이 제한 없이 데이터
+    # 전체 기간을 볼 수 있다(아래 범위는 기본 보기에만 적용, 데이터 자체를
+    # 자르지 않는다).
+    overlap_start = max(overlap_candidates)
+    all_x = [x for tr in fig.data for x in pd.to_datetime(tr.x)] if fig.data else []
+    data_max = max(all_x) if all_x else None
+    if data_max is not None and overlap_start < data_max:
+        xaxis_kwargs["range"] = [overlap_start.isoformat(), data_max.isoformat()]
+fig.update_xaxes(**xaxis_kwargs)
 layout_kwargs = dict(
-    height=460, margin=dict(t=60, b=10), hovermode="closest",
+    height=460, margin=dict(t=60, b=10, r=10 + 60 * max(n_assets - 1, 0)), hovermode="closest",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
     yaxis=dict(title="반포자이 지수(첫 유효월=100)"),
 )
-if selected_assets:
-    layout_kwargs["yaxis2"] = dict(
-        title="비교 자산 지수(첫 유효월=100)",
-        overlaying="y", side="right", showgrid=False,
-    )
+layout_kwargs.update(extra_axis_layout)
 fig.update_layout(**layout_kwargs)
 render_zoomable_chart(fig, height=460)
 st.caption(
     "하단 슬라이더로 구간을 드래그해 확대, 상단 버튼으로 빠른 기간 이동이 가능합니다 — "
-    "확대하면 두 Y축 모두 각자 화면에 보이는 구간의 데이터에 맞춰 독립적으로 다시 "
-    "스케일됩니다. 비교 자산은 반포자이와 변동폭(스케일)이 크게 달라 같은 축을 쓰면 "
-    "한쪽이 거의 평평해 보이므로, 오른쪽의 별도 축(보조축)에 그립니다 — 두 선 모두 "
-    "자신의 첫 유효월=100 기준 '지수'이므로, 눈금 위치가 같다고 실제 값이 같다는 뜻은 "
-    "아니며 시간에 따른 등락의 '모양'(고점·저점 타이밍, 등락 비율)을 비교하는 용도입니다. "
-    "'λ 변환 데이터'도 같은 방식(첫 유효월=100)으로 다시 지수화해서 보여줍니다. "
-    "래그(개월)를 설정한 자산은 그 선 자체를 래그만큼 뒤로(미래 방향으로) 밀어서 "
-    "그립니다 — 반포자이가 그 자산을 뒤늦게 따라가는 경우가 많아, 예를 들어 "
-    "래그=6이면 '그 자산의 어떤 시점 값'을 '그로부터 6개월 뒤'의 x축 위치에 표시해 "
-    "반포자이의 같은 시점 움직임과 나란히 비교할 수 있게 합니다(R² 계산과 동일한 "
-    "대응 관계). 즉 이 선의 x축 위치는 실제 관측 시점이 아니라 '반포자이에 반영됐다고 "
-    "가정하는 시점'입니다."
+    "확대하면 모든 Y축이 각자 화면에 보이는 구간의 데이터에 맞춰 독립적으로 다시 "
+    "스케일됩니다. 반포자이(왼쪽 축, 첫 유효월=100 기준 지수)와 비교 자산은 변동폭"
+    "(스케일)이 크게 달라 같은 축을 쓰면 한쪽이 거의 평평해 보이므로, 비교 자산마다 "
+    "오른쪽에 자신만의 축을 따로 둡니다(둘 이상 선택하면 축이 여러 개 나란히 붙습니다). "
+    "그 축에는 '원 데이터'를 골랐으면 그 자산의 원래 값(원·포인트 등 단위 그대로), "
+    "'λ 변환 데이터'를 골랐으면 설정한 λ로 거듭제곱(또는 λ=0이면 로그) 변환한 값이 "
+    "그대로 표시됩니다 — 더 이상 100 기준으로 지수화하지 않으므로, 자산별 축의 눈금"
+    "(숫자)이 서로 달라도 정상입니다. 래그(개월)를 설정한 자산은 그 선 자체를 래그만큼 "
+    "뒤로(미래 방향으로) 밀어서 그립니다 — 반포자이가 그 자산을 뒤늦게 따라가는 경우가 "
+    "많아, 예를 들어 래그=6이면 '그 자산의 어떤 시점 값'을 '그로부터 6개월 뒤'의 x축 "
+    "위치에 표시해 반포자이의 같은 시점 움직임과 나란히 비교할 수 있게 합니다(R² 계산과 "
+    "동일한 대응 관계). 즉 이 선의 x축 위치는 실제 관측 시점이 아니라 '반포자이에 "
+    "반영됐다고 가정하는 시점'입니다. 차트를 처음 열면 선택한 자산(들)과 반포자이가 "
+    "모두 값을 가진 가장 이른 시점부터 보여주며, 더 이전 기간까지 보려면 '전체' 버튼을 "
+    "누르세요."
 )
 
 if selected_assets:
@@ -366,7 +411,7 @@ if selected_assets:
                 st.markdown(f"**{asset}**")
                 lam = float(st.session_state[f"lam_{asset}"])
                 lag = int(st.session_state[f"lag_{asset}"])
-                effective_lam = lam if st.session_state.get(f"disp_{asset}") == "λ 변환 데이터(지수)" else 1.0
+                effective_lam = lam if st.session_state.get(f"disp_{asset}") == "λ 변환 데이터" else 1.0
                 w_excl_start = w_excl_end = None
                 if st.session_state.get(f"excl_on_{asset}"):
                     rng = st.session_state.get(f"excl_range_{asset}")
