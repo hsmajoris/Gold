@@ -24,6 +24,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from gold_dashboard import config
 from gold_dashboard import data_sources as ds
 from gold_dashboard.chart_utils import render_zoomable_chart
 
@@ -32,7 +33,9 @@ st.caption(
     "기본으로는 반포자이 84㎡ 실거래가(점=개별 체결가, 선=10건 이동평균 추세)만 보여줍니다. "
     "아래에서 비교하고 싶은 자산을 선택하면 그 자산이 월별 지수로 차트에 추가되고, λ(거듭제곱"
     " 변환)·래그(개월)를 조절하며 반포자이 추세와의 선형 적합도(R²)도 확인할 수 있습니다. "
-    "매매신호와는 무관한 순수 통계 비교 도구입니다."
+    "매매신호와는 무관한 순수 통계 비교 도구입니다. 날짜는 실제 계약일 기준입니다(백테스트 "
+    "⑧ 기준은 실거래 신고기한 지연을 반영해 계약일+45일로 미뤄서 쓰지만, 이 페이지는 매매 "
+    "신호를 만들지 않으므로 그 지연 없이 원래 계약일을 그대로 씁니다)."
 )
 
 ASSET_TICKERS = {
@@ -66,7 +69,17 @@ def load_raw_series() -> dict[str, pd.Series]:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_banpo_raw_and_trend() -> pd.DataFrame:
-    return ds.fetch_banpo_xi_raw_and_trend()
+    # 캐시 파일(data/banpo_xi_trend.json)은 신고기한 지연을 더한 "확인 가능일"
+    # (계약일+45일, config.BANPO_REPORTING_LAG_DAYS — look-ahead bias 방지용,
+    # 백테스트 ⑧ 기준이 실제 매매 신호를 만드는 데 꼭 필요한 보수적 지연)로
+    # 인덱싱돼 있다. 이 페이지는 매매신호를 전혀 쓰지 않는 순수 통계 비교
+    # 도구라 그 지연이 굳이 필요하지 않고, (엑셀로 내보낸 비교 자료와 동일한
+    # 기준으로 비교하기 위해) 실제 계약일로 되돌려서 쓴다 — 이 되돌림은 이
+    # 페이지 안에서만 적용되고, 캐시 파일 자체나 백테스트 페이지에는 영향이
+    # 없다(fetch_banpo_xi_raw_and_trend가 돌려주는 DataFrame의 복사본만 바꿈).
+    df = ds.fetch_banpo_xi_raw_and_trend().copy()
+    df.index = df.index - pd.Timedelta(days=config.BANPO_REPORTING_LAG_DAYS)
+    return df
 
 
 def monthly_mean_frame(series_dict: dict[str, pd.Series]) -> pd.DataFrame:
@@ -223,6 +236,16 @@ if selected_assets:
                 st.caption(f"표본 {display_result['n']}개월")
 
 st.subheader("지수 비교 차트")
+show_regression_line = False
+if selected_assets:
+    show_regression_line = st.checkbox(
+        "반포자이 회귀분석선 표시 (선택한 자산의 회귀식으로 역산한 반포자이 예측값)",
+        value=False, key="show_regression_line",
+        help="각 선택 자산의 λ·래그로 적합된 회귀식(기울기·절편)에 그 자산의 실제 값을 "
+             "넣었을 때 나오는 '반포자이 예측값'을 반포자이와 같은 축에 점선으로 겹쳐 "
+             "보여줍니다. 실제 반포자이 추세선과 가까울수록 그 회귀식의 적합도(R²)가 "
+             "높다는 뜻입니다.",
+    )
 fig = go.Figure()
 
 banpo_base = banpo_raw_trend["trend"].dropna()
@@ -264,6 +287,25 @@ for asset in selected_assets:
         yaxis="y2",
         hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + label + "</extra>",
     ))
+
+    if show_regression_line and fit_results.get(asset) is not None and banpo_base_value:
+        # 회귀식(fit_and_r2가 구한 slope/intercept)에 이 자산의 실제 값(source_month
+        # 기준, 반포자이[t]와 짝지어진 그 x)을 넣어 "반포자이 예측값"을 구하고, 반포자이
+        # 자신의 다른 트레이스와 비교할 수 있도록 같은 지수(=100) 기준·주축에 그린다.
+        res = fit_results[asset]
+        source_month = monthly.index - lag
+        asset_vals = monthly[asset].reindex(source_month).to_numpy()
+        x_transformed = transform(asset_vals, lam)
+        predicted_raw = res["intercept"] + res["slope"] * x_transformed
+        predicted_idx = predicted_raw / banpo_base_value * 100.0
+        pred_series = pd.Series(predicted_idx, index=monthly.index)
+        reg_label = f"반포자이 회귀선(vs {asset})"
+        fig.add_trace(go.Scatter(
+            x=pred_series.index.to_timestamp(), y=pred_series.values, mode="lines",
+            name=reg_label,
+            line=dict(color=COLORS.get(asset), dash="dot", width=1.5),
+            hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + reg_label + "</extra>",
+        ))
 
 _first_jan1 = pd.Timestamp(year=max(banpo_raw_trend.index.min().year, 2005), month=1, day=1)
 fig.update_xaxes(
