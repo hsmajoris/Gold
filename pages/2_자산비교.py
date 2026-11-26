@@ -467,13 +467,13 @@ st.subheader("시나리오 계산기 — 반포자이가 N년간 k배 오르면 
 st.caption(
     "선택하지 않은 자산은 기본 λ·래그 값을 사용합니다. λ(거듭제곱 변환)·래그로 R²가 높게 "
     "맞춰졌다는 건, 그 변환·래그를 적용한 자산 값이 반포자이와 거의 같은 '비율'로 움직여 "
-    "왔다는 뜻입니다. 그래서 '오늘의 실제 자산 가격'(가장 최근 거래일의 종가·시세 — 월평균이 "
-    "아니라 매일 최신화됩니다)을 기준점으로 놓고, 반포자이가 목표 "
-    "배수에 도달할 때 그 변환된 값이 과거와 같은 비율 관계(회귀 기울기)로 얼마나 더 움직여야 "
-    "하는지를 구한 뒤, 거듭제곱을 반대로(예: 세제곱근을 변환으로 썼다면 다시 세제곱) 적용해 "
-    "자산의 실제 가격으로 되돌립니다 — 예측이 아니라 '과거의 비율 관계를 오늘 가격에서부터 "
-    "그대로 연장하면 나오는 숫자'일 뿐이며, 특히 관측 범위를 크게 벗어나는 추정은 신뢰도가 "
-    "급격히 떨어집니다(아래 ⚠️ 표시 참고)."
+    "왔다는 뜻입니다. 반포자이가 지금 값·목표 값일 때 각각 이 회귀식(절편 포함)이 그대로 "
+    "요구하는 자산 가격을 구한 뒤, 거듭제곱을 반대로(예: 세제곱근을 변환으로 썼다면 다시 "
+    "세제곱) 적용해 자산의 실제 가격으로 되돌립니다 — 오늘의 실제 시세에 선을 맞추는 보정은 "
+    "하지 않습니다(16년치 데이터로 적합한 회귀식을 가장 최근 하루치 관측값에 과최적화시키는 "
+    "셈이기 때문). 예측이 아니라 '과거의 비율 관계를 그대로 연장하면 나오는 숫자'일 뿐이며, "
+    "특히 관측 범위를 크게 벗어나는 추정이나 실제 시세와 모델 매입단가의 괴리가 큰 경우는 "
+    "신뢰도가 급격히 떨어집니다(아래 ⚠️ 표시 참고)."
 )
 
 scenario_cols = st.columns(3)
@@ -501,37 +501,27 @@ st.markdown(
 Z_95 = 1.96  # 정규근사 95% 구간(표본이 보통 100개월 이상이라 t분포와 거의 같음)
 
 
-def invert_x_with_interval(
-    result: dict, asset_now: float, lam: float, banpo_now: float, banpo_target: float, z: float = Z_95,
-):
-    """R²가 높다는 건 transform(자산,λ)(래그 반영)이 log(반포자이)와 거의 선형
-    으로 같이 움직여 왔다는 뜻이다 — 그래서 "반포자이가 목표 배수가 되면, 그
-    자산의 변환된 값도 같은 비율 관계(회귀 기울기)만큼 더 움직였을 것"이라고
-    보고, '오늘의 실제 자산 가격'(x_now = transform(asset_now,λ))을 기준점으로
-    놓은 뒤, 반포자이의 log 변화량(log(banpo_target)-log(banpo_now))을 회귀
-    기울기로 나눠 자산의 transform값이 거기서 얼마나 더 움직여야 하는지 구한다
-    (x_point = x_now + Δlog(반포자이)/slope). 회귀식을 절편까지 포함해 통째로
-    역으로 푸는 대신 이렇게 "오늘 가격에서 시작한 상대적 이동"으로 계산하는
-    이유: 절편을 쓰면 "오늘의 실제 자산 가격이 과거 표본 대비 이미 얼마나
-    앞서/뒤처져 있는지"까지 함께 반영돼, 최근 단기간 급등한 자산에서 "목표
-    배수보다 오히려 하락해야 한다" 같은 반직관적인 결과가 나오기 쉽다(예:
-    최근 AI 랠리로 급등한 하이닉스·코스피). 잔차 산포·표본 크기·(x의 관측
-    평균에서 얼마나 떨어져 있는지=외삽 정도)를 반영한 근사 예측구간은 기존과
-    같은 공식(margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 이 점추정 x에서 평가해서
-    구한다. (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는 음수(=이 λ 변환에서 도달
-    불가능한 영역)일 수 있으며 호출부에서 그 경우를 따로 처리해야 한다."""
-    slope = result["slope"]
-    x_now = float(transform(np.array([asset_now]), lam)[0])
-    y_now = np.log(banpo_now)
-    y_target = np.log(banpo_target)
-    x_point = x_now + (y_target - y_now) / slope
+def invert_x_with_interval(result: dict, y_target: float, z: float = Z_95):
+    """회귀식 log(반포자이) = intercept + slope×x를 "있는 그대로" 역으로 풀어
+    x의 점추정값을 구한다 — 오늘의 실제 자산 가격으로 선을 끌어다 맞추는
+    보정(앵커링)은 하지 않는다. 그런 보정은 16년치 과거 데이터로 적합한
+    회귀선을, 가장 최근 하루치 시세(노이즈일 수 있음)에 맞춰 다시 구부리는
+    셈이라 일종의 과최적화이기 때문이다 — 매수단가·매도단가는 이 회귀식이
+    과거 전체를 보고 내놓는 예측치이며, 오늘 실제 시세가 얼마든 달라지지
+    않는다(그 둘 사이의 괴리는 참고용으로 별도 표시한다). 잔차 산포·표본
+    크기·(x의 관측 평균에서 얼마나 떨어져 있는지=외삽 정도)를 반영한 근사
+    예측구간은 표준적인 '새 관측치에 대한 예측구간' 공식(margin = z·s·
+    sqrt(1+1/n+(x-x̄)²/Sxx))을 이 점추정 x에서 평가해서 구한다. (x_point,
+    x_lo, x_hi) 반환 — x_lo/x_hi는 음수(=이 λ 변환에서 도달 불가능한 영역)
+    일 수 있으며 호출부에서 그 경우를 따로 처리해야 한다."""
+    slope, intercept = result["slope"], result["intercept"]
+    x_point = (y_target - intercept) / slope
     se, n, x_mean, sxx = result["resid_se"], result["n"], result["x_mean"], result["sxx"]
     if not np.isfinite(se) or sxx <= 0:
         return x_point, None, None
     margin_y = z * se * np.sqrt(1 + 1.0 / n + (x_point - x_mean) ** 2 / sxx)
     y_lo, y_hi = y_target - margin_y, y_target + margin_y
-    x_a = x_now + (y_lo - y_now) / slope
-    x_b = x_now + (y_hi - y_now) / slope
+    x_a, x_b = (y_lo - intercept) / slope, (y_hi - intercept) / slope
     return x_point, min(x_a, x_b), max(x_a, x_b)  # slope<0이면 뒤집히므로 min/max로 정렬
 
 
@@ -549,34 +539,38 @@ for asset in CONTROLLABLE_ASSETS:
     effective_lam = float(st.session_state.get(f"lam_{asset}", DEFAULT_LAMBDA[asset]))
     effective_lag = int(st.session_state.get(f"lag_{asset}", DEFAULT_LAG_MONTHS[asset]))
     result = fit_results.get(asset) or fit_and_r2(monthly, banpo_monthly, asset, effective_lam, effective_lag, None, None)
-    # R²·회귀식 적합에는 노이즈를 줄이려고 월별 평균(monthly)을 쓰지만, "오늘 가격"은
-    # 매입단가로 쓰이는 값이라 월 전체 평균이 아니라 가장 최근 거래일의 실제가를 써야
-    # 한다 — 변동성이 큰 자산(비트코인 등)은 이번 달 평균과 오늘 실제가의 차이가
-    # 꽤 클 수 있다(예: 2026년 11월처럼 한 달 새 20% 넘게 빠진 달). raw_series는
-    # load_raw_series()가 받아온 일별(또는 거래일별) 원 데이터라 매일 자동으로 최신화된다.
-    asset_now_series = raw_series[asset].dropna()
-    asset_now = asset_now_series.iloc[-1] if not asset_now_series.empty else None
-    if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
+    # 실제 시장가(참고용 — 계산에는 안 쓰고, 모델 매입단가와 얼마나 괴리돼 있는지
+    # 보여주는 용도로만 사용). raw_series는 일별 원 데이터라 매일 최신화된다.
+    actual_now_series = raw_series[asset].dropna()
+    actual_now = actual_now_series.iloc[-1] if not actual_now_series.empty else None
+    if result is None or actual_now is None or abs(result["slope"]) < 1e-12:
         rows.append({
-            "자산": asset, "R²": "-", "회귀식": "-", "매입단가(오늘)": "-", "매도단가(함의가격)": "-",
-            "현재 대비": "-", "연복리(CAGR)": "-",
+            "자산": asset, "R²": "-", "회귀식": "-", "매입단가(모델)": "-", "매도단가(모델)": "-",
+            "실제 오늘 시세": "-", "현재 대비": "-", "연복리(CAGR)": "-",
             "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "회귀 불가(표본 부족)",
         })
         continue
     equation = format_equation(result, effective_lam)
-    x_required, x_lo, x_hi = invert_x_with_interval(result, asset_now, effective_lam, banpo_now, banpo_target)
-    if x_required <= 0:
+    # 매입단가·매도단가 둘 다 "회귀식 자체"(절편 포함, 오늘 시세로 보정하지 않음)로
+    # 구한다 — 오늘 시세에 맞춰 선을 끌어오면 가장 최근 하루치 노이즈에 과최적화되는
+    # 셈이라, 16년치 데이터로 적합한 회귀식의 예측치를 그대로 쓴다.
+    x_buy, _, _ = invert_x_with_interval(result, np.log(banpo_now))
+    x_sell, x_lo, x_hi = invert_x_with_interval(result, np.log(banpo_target))
+    if x_buy <= 0 or x_sell <= 0:
         rows.append({
             "자산": asset, "R²": f"{result['r2']:.3f}", "회귀식": equation,
-            "매입단가(오늘)": f"{asset_now:,.0f}원", "매도단가(함의가격)": "-", "현재 대비": "-",
+            "매입단가(모델)": "-" if x_buy <= 0 else f"{inverse_transform(np.array([x_buy]), effective_lam)[0]:,.0f}원",
+            "매도단가(모델)": "-", "실제 오늘 시세": f"{actual_now:,.0f}원", "현재 대비": "-",
             "연복리(CAGR)": "-", "반포자이 대비": "-",
             "투자금액 → 예상액(억원, 95% 구간)": "회귀식상 불가능(음수)",
         })
         continue
-    asset_required = float(inverse_transform(np.array([x_required]), effective_lam)[0])
-    asset_fold = asset_required / asset_now
+    asset_bought = float(inverse_transform(np.array([x_buy]), effective_lam)[0])
+    asset_required = float(inverse_transform(np.array([x_sell]), effective_lam)[0])
+    asset_fold = asset_required / asset_bought
     asset_cagr = asset_fold ** (1.0 / horizon_years) - 1.0
     relative_fold = asset_fold / fold_change
+    gap = asset_bought / actual_now  # 1에서 멀수록 최근 실제 시세가 모델의 역사적 관계에서 벗어나 있다는 뜻
 
     # x_lo/x_hi(또는 둘 다 음수) → 95% 구간이 그 λ 변환에서 아예 도달 불가능한
     # 쪽은 "N/A(불가능)"로 표시 — 점추정 자체가 불가능한 경우(위에서 continue)와
@@ -588,7 +582,7 @@ for asset in CONTROLLABLE_ASSETS:
             if x_val <= 0:
                 return None
             req = float(inverse_transform(np.array([x_val]), effective_lam)[0])
-            return investment_amount * (req / asset_now)
+            return investment_amount * (req / asset_bought)
 
         invest_lo, invest_hi = _invest_value(x_lo), _invest_value(x_hi)
         if invest_lo is None and invest_hi is None:
@@ -602,8 +596,9 @@ for asset in CONTROLLABLE_ASSETS:
         "자산": asset,
         "R²": f"{result['r2']:.3f}",
         "회귀식": equation,
-        "매입단가(오늘)": f"{asset_now:,.0f}원",
-        "매도단가(함의가격)": f"{asset_required:,.0f}원",
+        "매입단가(모델)": f"{asset_bought:,.0f}원",
+        "매도단가(모델)": f"{asset_required:,.0f}원",
+        "실제 오늘 시세": f"{actual_now:,.0f}원" + (" ⚠️" if gap > 1.5 or gap < 0.67 else ""),
         "현재 대비": f"{asset_fold:.2f}배",
         "연복리(CAGR)": f"{asset_cagr:.1%}",
         "반포자이 대비": f"{relative_fold:.2f}배 " + ("오버퍼폼" if relative_fold >= 1 else "언더퍼폼"),
@@ -612,15 +607,17 @@ for asset in CONTROLLABLE_ASSETS:
 
 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 st.caption(
-    "'매입단가(오늘)'은 그 자산의 가장 최근 거래일 실제가, '매도단가(함의가격)'은 반포자이가 "
-    "목표 배수에 도달할 때 회귀식이 요구하는 그 자산의 가격입니다 — '현재 대비' 배수는 "
-    "이 둘의 비율(매도단가÷매입단가)입니다. 투자금액을 바꿔도 이 배수 자체는 바뀌지 않습니다 "
-    "— 배수는 가격 궤적(매입단가→매도단가)만으로 정해지고, 투자금액은 그 배수를 곱해 "
-    "최종 원화 금액으로 환산하는 데만 쓰입니다(아래 '투자금액 → 예상액' 참고).\n\n"
-    "'회귀식'은 그 자산에 설정된 λ·래그로 적합된 실제 회귀식입니다 — '현재 대비' 배수는 "
-    "이 식의 기울기(slope)만큼, 오늘의 실제 자산·반포자이 가격을 기준점으로 삼아 비율로 "
-    "이동시킨 결과입니다(절편은 이 계산에 쓰지 않습니다 — 왜 그런지는 위 설명 참고). "
-    "'반포자이 대비' 배수는 (그 자산의 함의 배수) ÷ (반포자이 목표 배수)입니다 — 1배보다 "
+    "'매입단가(모델)'·'매도단가(모델)'는 둘 다 회귀식(절편 포함) 그대로의 예측치입니다 — "
+    "오늘 실제 시세에 맞춰 선을 보정하지 않으므로, 오늘 하루 가격이 올랐다 내렸다 해도 이 "
+    "두 값과 '현재 대비' 배수는 바뀌지 않습니다(그렇게 오늘 시세로 선을 끌어오는 건 16년치 "
+    "데이터로 적합한 회귀식을 가장 최근 하루치 관측값에 과최적화시키는 셈이라 하지 않습니다). "
+    "'실제 오늘 시세'는 참고용으로 따로 보여주는 값으로, 계산에는 쓰이지 않습니다 — '매입단가"
+    "(모델)'과 크게 다르면(⚠️, 1.5배 초과 또는 0.67배 미만) 그 자산이 최근 반포자이와의 "
+    "과거 관계에서 벗어나 움직이고 있다는 뜻이니 아래 배수를 더 신중하게 해석해야 합니다.\n\n"
+    "'회귀식'은 그 자산에 설정된 λ·래그로 적합된 실제 회귀식입니다 — '매입단가(모델)'·'매도단가"
+    "(모델)' 모두 이 식(절편 포함)에 반포자이의 오늘 값·목표 값을 각각 넣어 구한 것이고, "
+    "'현재 대비' 배수는 이 둘의 비율입니다. '반포자이 대비' 배수는 (그 자산의 함의 배수) ÷ "
+    "(반포자이 목표 배수)입니다 — 1배보다 "
     "크면 반포자이보다 더 가파르게 올라야(오버퍼폼) 성립하고, 1배보다 작으면 덜 올라도"
     "(혹은 떨어져도, 1.0 미만) 성립한다는 뜻입니다."
 )
