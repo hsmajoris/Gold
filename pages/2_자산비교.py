@@ -30,7 +30,7 @@ from gold_dashboard.chart_utils import render_zoomable_chart
 
 st.title("자산군 비교 — 반포자이 기준 + 선택 자산 비교")
 st.caption(
-    "기본으로는 반포자이 84㎡ 실거래가(점=개별 체결가, 선=10건 이동평균 추세)만 보여줍니다. "
+    "기본으로는 반포자이 84㎡ 실거래가(점=개별 체결가)만 보여줍니다. "
     "아래에서 비교하고 싶은 자산을 선택하면 그 자산이 월별 지수로 차트에 추가되고, λ(거듭제곱"
     " 변환)·래그(개월)를 조절하며 반포자이 추세와의 선형 적합도(R²)도 확인할 수 있습니다. "
     "매매신호와는 무관한 순수 통계 비교 도구입니다. 날짜는 실제 계약일 기준입니다(백테스트 "
@@ -247,7 +247,7 @@ if selected_assets:
         value=False, key="show_regression_line",
         help="각 선택 자산의 λ·래그로 적합된 회귀식(기울기·절편)에 그 자산의 실제 값을 "
              "넣었을 때 나오는 '반포자이 예측값'을 반포자이와 같은 축에 점선으로 겹쳐 "
-             "보여줍니다. 실제 반포자이 추세선과 가까울수록 그 회귀식의 적합도(R²)가 "
+             "보여줍니다. 실제 반포자이 실거래 점들과 가까울수록 그 회귀식의 적합도(R²)가 "
              "높다는 뜻입니다.",
     )
 fig = go.Figure()
@@ -256,16 +256,10 @@ banpo_base = banpo_raw_trend["trend"].dropna()
 banpo_base_value = banpo_base.iloc[0] if not banpo_base.empty else None
 if banpo_base_value:
     raw_idx = banpo_raw_trend["raw"] / banpo_base_value * 100.0
-    trend_idx = banpo_raw_trend["trend"] / banpo_base_value * 100.0
     fig.add_trace(go.Scatter(
         x=raw_idx.index, y=raw_idx.values, mode="markers", name="반포자이 실거래(개별)",
         marker=dict(size=4, color=COLORS[BENCHMARK], opacity=0.45),
         hovertemplate="%{x|%Y-%m-%d}<br>지수 %{y:.1f}<extra>반포자이 실거래</extra>",
-    ))
-    fig.add_trace(go.Scatter(
-        x=trend_idx.index, y=trend_idx.values, mode="lines", name="반포자이 추세",
-        line=dict(color=COLORS[BENCHMARK], width=2),
-        hovertemplate="%{x|%Y-%m-%d}<br>지수 %{y:.1f}<extra>반포자이 추세</extra>",
     ))
 
 for asset in selected_assets:
@@ -404,10 +398,12 @@ with scenario_cols[0]:
 with scenario_cols[1]:
     horizon_years = st.number_input("기간(년)", min_value=1, max_value=30, value=5, step=1)
 with scenario_cols[2]:
-    investment_amount = st.number_input(
-        "다른 자산에 넣을 내 투자금액(원)", min_value=0, value=10_000_000, step=1_000_000,
-        help="반포자이가 아니라 비교 자산 쪽에 지금 이 금액을 투자한다고 가정합니다.",
+    investment_amount_eok = st.number_input(
+        "다른 자산에 넣을 내 투자금액(억원)", min_value=0.0, value=1.0, step=0.01, format="%.2f",
+        help="단위는 억원이며 소수점 입력이 가능합니다. 예: 0.1 입력 시 1,000만원. "
+             "반포자이가 아니라 비교 자산 쪽에 지금 이 금액을 투자한다고 가정합니다.",
     )
+    investment_amount = investment_amount_eok * 1e8
 
 banpo_now = banpo_monthly.dropna().iloc[-1]
 banpo_target = banpo_now * fold_change
@@ -450,14 +446,14 @@ for asset in CONTROLLABLE_ASSETS:
     if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
         rows.append({
             "자산": asset, "R²": "-", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-",
-            "반포자이 대비": "-", "투자금액 → 예상액(95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
+            "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
         })
         continue
     x_required, x_lo, x_hi = invert_x_with_interval(result, banpo_target)
     if x_required <= 0:
         rows.append({
             "자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-",
-            "연복리(CAGR)": "-", "반포자이 대비": "-", "투자금액 → 예상액(95% 구간)": "-",
+            "연복리(CAGR)": "-", "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "-",
             "비고": "회귀식상 불가능(음수)",
         })
         continue
@@ -483,8 +479,8 @@ for asset in CONTROLLABLE_ASSETS:
         if invest_lo is None and invest_hi is None:
             invest_label = "구간 전체가 불가능(λ 변환상 음수)"
         else:
-            lo_text = f"{invest_lo:,.0f}원" if invest_lo is not None else "0원 미만(불가능)"
-            hi_text = f"{invest_hi:,.0f}원" if invest_hi is not None else "상한 없음"
+            lo_text = f"{invest_lo / 1e8:,.2f}억원" if invest_lo is not None else "0억원 미만(불가능)"
+            hi_text = f"{invest_hi / 1e8:,.2f}억원" if invest_hi is not None else "상한 없음"
             invest_label = f"{lo_text} ~ {hi_text}"
 
     rows.append({
@@ -494,7 +490,7 @@ for asset in CONTROLLABLE_ASSETS:
         "현재 대비": f"{asset_fold:.2f}배",
         "연복리(CAGR)": f"{asset_cagr:.1%}",
         "반포자이 대비": f"{relative_fold:.2f}배 " + ("오버퍼폼" if relative_fold >= 1 else "언더퍼폼"),
-        "투자금액 → 예상액(95% 구간)": invest_label,
+        "투자금액 → 예상액(억원, 95% 구간)": invest_label,
         "비고": "⚠️ 관측 범위를 크게 벗어남(외삽)" if out_of_range else "",
     })
 
@@ -507,7 +503,7 @@ st.caption(
     "유지된다는 보장이 없어 특히 신뢰도가 낮습니다."
 )
 st.caption(
-    "'투자금액 → 예상액(95% 구간)'은 입력한 투자금액을 지금 이 자산에 넣었을 때, 반포자이가 "
+    "'투자금액 → 예상액(억원, 95% 구간)'은 입력한 투자금액을 지금 이 자산에 넣었을 때, 반포자이가 "
     "목표 배수에 도달하는 시점 기준으로 얼마가 될지를 95% 예측구간으로 보여줍니다 — 점추정(함의 "
     "가격)만 보여주면 실제로는 그 회귀식 주변에 흩어져 있던 과거 달(월)들의 산포를 숨기게 되므로, "
     "잔차 표준오차·표본 수·현재 추정치가 관측 데이터 평균에서 얼마나 떨어져 있는지(외삽 정도)를 "
