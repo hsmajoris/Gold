@@ -513,6 +513,15 @@ def invert_x_with_interval(
     return x_point, min(x_a, x_b), max(x_a, x_b)  # slope<0이면 뒤집히므로 min/max로 정렬
 
 
+def format_equation(result: dict, lam: float) -> str:
+    """fit_and_r2가 실제로 적합한 회귀식을 사람이 읽을 수 있는 문자열로 보여준다
+    — 시나리오 계산기가 '오늘 가격 기준 비율 이동' 방식을 쓰더라도, 그 이동폭을
+    정하는 기울기(slope)는 결국 이 식에서 나온 것이므로, 함의 가격 대신 이
+    식 자체를 보여주면 왜 그 숫자가 나왔는지 그대로 드러난다."""
+    x_term = "log(자산)" if abs(lam) < 1e-9 else f"자산^{lam:g}"
+    return f"log(반포자이) = {result['intercept']:.3g} + {result['slope']:.3g}×{x_term}"
+
+
 rows = []
 for asset in CONTROLLABLE_ASSETS:
     effective_lam = float(st.session_state.get(f"lam_{asset}", DEFAULT_LAMBDA[asset]))
@@ -522,23 +531,23 @@ for asset in CONTROLLABLE_ASSETS:
     asset_now = asset_now_series.iloc[-1] if not asset_now_series.empty else None
     if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
         rows.append({
-            "자산": asset, "R²": "-", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-",
-            "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
+            "자산": asset, "R²": "-", "회귀식": "-", "현재 대비": "-", "연복리(CAGR)": "-",
+            "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "회귀 불가(표본 부족)",
         })
         continue
+    equation = format_equation(result, effective_lam)
     x_required, x_lo, x_hi = invert_x_with_interval(result, asset_now, effective_lam, banpo_now, banpo_target)
     if x_required <= 0:
         rows.append({
-            "자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-",
-            "연복리(CAGR)": "-", "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "-",
-            "비고": "회귀식상 불가능(음수)",
+            "자산": asset, "R²": f"{result['r2']:.3f}", "회귀식": equation, "현재 대비": "-",
+            "연복리(CAGR)": "-", "반포자이 대비": "-",
+            "투자금액 → 예상액(억원, 95% 구간)": "회귀식상 불가능(음수)",
         })
         continue
     asset_required = float(inverse_transform(np.array([x_required]), effective_lam)[0])
     asset_fold = asset_required / asset_now
     asset_cagr = asset_fold ** (1.0 / horizon_years) - 1.0
     relative_fold = asset_fold / fold_change
-    out_of_range = asset_required > result["asset_max"] * 1.5 or asset_required < result["asset_min"] * 0.67
 
     # x_lo/x_hi(또는 둘 다 음수) → 95% 구간이 그 λ 변환에서 아예 도달 불가능한
     # 쪽은 "N/A(불가능)"로 표시 — 점추정 자체가 불가능한 경우(위에서 continue)와
@@ -563,26 +572,26 @@ for asset in CONTROLLABLE_ASSETS:
     rows.append({
         "자산": asset,
         "R²": f"{result['r2']:.3f}",
-        "함의 가격": f"{asset_required:,.0f}" + ("⚠️" if out_of_range else ""),
+        "회귀식": equation,
         "현재 대비": f"{asset_fold:.2f}배",
         "연복리(CAGR)": f"{asset_cagr:.1%}",
         "반포자이 대비": f"{relative_fold:.2f}배 " + ("오버퍼폼" if relative_fold >= 1 else "언더퍼폼"),
         "투자금액 → 예상액(억원, 95% 구간)": invest_label,
-        "비고": "⚠️ 관측 범위를 크게 벗어남(외삽)" if out_of_range else "",
     })
 
 st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
 st.caption(
+    "'회귀식'은 그 자산에 설정된 λ·래그로 적합된 실제 회귀식입니다 — '현재 대비' 배수는 "
+    "이 식의 기울기(slope)만큼, 오늘의 실제 자산·반포자이 가격을 기준점으로 삼아 비율로 "
+    "이동시킨 결과입니다(절편은 이 계산에 쓰지 않습니다 — 왜 그런지는 위 설명 참고). "
     "'반포자이 대비' 배수는 (그 자산의 함의 배수) ÷ (반포자이 목표 배수)입니다 — 1배보다 "
-    "크면 반포자이보다 더 가파르게 올라야(오버퍼폼) 같은 회귀식이 성립하고, 1배보다 작으면 "
-    "덜 올라도(혹은 떨어져도, 1.0 미만) 성립한다는 뜻입니다. ⚠️ 표시는 함의 가격이 그 자산의 "
-    "과거 관측 범위(최소~최대)를 50% 넘게 벗어난 경우로, 회귀식의 형태가 그 구간에서도 "
-    "유지된다는 보장이 없어 특히 신뢰도가 낮습니다."
+    "크면 반포자이보다 더 가파르게 올라야(오버퍼폼) 성립하고, 1배보다 작으면 덜 올라도"
+    "(혹은 떨어져도, 1.0 미만) 성립한다는 뜻입니다."
 )
 st.caption(
     "'투자금액 → 예상액(억원, 95% 구간)'은 입력한 투자금액을 지금 이 자산에 넣었을 때, 반포자이가 "
-    "목표 배수에 도달하는 시점 기준으로 얼마가 될지를 95% 예측구간으로 보여줍니다 — 점추정(함의 "
-    "가격)만 보여주면 실제로는 그 회귀식 주변에 흩어져 있던 과거 달(월)들의 산포를 숨기게 되므로, "
+    "목표 배수에 도달하는 시점 기준으로 얼마가 될지를 95% 예측구간으로 보여줍니다 — '현재 대비' "
+    "배수(점추정) 하나만 보여주면 실제로는 그 회귀식 주변에 흩어져 있던 과거 달(월)들의 산포를 숨기게 되므로, "
     "잔차 표준오차·표본 수·현재 추정치가 관측 데이터 평균에서 얼마나 떨어져 있는지(외삽 정도)를 "
     "반영한 표준적인 예측구간 공식으로 범위를 계산합니다. 외삽이 심할수록(관측 범위를 크게 벗어날"
     "수록) 구간이 급격히 넓어지며, '상한 없음'·'불가능'은 95% 구간의 그 끝이 이 λ 변환에서 "
