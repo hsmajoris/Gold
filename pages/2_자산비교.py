@@ -264,20 +264,19 @@ if selected_assets:
                 st.caption(f"표본 {display_result['n']}개월")
 
 st.subheader("지수 비교 차트")
-show_regression_line = False
-if selected_assets:
-    show_regression_line = st.checkbox(
-        "반포자이 회귀분석선 표시 (선택한 자산의 회귀식으로 역산한 반포자이 예측값)",
-        value=False, key="show_regression_line",
-        help="각 선택 자산의 λ·래그로 적합된 회귀식(기울기·절편)에 그 자산의 실제 값을 "
-             "넣었을 때 나오는 '반포자이 예측값'을 반포자이와 같은 축에 점선으로 겹쳐 "
-             "보여줍니다. 실제 반포자이 실거래 점들과 가까울수록 그 회귀식의 적합도(R²)가 "
-             "높다는 뜻입니다.",
-    )
+show_regression_line = st.checkbox(
+    "반포자이 회귀추세선 표시 (실거래가 자체에 대한 로그-선형 회귀)",
+    value=False, key="show_regression_line",
+    help="비교 자산과 무관하게, 반포자이 실거래가(raw) 자체를 시간에 대해 "
+         "log(가격) = 절편 + 기울기×경과일수 형태로 회귀적합한 추세선입니다 — "
+         "부동산 가격처럼 복리로(비율로) 성장하는 값을 가장 잘 따라가는 단순한 "
+         "회귀선이라, 실거래 점들을 가장 가깝게 추종합니다.",
+)
 fig = go.Figure()
 
 banpo_base = banpo_raw_trend["trend"].dropna()
 banpo_base_value = banpo_base.iloc[0] if not banpo_base.empty else None
+banpo_raw_all = banpo_raw_trend["raw"].dropna()
 if banpo_base_value:
     # 캐시된 raw/trend 값은 "원시 거래금액"(총액, 원)이라, 차트에는 공급면적
     # 기준 평단가(천만원 단위)로 환산해서 보여준다 — 아래 BANPO_SUPPLY_AREA_PYEONG
@@ -290,6 +289,24 @@ if banpo_base_value:
         marker=dict(size=4, color=COLORS[BENCHMARK], opacity=0.45),
         hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.2f}천만원<extra>반포자이 실거래</extra>",
     ))
+
+    if show_regression_line and len(banpo_raw_all) >= 5:
+        # 선택한 비교 자산의 회귀식으로 "역산"하지 않고, 반포자이 실거래가(raw) 자체를
+        # 시간(경과일수)에 대해 바로 회귀적합한다 — 부동산 가격은 시간에 따라 복리로
+        # (비율로) 성장하므로 log(가격)이 시간에 선형이라고 보는 것이 자연스럽다
+        # (시나리오 계산기가 log(반포자이)를 쓰는 것과 같은 논리).
+        t_days = (banpo_raw_all.index - banpo_raw_all.index.min()).days.to_numpy(dtype=float)
+        log_y = np.log(banpo_raw_all.to_numpy())
+        t_slope, t_intercept = np.polyfit(t_days, log_y, 1)
+        t_pred = t_intercept + t_slope * t_days
+        t_r2 = 1 - np.sum((log_y - t_pred) ** 2) / np.sum((log_y - log_y.mean()) ** 2)
+        trend_pyeongga_cheonman = np.exp(t_pred) / BANPO_SUPPLY_AREA_PYEONG / CHEONMANWON
+        fig.add_trace(go.Scatter(
+            x=banpo_raw_all.index, y=trend_pyeongga_cheonman, mode="lines",
+            name=f"반포자이 회귀추세선(R²={t_r2:.3f})",
+            line=dict(color=COLORS[BENCHMARK], width=2, dash="dot"),
+            hovertemplate="%{x|%Y-%m-%d}<br>%{y:,.2f}천만원<extra>회귀추세선</extra>",
+        ))
 
 # 비교 자산은 이제 지수(=100)로 정규화하지 않고 원래 단위(또는 λ 변환값)를
 # 그대로 보여주므로, 여러 자산을 동시에 선택하면 서로 스케일이 완전히 달라
@@ -352,27 +369,6 @@ for i, asset in enumerate(selected_assets):
         axis_entry["anchor"] = "free"
         axis_entry["position"] = min(1.0, right_edge + MARGIN_STEP * i)
     extra_axis_layout[layout_axis_key] = axis_entry
-
-    if show_regression_line and fit_results.get(asset) is not None and banpo_base_value:
-        # 회귀식(fit_and_r2가 구한 slope/intercept)에 이 자산의 실제 값(source_month
-        # 기준, 반포자이[t]와 짝지어진 그 x)을 넣어 "반포자이 예측값(총액, 원)"을
-        # 구하고, 실제 반포자이 실거래 트레이스와 같은 축에서 비교할 수 있도록
-        # 똑같이 평단가(천만원)로 환산해서 그린다.
-        res = fit_results[asset]
-        source_month = monthly.index - lag
-        asset_vals = monthly[asset].reindex(source_month).to_numpy()
-        x_transformed = transform(asset_vals, lam)
-        predicted_log = res["intercept"] + res["slope"] * x_transformed
-        predicted_raw = np.exp(predicted_log)
-        predicted_pyeongga = predicted_raw / BANPO_SUPPLY_AREA_PYEONG / CHEONMANWON
-        pred_series = pd.Series(predicted_pyeongga, index=monthly.index)
-        reg_label = f"반포자이 회귀선(vs {asset})"
-        fig.add_trace(go.Scatter(
-            x=pred_series.index.to_timestamp(), y=pred_series.values, mode="lines",
-            name=reg_label,
-            line=dict(color=COLORS.get(asset), dash="dot", width=1.5),
-            hovertemplate="%{x|%Y-%m}<br>%{y:,.2f}천만원<extra>" + reg_label + "</extra>",
-        ))
 
 _first_jan1 = pd.Timestamp(year=max(banpo_raw_trend.index.min().year, 2005), month=1, day=1)
 xaxis_kwargs = dict(
