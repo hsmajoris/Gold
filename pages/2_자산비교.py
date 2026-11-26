@@ -4,9 +4,14 @@
 직접 조절하며 R²(선형 적합도)를 확인할 수 있는 탐색 도구. 추가로 "반포자이가
 N년 안에 k배 오르면 다른 자산은?" 시나리오 계산기를 제공한다.
 
-차트는 백테스트 페이지(gold_dashboard/chart_utils.render_zoomable_chart)와 같은
-방식 — Y축 줌 자동조정 + X축 연/월 눈금 전환 + 하단 레인지슬라이더·상단 기간
-버튼 — 으로 렌더링한다.
+차트는 백테스트 페이지와 같은 방식(Y축 줌 자동조정 + X축 연/월 눈금 전환 +
+하단 레인지슬라이더·상단 기간 버튼)으로 렌더링한다(gold_dashboard/chart_utils.
+render_zoomable_chart). 이 차트는 st.iframe으로 띄우는 정적 HTML+JS라 Python
+쪽으로 "지금 확대해서 보는 구간"을 자동으로 돌려받을 채널이 없으므로(진짜
+양방향 커스텀 컴포넌트를 시도했으나 이 환경에서 Streamlit의 componentReady/
+render 핸드셰이크가 안정적으로 동작하지 않아 포기했다), 같은 효과는 아래
+"특정 구간만의 R²" 섹션의 수동 기간 선택(date_input)으로 제공한다 — 차트에서
+보고 있는 기간을 그대로 거기 입력하면 된다.
 
 이 페이지는 백테스트 페이지(가격 기준 선택·매매신호·수수료)와는 완전히
 독립적이다 — 매매신호 로직을 전혀 쓰지 않고, 순수하게 자산 간 과거 수익률과
@@ -19,6 +24,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from gold_dashboard import config
 from gold_dashboard import data_sources as ds
 from gold_dashboard.chart_utils import render_zoomable_chart
 
@@ -27,7 +33,9 @@ st.caption(
     "기본으로는 반포자이 84㎡ 실거래가(점=개별 체결가, 선=10건 이동평균 추세)만 보여줍니다. "
     "아래에서 비교하고 싶은 자산을 선택하면 그 자산이 월별 지수로 차트에 추가되고, λ(거듭제곱"
     " 변환)·래그(개월)를 조절하며 반포자이 추세와의 선형 적합도(R²)도 확인할 수 있습니다. "
-    "매매신호와는 무관한 순수 통계 비교 도구입니다."
+    "매매신호와는 무관한 순수 통계 비교 도구입니다. 날짜는 실제 계약일 기준입니다(백테스트 "
+    "⑧ 기준은 실거래 신고기한 지연을 반영해 계약일+45일로 미뤄서 쓰지만, 이 페이지는 매매 "
+    "신호를 만들지 않으므로 그 지연 없이 원래 계약일을 그대로 씁니다)."
 )
 
 ASSET_TICKERS = {
@@ -61,7 +69,17 @@ def load_raw_series() -> dict[str, pd.Series]:
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_banpo_raw_and_trend() -> pd.DataFrame:
-    return ds.fetch_banpo_xi_raw_and_trend()
+    # 캐시 파일(data/banpo_xi_trend.json)은 신고기한 지연을 더한 "확인 가능일"
+    # (계약일+45일, config.BANPO_REPORTING_LAG_DAYS — look-ahead bias 방지용,
+    # 백테스트 ⑧ 기준이 실제 매매 신호를 만드는 데 꼭 필요한 보수적 지연)로
+    # 인덱싱돼 있다. 이 페이지는 매매신호를 전혀 쓰지 않는 순수 통계 비교
+    # 도구라 그 지연이 굳이 필요하지 않고, (엑셀로 내보낸 비교 자료와 동일한
+    # 기준으로 비교하기 위해) 실제 계약일로 되돌려서 쓴다 — 이 되돌림은 이
+    # 페이지 안에서만 적용되고, 캐시 파일 자체나 백테스트 페이지에는 영향이
+    # 없다(fetch_banpo_xi_raw_and_trend가 돌려주는 DataFrame의 복사본만 바꿈).
+    df = ds.fetch_banpo_xi_raw_and_trend().copy()
+    df.index = df.index - pd.Timedelta(days=config.BANPO_REPORTING_LAG_DAYS)
+    return df
 
 
 def monthly_mean_frame(series_dict: dict[str, pd.Series]) -> pd.DataFrame:
@@ -100,21 +118,34 @@ def inverse_transform(y, lam: float):
     return np.power(y, 1.0 / lam)
 
 
-def fit_and_r2(monthly: pd.DataFrame, banpo_monthly: pd.Series, asset: str, lam: float, lag: int, excl_start, excl_end):
+def fit_and_r2(
+    monthly: pd.DataFrame, banpo_monthly: pd.Series, asset: str, lam: float, lag: int,
+    excl_start, excl_end, window_start=None, window_end=None,
+):
     """Shift `asset`'s monthly series back by `lag` months (so row t pairs
     asset[t-lag] with 반포자이[t]), apply the λ transform, fit a line against
     반포자이's own monthly mean, and return a dict of fit stats, or None if
     too few valid months remain. `excl_start`/`excl_end` (dates or None) drop
-    any row whose asset SOURCE month (post-lag) falls inside that range."""
+    any row whose asset SOURCE month (post-lag) falls inside that range.
+    `window_start`/`window_end` (dates or None) do the opposite — KEEP only
+    rows whose 반포자이(nominal, t) month falls inside that range, i.e. the
+    chart's current visible x-range (both 반포자이's own trace and the
+    lag-shifted asset trace sit at that same t position on screen — see the
+    chart-trace loop below — so this matches "only use what's currently
+    zoomed into on screen")."""
     source_month = monthly.index - lag
     asset_vals = monthly[asset].reindex(source_month).to_numpy()
     banpo_vals = banpo_monthly.reindex(monthly.index).to_numpy()
     source_ts = source_month.to_timestamp()
+    nominal_ts = monthly.index.to_timestamp()
 
     valid = ~np.isnan(asset_vals) & ~np.isnan(banpo_vals) & (asset_vals > 0)
     if excl_start is not None and excl_end is not None:
         excluded = (source_ts >= pd.Timestamp(excl_start)) & (source_ts <= pd.Timestamp(excl_end))
         valid &= ~excluded
+    if window_start is not None and window_end is not None:
+        within = (nominal_ts >= pd.Timestamp(window_start)) & (nominal_ts <= pd.Timestamp(window_end))
+        valid &= within
 
     n = int(valid.sum())
     if n < 5:
@@ -127,9 +158,13 @@ def fit_and_r2(monthly: pd.DataFrame, banpo_monthly: pd.Series, asset: str, lam:
     ss_res = float(np.sum((y - pred) ** 2))
     ss_tot = float(np.sum((y - y.mean()) ** 2))
     r2 = 1 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    x_mean = float(x.mean())
+    sxx = float(np.sum((x - x_mean) ** 2))
+    resid_se = float(np.sqrt(ss_res / (n - 2))) if n > 2 else float("nan")
     return {
         "slope": slope, "intercept": intercept, "r2": r2, "n": n,
         "asset_min": float(np.nanmin(asset_vals[valid])), "asset_max": float(np.nanmax(asset_vals[valid])),
+        "x_mean": x_mean, "sxx": sxx, "resid_se": resid_se,
     }
 
 
@@ -205,6 +240,16 @@ if selected_assets:
                 st.caption(f"표본 {display_result['n']}개월")
 
 st.subheader("지수 비교 차트")
+show_regression_line = False
+if selected_assets:
+    show_regression_line = st.checkbox(
+        "반포자이 회귀분석선 표시 (선택한 자산의 회귀식으로 역산한 반포자이 예측값)",
+        value=False, key="show_regression_line",
+        help="각 선택 자산의 λ·래그로 적합된 회귀식(기울기·절편)에 그 자산의 실제 값을 "
+             "넣었을 때 나오는 '반포자이 예측값'을 반포자이와 같은 축에 점선으로 겹쳐 "
+             "보여줍니다. 실제 반포자이 추세선과 가까울수록 그 회귀식의 적합도(R²)가 "
+             "높다는 뜻입니다.",
+    )
 fig = go.Figure()
 
 banpo_base = banpo_raw_trend["trend"].dropna()
@@ -247,6 +292,25 @@ for asset in selected_assets:
         hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + label + "</extra>",
     ))
 
+    if show_regression_line and fit_results.get(asset) is not None and banpo_base_value:
+        # 회귀식(fit_and_r2가 구한 slope/intercept)에 이 자산의 실제 값(source_month
+        # 기준, 반포자이[t]와 짝지어진 그 x)을 넣어 "반포자이 예측값"을 구하고, 반포자이
+        # 자신의 다른 트레이스와 비교할 수 있도록 같은 지수(=100) 기준·주축에 그린다.
+        res = fit_results[asset]
+        source_month = monthly.index - lag
+        asset_vals = monthly[asset].reindex(source_month).to_numpy()
+        x_transformed = transform(asset_vals, lam)
+        predicted_raw = res["intercept"] + res["slope"] * x_transformed
+        predicted_idx = predicted_raw / banpo_base_value * 100.0
+        pred_series = pd.Series(predicted_idx, index=monthly.index)
+        reg_label = f"반포자이 회귀선(vs {asset})"
+        fig.add_trace(go.Scatter(
+            x=pred_series.index.to_timestamp(), y=pred_series.values, mode="lines",
+            name=reg_label,
+            line=dict(color=COLORS.get(asset), dash="dot", width=1.5),
+            hovertemplate="%{x|%Y-%m}<br>지수 %{y:.1f}<extra>" + reg_label + "</extra>",
+        ))
+
 _first_jan1 = pd.Timestamp(year=max(banpo_raw_trend.index.min().year, 2005), month=1, day=1)
 fig.update_xaxes(
     tickformat="%Y", dtick="M12", tick0=_first_jan1.isoformat(),
@@ -286,6 +350,44 @@ st.caption(
     "가정하는 시점'입니다."
 )
 
+if selected_assets:
+    st.subheader("특정 구간만의 R²")
+    st.caption(
+        "위 R²는 항상 전체 기간 기준입니다. 차트에서 지금 확대해서 보고 있는 기간(또는 "
+        "임의의 구간)만으로 R²를 다시 보고 싶으면 아래에 그 기간을 직접 입력하세요 "
+        "(λ·래그·제외구간은 위 설정을 그대로 쓰고, 반포자이 기준 시점으로 구간을 "
+        "판단합니다)."
+    )
+    default_start = monthly.index.min().to_timestamp().date()
+    default_end = monthly.index.max().to_timestamp().date()
+    window_range = st.date_input(
+        "구간", value=(default_start, default_end),
+        min_value=default_start, max_value=default_end, key="r2_window_range",
+    )
+    if isinstance(window_range, tuple) and len(window_range) == 2:
+        w_start, w_end = window_range
+        cols_window = st.columns(len(selected_assets))
+        for col, asset in zip(cols_window, selected_assets):
+            with col:
+                st.markdown(f"**{asset}**")
+                lam = float(st.session_state[f"lam_{asset}"])
+                lag = int(st.session_state[f"lag_{asset}"])
+                effective_lam = lam if st.session_state.get(f"disp_{asset}") == "λ 변환 데이터(지수)" else 1.0
+                w_excl_start = w_excl_end = None
+                if st.session_state.get(f"excl_on_{asset}"):
+                    rng = st.session_state.get(f"excl_range_{asset}")
+                    if isinstance(rng, tuple) and len(rng) == 2:
+                        w_excl_start, w_excl_end = rng
+                window_result = fit_and_r2(
+                    monthly, banpo_monthly, asset, effective_lam, lag,
+                    w_excl_start, w_excl_end, w_start, w_end,
+                )
+                if window_result is None:
+                    st.metric("R² (이 구간)", "표본 부족")
+                else:
+                    st.metric("R² (이 구간)", f"{window_result['r2']:.3f}")
+                    st.caption(f"표본 {window_result['n']}개월")
+
 st.divider()
 
 st.subheader("시나리오 계산기 — 반포자이가 N년간 k배 오르면 다른 자산은?")
@@ -301,6 +403,11 @@ with scenario_cols[0]:
     fold_change = st.number_input("반포자이 목표 배수", min_value=0.1, max_value=20.0, value=2.0, step=0.1)
 with scenario_cols[1]:
     horizon_years = st.number_input("기간(년)", min_value=1, max_value=30, value=5, step=1)
+with scenario_cols[2]:
+    investment_amount = st.number_input(
+        "다른 자산에 넣을 내 투자금액(원)", min_value=0, value=10_000_000, step=1_000_000,
+        help="반포자이가 아니라 비교 자산 쪽에 지금 이 금액을 투자한다고 가정합니다.",
+    )
 
 banpo_now = banpo_monthly.dropna().iloc[-1]
 banpo_target = banpo_now * fold_change
@@ -311,6 +418,28 @@ st.markdown(
     f"**{banpo_target:,.0f}원**이 된다고 가정합니다(연복리 {banpo_cagr:.1%})."
 )
 
+Z_95 = 1.96  # 정규근사 95% 구간(표본이 보통 100개월 이상이라 t분포와 거의 같음)
+
+
+def invert_x_with_interval(result: dict, y_target: float, z: float = Z_95):
+    """회귀식 y=intercept+slope*x를 역으로 풀어 x의 점추정값과, 잔차 산포·표본
+    크기·(x의 관측 평균에서 얼마나 떨어져 있는지=외삽 정도)를 반영한 근사
+    예측구간을 함께 반환한다 — 표준적인 '새 관측치에 대한 예측구간' 공식
+    (margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 그 점추정 x에서 평가해, y 쪽의
+    불확실성 폭을 다시 x 쪽 범위로 환산하는 근사(역보정/calibration) 방식이다.
+    (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는 음수(=이 λ 변환에서 도달 불가능한
+    영역)일 수 있으며 호출부에서 그 경우를 따로 처리해야 한다."""
+    slope, intercept = result["slope"], result["intercept"]
+    x_point = (y_target - intercept) / slope
+    se, n, x_mean, sxx = result["resid_se"], result["n"], result["x_mean"], result["sxx"]
+    if not np.isfinite(se) or sxx <= 0:
+        return x_point, None, None
+    margin_y = z * se * np.sqrt(1 + 1.0 / n + (x_point - x_mean) ** 2 / sxx)
+    y_lo, y_hi = y_target - margin_y, y_target + margin_y
+    x_a, x_b = (y_lo - intercept) / slope, (y_hi - intercept) / slope
+    return x_point, min(x_a, x_b), max(x_a, x_b)  # slope<0이면 뒤집히므로 min/max로 정렬
+
+
 rows = []
 for asset in CONTROLLABLE_ASSETS:
     effective_lam = float(st.session_state.get(f"lam_{asset}", DEFAULT_LAMBDA[asset]))
@@ -319,17 +448,45 @@ for asset in CONTROLLABLE_ASSETS:
     asset_now_series = monthly[asset].dropna()
     asset_now = asset_now_series.iloc[-1] if not asset_now_series.empty else None
     if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
-        rows.append({"자산": asset, "R²": "-", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-", "반포자이 대비": "-", "비고": "회귀 불가(표본 부족)"})
+        rows.append({
+            "자산": asset, "R²": "-", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-",
+            "반포자이 대비": "-", "투자금액 → 예상액(95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
+        })
         continue
-    x_required = (banpo_target - result["intercept"]) / result["slope"]
+    x_required, x_lo, x_hi = invert_x_with_interval(result, banpo_target)
     if x_required <= 0:
-        rows.append({"자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-", "연복리(CAGR)": "-", "반포자이 대비": "-", "비고": "회귀식상 불가능(음수)"})
+        rows.append({
+            "자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-",
+            "연복리(CAGR)": "-", "반포자이 대비": "-", "투자금액 → 예상액(95% 구간)": "-",
+            "비고": "회귀식상 불가능(음수)",
+        })
         continue
     asset_required = float(inverse_transform(np.array([x_required]), effective_lam)[0])
     asset_fold = asset_required / asset_now
     asset_cagr = asset_fold ** (1.0 / horizon_years) - 1.0
     relative_fold = asset_fold / fold_change
     out_of_range = asset_required > result["asset_max"] * 1.5 or asset_required < result["asset_min"] * 0.67
+
+    # x_lo/x_hi(또는 둘 다 음수) → 95% 구간이 그 λ 변환에서 아예 도달 불가능한
+    # 쪽은 "N/A(불가능)"로 표시 — 점추정 자체가 불가능한 경우(위에서 continue)와
+    # 같은 종류의 음수-불가 상황이, 구간의 한쪽 끝에서만 생길 수도 있다.
+    if x_lo is None:
+        invest_label = "구간 추정 불가(표본 부족 또는 변동 없음)"
+    else:
+        def _invest_value(x_val):
+            if x_val <= 0:
+                return None
+            req = float(inverse_transform(np.array([x_val]), effective_lam)[0])
+            return investment_amount * (req / asset_now)
+
+        invest_lo, invest_hi = _invest_value(x_lo), _invest_value(x_hi)
+        if invest_lo is None and invest_hi is None:
+            invest_label = "구간 전체가 불가능(λ 변환상 음수)"
+        else:
+            lo_text = f"{invest_lo:,.0f}원" if invest_lo is not None else "0원 미만(불가능)"
+            hi_text = f"{invest_hi:,.0f}원" if invest_hi is not None else "상한 없음"
+            invest_label = f"{lo_text} ~ {hi_text}"
+
     rows.append({
         "자산": asset,
         "R²": f"{result['r2']:.3f}",
@@ -337,6 +494,7 @@ for asset in CONTROLLABLE_ASSETS:
         "현재 대비": f"{asset_fold:.2f}배",
         "연복리(CAGR)": f"{asset_cagr:.1%}",
         "반포자이 대비": f"{relative_fold:.2f}배 " + ("오버퍼폼" if relative_fold >= 1 else "언더퍼폼"),
+        "투자금액 → 예상액(95% 구간)": invest_label,
         "비고": "⚠️ 관측 범위를 크게 벗어남(외삽)" if out_of_range else "",
     })
 
@@ -347,6 +505,15 @@ st.caption(
     "덜 올라도(혹은 떨어져도, 1.0 미만) 성립한다는 뜻입니다. ⚠️ 표시는 함의 가격이 그 자산의 "
     "과거 관측 범위(최소~최대)를 50% 넘게 벗어난 경우로, 회귀식의 형태가 그 구간에서도 "
     "유지된다는 보장이 없어 특히 신뢰도가 낮습니다."
+)
+st.caption(
+    "'투자금액 → 예상액(95% 구간)'은 입력한 투자금액을 지금 이 자산에 넣었을 때, 반포자이가 "
+    "목표 배수에 도달하는 시점 기준으로 얼마가 될지를 95% 예측구간으로 보여줍니다 — 점추정(함의 "
+    "가격)만 보여주면 실제로는 그 회귀식 주변에 흩어져 있던 과거 달(월)들의 산포를 숨기게 되므로, "
+    "잔차 표준오차·표본 수·현재 추정치가 관측 데이터 평균에서 얼마나 떨어져 있는지(외삽 정도)를 "
+    "반영한 표준적인 예측구간 공식으로 범위를 계산합니다. 외삽이 심할수록(관측 범위를 크게 벗어날"
+    "수록) 구간이 급격히 넓어지며, '상한 없음'·'불가능'은 95% 구간의 그 끝이 이 λ 변환에서 "
+    "수학적으로 도달할 수 없는 영역(§5.8의 '회귀식상 불가능'과 같은 이유)에 해당한다는 뜻입니다."
 )
 
 st.caption(
