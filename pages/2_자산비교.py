@@ -467,7 +467,8 @@ st.subheader("시나리오 계산기 — 반포자이가 N년간 k배 오르면 
 st.caption(
     "선택하지 않은 자산은 기본 λ·래그 값을 사용합니다. λ(거듭제곱 변환)·래그로 R²가 높게 "
     "맞춰졌다는 건, 그 변환·래그를 적용한 자산 값이 반포자이와 거의 같은 '비율'로 움직여 "
-    "왔다는 뜻입니다. 그래서 '오늘의 실제 자산 가격'을 기준점으로 놓고, 반포자이가 목표 "
+    "왔다는 뜻입니다. 그래서 '오늘의 실제 자산 가격'(가장 최근 거래일의 종가·시세 — 월평균이 "
+    "아니라 매일 최신화됩니다)을 기준점으로 놓고, 반포자이가 목표 "
     "배수에 도달할 때 그 변환된 값이 과거와 같은 비율 관계(회귀 기울기)로 얼마나 더 움직여야 "
     "하는지를 구한 뒤, 거듭제곱을 반대로(예: 세제곱근을 변환으로 썼다면 다시 세제곱) 적용해 "
     "자산의 실제 가격으로 되돌립니다 — 예측이 아니라 '과거의 비율 관계를 오늘 가격에서부터 "
@@ -548,7 +549,12 @@ for asset in CONTROLLABLE_ASSETS:
     effective_lam = float(st.session_state.get(f"lam_{asset}", DEFAULT_LAMBDA[asset]))
     effective_lag = int(st.session_state.get(f"lag_{asset}", DEFAULT_LAG_MONTHS[asset]))
     result = fit_results.get(asset) or fit_and_r2(monthly, banpo_monthly, asset, effective_lam, effective_lag, None, None)
-    asset_now_series = monthly[asset].dropna()
+    # R²·회귀식 적합에는 노이즈를 줄이려고 월별 평균(monthly)을 쓰지만, "오늘 가격"은
+    # 매입단가로 쓰이는 값이라 월 전체 평균이 아니라 가장 최근 거래일의 실제가를 써야
+    # 한다 — 변동성이 큰 자산(비트코인 등)은 이번 달 평균과 오늘 실제가의 차이가
+    # 꽤 클 수 있다(예: 2026년 11월처럼 한 달 새 20% 넘게 빠진 달). raw_series는
+    # load_raw_series()가 받아온 일별(또는 거래일별) 원 데이터라 매일 자동으로 최신화된다.
+    asset_now_series = raw_series[asset].dropna()
     asset_now = asset_now_series.iloc[-1] if not asset_now_series.empty else None
     if result is None or asset_now is None or abs(result["slope"]) < 1e-12:
         rows.append({
