@@ -444,10 +444,14 @@ st.divider()
 
 st.subheader("시나리오 계산기 — 반포자이가 N년간 k배 오르면 다른 자산은?")
 st.caption(
-    "선택하지 않은 자산은 기본 λ·래그 값을 사용합니다. 반포자이가 목표 배수에 도달했을 때 "
-    "그 회귀식이 성립하려면 각 자산 가격이 얼마여야 하는지 역산합니다 — 예측이 아니라 "
-    "'과거의 통계적 관계를 그대로 연장하면 나오는 숫자'일 뿐이며, 특히 관측 범위를 크게 "
-    "벗어나는 추정은 신뢰도가 급격히 떨어집니다(아래 ⚠️ 표시 참고)."
+    "선택하지 않은 자산은 기본 λ·래그 값을 사용합니다. λ(거듭제곱 변환)·래그로 R²가 높게 "
+    "맞춰졌다는 건, 그 변환·래그를 적용한 자산 값이 반포자이와 거의 같은 '비율'로 움직여 "
+    "왔다는 뜻입니다. 그래서 '오늘의 실제 자산 가격'을 기준점으로 놓고, 반포자이가 목표 "
+    "배수에 도달할 때 그 변환된 값이 과거와 같은 비율 관계(회귀 기울기)로 얼마나 더 움직여야 "
+    "하는지를 구한 뒤, 거듭제곱을 반대로(예: 세제곱근을 변환으로 썼다면 다시 세제곱) 적용해 "
+    "자산의 실제 가격으로 되돌립니다 — 예측이 아니라 '과거의 비율 관계를 오늘 가격에서부터 "
+    "그대로 연장하면 나오는 숫자'일 뿐이며, 특히 관측 범위를 크게 벗어나는 추정은 신뢰도가 "
+    "급격히 떨어집니다(아래 ⚠️ 표시 참고)."
 )
 
 scenario_cols = st.columns(3)
@@ -475,24 +479,37 @@ st.markdown(
 Z_95 = 1.96  # 정규근사 95% 구간(표본이 보통 100개월 이상이라 t분포와 거의 같음)
 
 
-def invert_x_with_interval(result: dict, y_target: float, z: float = Z_95):
-    """회귀식 log(반포자이)=intercept+slope*x를 역으로 풀어 x의 점추정값과,
-    잔차 산포·표본 크기·(x의 관측 평균에서 얼마나 떨어져 있는지=외삽 정도)를
-    반영한 근사 예측구간을 함께 반환한다 — 표준적인 '새 관측치에 대한 예측구간'
-    공식(margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 그 점추정 x에서 평가해, y
-    (log 반포자이) 쪽의 불확실성 폭을 다시 x 쪽 범위로 환산하는 근사(역보정/
-    calibration) 방식이다. `y_target`은 반포자이 목표 금액이 아니라 그 log값을
-    넘겨야 한다(호출부에서 np.log 적용). (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는
-    음수(=이 λ 변환에서 도달 불가능한 영역)일 수 있으며 호출부에서 그 경우를
-    따로 처리해야 한다."""
-    slope, intercept = result["slope"], result["intercept"]
-    x_point = (y_target - intercept) / slope
+def invert_x_with_interval(
+    result: dict, asset_now: float, lam: float, banpo_now: float, banpo_target: float, z: float = Z_95,
+):
+    """R²가 높다는 건 transform(자산,λ)(래그 반영)이 log(반포자이)와 거의 선형
+    으로 같이 움직여 왔다는 뜻이다 — 그래서 "반포자이가 목표 배수가 되면, 그
+    자산의 변환된 값도 같은 비율 관계(회귀 기울기)만큼 더 움직였을 것"이라고
+    보고, '오늘의 실제 자산 가격'(x_now = transform(asset_now,λ))을 기준점으로
+    놓은 뒤, 반포자이의 log 변화량(log(banpo_target)-log(banpo_now))을 회귀
+    기울기로 나눠 자산의 transform값이 거기서 얼마나 더 움직여야 하는지 구한다
+    (x_point = x_now + Δlog(반포자이)/slope). 회귀식을 절편까지 포함해 통째로
+    역으로 푸는 대신 이렇게 "오늘 가격에서 시작한 상대적 이동"으로 계산하는
+    이유: 절편을 쓰면 "오늘의 실제 자산 가격이 과거 표본 대비 이미 얼마나
+    앞서/뒤처져 있는지"까지 함께 반영돼, 최근 단기간 급등한 자산에서 "목표
+    배수보다 오히려 하락해야 한다" 같은 반직관적인 결과가 나오기 쉽다(예:
+    최근 AI 랠리로 급등한 하이닉스·코스피). 잔차 산포·표본 크기·(x의 관측
+    평균에서 얼마나 떨어져 있는지=외삽 정도)를 반영한 근사 예측구간은 기존과
+    같은 공식(margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 이 점추정 x에서 평가해서
+    구한다. (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는 음수(=이 λ 변환에서 도달
+    불가능한 영역)일 수 있으며 호출부에서 그 경우를 따로 처리해야 한다."""
+    slope = result["slope"]
+    x_now = float(transform(np.array([asset_now]), lam)[0])
+    y_now = np.log(banpo_now)
+    y_target = np.log(banpo_target)
+    x_point = x_now + (y_target - y_now) / slope
     se, n, x_mean, sxx = result["resid_se"], result["n"], result["x_mean"], result["sxx"]
     if not np.isfinite(se) or sxx <= 0:
         return x_point, None, None
     margin_y = z * se * np.sqrt(1 + 1.0 / n + (x_point - x_mean) ** 2 / sxx)
     y_lo, y_hi = y_target - margin_y, y_target + margin_y
-    x_a, x_b = (y_lo - intercept) / slope, (y_hi - intercept) / slope
+    x_a = x_now + (y_lo - y_now) / slope
+    x_b = x_now + (y_hi - y_now) / slope
     return x_point, min(x_a, x_b), max(x_a, x_b)  # slope<0이면 뒤집히므로 min/max로 정렬
 
 
@@ -509,7 +526,7 @@ for asset in CONTROLLABLE_ASSETS:
             "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
         })
         continue
-    x_required, x_lo, x_hi = invert_x_with_interval(result, np.log(banpo_target))
+    x_required, x_lo, x_hi = invert_x_with_interval(result, asset_now, effective_lam, banpo_now, banpo_target)
     if x_required <= 0:
         rows.append({
             "자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-",
