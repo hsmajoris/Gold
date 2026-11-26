@@ -1,8 +1,13 @@
 """자산군 비교 페이지: 반포자이(부동산) 실거래가 추세를 기준으로 삼아, 선택한
 비교 자산(비트코인·하이닉스·코스피·국내금)을 월별로 지수화해 같은 차트에
 겹쳐보고, 각 자산을 반포자이 추세에 맞춰 거듭제곱 변환(λ)·래그(개월)·제외구간을
-직접 조절하며 R²(선형 적합도)를 확인할 수 있는 탐색 도구. 추가로 "반포자이가
-N년 안에 k배 오르면 다른 자산은?" 시나리오 계산기를 제공한다.
+직접 조절하며 R²(적합도)를 확인할 수 있는 탐색 도구. 회귀식은 log(반포자이) =
+절편 + 기울기×transform(자산,λ) 형태(log-log에 가까운 "비율 대 비율" 모델) —
+반포자이·비교 자산 둘 다 시간에 따라 복리로(비율로) 성장하는 가격이라, 반포자이
+쪽도 log로 맞춰야 "과거에 둘 다 비슷한 배수로 움직였다"는 관측과 시나리오
+계산기의 배수 추정이 일관된다(반포자이를 원금액 그대로 두면 큰 폭 외삽에서
+배수가 왜곡된다). 추가로 "반포자이가 N년 안에 k배 오르면 다른 자산은?" 시나리오
+계산기를 제공한다.
 
 차트는 백테스트 페이지와 같은 방식(Y축 줌 자동조정 + X축 연/월 눈금 전환 +
 하단 레인지슬라이더·상단 기간 버튼)으로 렌더링한다(gold_dashboard/chart_utils.
@@ -47,15 +52,18 @@ CONTROLLABLE_ASSETS = ["비트코인", "하이닉스", "코스피", "국내금"]
 BENCHMARK = "반포자이"
 COLORS = {"비트코인": "#5b6fb8", "반포자이": "#a13d2f", "하이닉스": "#2f8a5f", "코스피": "#8a8a8a", "국내금": "#b8860b"}
 
-# 자산별 기본 λ·래그 — 2026-11-25 그리드서치 결과(월별 집계, 반포자이84 평당가
-# 추세 기준, TRADING_LOGIC.md 참고). λ는 0 이상(로그~거듭제곱)만 허용한다 —
-# 음수 λ는 회귀식을 역으로 풀 때(시나리오 계산기) x^λ(λ<0)의 부호 반전 때문에
-# "회귀식상 도달 불가능(음수)" 같은 해석하기 어려운 결과를 만들기 쉽다. 코스피·
-# 국내금은 원래 그리드서치가 음수 λ(-1.3, -0.70)를 골랐었지만, λ≥0 제약 하에서
-# 다시 찾아보면(기존 래그 고정, λ∈[0,3] 재탐색) 둘 다 λ=0(로그)이 최적이라(각각
-# R²=0.676, 0.930 — 음수 λ였을 때의 0.670, 0.954와 거의 같은 수준) 그 값으로
-# 바꿨다. 아래 컨트롤에서 자유롭게 바꿀 수 있다.
-DEFAULT_LAMBDA = {"비트코인": 0.40, "하이닉스": 0.10, "코스피": 0.0, "국내금": 0.0}
+# 자산별 기본 λ·래그. 회귀식은 log(반포자이) = 절편 + 기울기×transform(자산,λ)
+# 형태(반포자이·자산 둘 다 "비율로" 성장하는 자산이라, 반포자이 쪽도 log를 써야
+# 두 자산의 과거 등락 '배수'가 시나리오 계산기에서도 일관되게 나온다 — 예를
+# 들어 반포자이 쪽만 원금액 그대로 두면, 과거엔 금값도 반포자이도 비슷하게
+# 4배 올랐는데 "반포자이 2배 → 금 9.87배" 같은 왜곡된 외삽이 나왔었다).
+# λ는 0 이상(로그~거듭제곱)만 허용한다 — 음수 λ는 회귀식을 역으로 풀 때(시나리오
+# 계산기) x^λ(λ<0)의 부호 반전 때문에 "회귀식상 도달 불가능(음수)" 같은 해석하기
+# 어려운 결과를 만들기 쉽다. 아래 값은 2026-11-26 그리드서치 결과(월별 집계,
+# 이 log-log 모델·래그는 과거 그대로 고정한 채 λ∈[0,3]만 재탐색, TRADING_LOGIC.md
+# 참고) — R²: 비트코인 0.948, 하이닉스 0.914, 코스피 0.665, 국내금 0.825.
+# 아래 컨트롤에서 자유롭게 바꿀 수 있다.
+DEFAULT_LAMBDA = {"비트코인": 0.25, "하이닉스": 0.0, "코스피": 0.0, "국내금": 0.0}
 DEFAULT_LAG_MONTHS = {"비트코인": 6, "하이닉스": 12, "코스피": 11, "국내금": 2}
 
 
@@ -122,23 +130,27 @@ def fit_and_r2(
     excl_start, excl_end, window_start=None, window_end=None,
 ):
     """Shift `asset`'s monthly series back by `lag` months (so row t pairs
-    asset[t-lag] with 반포자이[t]), apply the λ transform, fit a line against
-    반포자이's own monthly mean, and return a dict of fit stats, or None if
-    too few valid months remain. `excl_start`/`excl_end` (dates or None) drop
-    any row whose asset SOURCE month (post-lag) falls inside that range.
-    `window_start`/`window_end` (dates or None) do the opposite — KEEP only
-    rows whose 반포자이(nominal, t) month falls inside that range, i.e. the
-    chart's current visible x-range (both 반포자이's own trace and the
-    lag-shifted asset trace sit at that same t position on screen — see the
-    chart-trace loop below — so this matches "only use what's currently
-    zoomed into on screen")."""
+    asset[t-lag] with 반포자이[t]), apply the λ transform to the asset side,
+    and fit a line of log(반포자이) on that transformed asset value — both
+    반포자이와 비교 자산 모두 가격이 시간에 따라 "비율로"(복리로) 성장하는
+    자산이라, 반포자이 쪽도 log로 맞춰야 두 자산의 과거 등락 '배수'가 시나리오
+    계산기에서 일관되게 나온다(반포자이만 원금액 그대로 두면 큰 폭 외삽에서
+    기울기가 금액 단위로 고정돼 버려, 배수로는 말이 안 되는 결과가 나온다).
+    Returns a dict of fit stats, or None if too few valid months remain.
+    `excl_start`/`excl_end` (dates or None) drop any row whose asset SOURCE
+    month (post-lag) falls inside that range. `window_start`/`window_end`
+    (dates or None) do the opposite — KEEP only rows whose 반포자이(nominal,
+    t) month falls inside that range, i.e. the chart's current visible
+    x-range (both 반포자이's own trace and the lag-shifted asset trace sit at
+    that same t position on screen — see the chart-trace loop below — so
+    this matches "only use what's currently zoomed into on screen")."""
     source_month = monthly.index - lag
     asset_vals = monthly[asset].reindex(source_month).to_numpy()
     banpo_vals = banpo_monthly.reindex(monthly.index).to_numpy()
     source_ts = source_month.to_timestamp()
     nominal_ts = monthly.index.to_timestamp()
 
-    valid = ~np.isnan(asset_vals) & ~np.isnan(banpo_vals) & (asset_vals > 0)
+    valid = ~np.isnan(asset_vals) & ~np.isnan(banpo_vals) & (asset_vals > 0) & (banpo_vals > 0)
     if excl_start is not None and excl_end is not None:
         excluded = (source_ts >= pd.Timestamp(excl_start)) & (source_ts <= pd.Timestamp(excl_end))
         valid &= ~excluded
@@ -151,7 +163,7 @@ def fit_and_r2(
         return None
 
     x = transform(asset_vals[valid], lam)
-    y = banpo_vals[valid]
+    y = np.log(banpo_vals[valid])
     slope, intercept = np.polyfit(x, y, 1)
     pred = intercept + slope * x
     ss_res = float(np.sum((y - pred) ** 2))
@@ -326,7 +338,8 @@ for i, asset in enumerate(selected_assets):
         source_month = monthly.index - lag
         asset_vals = monthly[asset].reindex(source_month).to_numpy()
         x_transformed = transform(asset_vals, lam)
-        predicted_raw = res["intercept"] + res["slope"] * x_transformed
+        predicted_log = res["intercept"] + res["slope"] * x_transformed
+        predicted_raw = np.exp(predicted_log)
         predicted_idx = predicted_raw / banpo_base_value * 100.0
         pred_series = pd.Series(predicted_idx, index=monthly.index)
         reg_label = f"반포자이 회귀선(vs {asset})"
@@ -463,13 +476,15 @@ Z_95 = 1.96  # 정규근사 95% 구간(표본이 보통 100개월 이상이라 t
 
 
 def invert_x_with_interval(result: dict, y_target: float, z: float = Z_95):
-    """회귀식 y=intercept+slope*x를 역으로 풀어 x의 점추정값과, 잔차 산포·표본
-    크기·(x의 관측 평균에서 얼마나 떨어져 있는지=외삽 정도)를 반영한 근사
-    예측구간을 함께 반환한다 — 표준적인 '새 관측치에 대한 예측구간' 공식
-    (margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 그 점추정 x에서 평가해, y 쪽의
-    불확실성 폭을 다시 x 쪽 범위로 환산하는 근사(역보정/calibration) 방식이다.
-    (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는 음수(=이 λ 변환에서 도달 불가능한
-    영역)일 수 있으며 호출부에서 그 경우를 따로 처리해야 한다."""
+    """회귀식 log(반포자이)=intercept+slope*x를 역으로 풀어 x의 점추정값과,
+    잔차 산포·표본 크기·(x의 관측 평균에서 얼마나 떨어져 있는지=외삽 정도)를
+    반영한 근사 예측구간을 함께 반환한다 — 표준적인 '새 관측치에 대한 예측구간'
+    공식(margin = z·s·sqrt(1+1/n+(x-x̄)²/Sxx))을 그 점추정 x에서 평가해, y
+    (log 반포자이) 쪽의 불확실성 폭을 다시 x 쪽 범위로 환산하는 근사(역보정/
+    calibration) 방식이다. `y_target`은 반포자이 목표 금액이 아니라 그 log값을
+    넘겨야 한다(호출부에서 np.log 적용). (x_point, x_lo, x_hi) 반환 — x_lo/x_hi는
+    음수(=이 λ 변환에서 도달 불가능한 영역)일 수 있으며 호출부에서 그 경우를
+    따로 처리해야 한다."""
     slope, intercept = result["slope"], result["intercept"]
     x_point = (y_target - intercept) / slope
     se, n, x_mean, sxx = result["resid_se"], result["n"], result["x_mean"], result["sxx"]
@@ -494,7 +509,7 @@ for asset in CONTROLLABLE_ASSETS:
             "반포자이 대비": "-", "투자금액 → 예상액(억원, 95% 구간)": "-", "비고": "회귀 불가(표본 부족)",
         })
         continue
-    x_required, x_lo, x_hi = invert_x_with_interval(result, banpo_target)
+    x_required, x_lo, x_hi = invert_x_with_interval(result, np.log(banpo_target))
     if x_required <= 0:
         rows.append({
             "자산": asset, "R²": f"{result['r2']:.3f}", "함의 가격": "-", "현재 대비": "-",
